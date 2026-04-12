@@ -33,7 +33,7 @@ fun GameScreen(modifier: Modifier = Modifier, vm: GameViewModel = viewModel()) {
             .fillMaxSize()
             .focusRequester(focusRequester)
             .focusable()
-            .onKeyEvent { keyEvent ->
+            .onPreviewKeyEvent { keyEvent ->
                 val key = keyEvent.key
                 if (key in setOf(Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight)) {
                     when (keyEvent.type) {
@@ -41,7 +41,7 @@ fun GameScreen(modifier: Modifier = Modifier, vm: GameViewModel = viewModel()) {
                         KeyEventType.KeyUp   -> pressedKeys.remove(key)
                     }
                     syncKeyInput()
-                    true
+                    true  // 이벤트 소비 → 포커스 이동 차단
                 } else false
             }
     ) {
