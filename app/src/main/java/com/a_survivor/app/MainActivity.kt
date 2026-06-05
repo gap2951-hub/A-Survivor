@@ -6,8 +6,12 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -117,7 +121,8 @@ class MainActivity : ComponentActivity() {
                 vm::unequipEquipment,
                 vm::resetEquipment,
                 vm::unequipWeapon,
-                vm::resetWeapon
+                vm::resetWeapon,
+                vm::movePlayer
             )
         }
     }
@@ -132,12 +137,25 @@ fun MainScreen(
     onUnequip: () -> Unit,
     onReset: () -> Unit,
     onUnequipWeapon: () -> Unit,
-    onResetWeapon: () -> Unit
+    onResetWeapon: () -> Unit,
+    onMovePlayer: (Float, Float) -> Unit
 ) {
     val dragState         = remember { DragDropState() }
     var isInventoryOpen   by remember { mutableStateOf(false) }
     var equipSlotBounds   by remember { mutableStateOf<Rect?>(null) }
     var rootWindowOffset  by remember { mutableStateOf(Offset.Zero) }
+
+    var joystickDirX by remember { mutableStateOf(0f) }
+    var joystickDirY by remember { mutableStateOf(0f) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(16L)
+            if (joystickDirX != 0f || joystickDirY != 0f) {
+                onMovePlayer(joystickDirX, joystickDirY)
+            }
+        }
+    }
 
     val isDragOver = dragState.isDragging &&
             state.equipment != null &&
@@ -204,6 +222,17 @@ fun MainScreen(
 
             Spacer(Modifier.height(100.dp))
         }
+
+        // 가상 조이스틱 (왼쪽 하단 고정)
+        JoystickControl(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 20.dp, bottom = 20.dp),
+            onDirectionChange = { dx, dy ->
+                joystickDirX = dx
+                joystickDirY = dy
+            }
+        )
 
         // 드래그 중인 아이템 고스트
         if (dragState.isDragging) {
@@ -1017,6 +1046,58 @@ private fun DraggableScrollItem(
                 fontSize = 11.sp
             )
         }
+    }
+}
+
+// ── 가상 조이스틱 ─────────────────────────────────────────────────────────────
+@Composable
+fun JoystickControl(
+    modifier: Modifier = Modifier,
+    onDirectionChange: (Float, Float) -> Unit
+) {
+    val baseSize   = 120.dp
+    val thumbSize  = 44.dp
+    var thumbOffset by remember { mutableStateOf(Offset.Zero) }
+
+    Canvas(
+        modifier = modifier
+            .size(baseSize)
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDrag = { change, _ ->
+                        change.consume()
+                        val center = Offset(size.width / 2f, size.height / 2f)
+                        val raw    = change.position - center
+                        val maxR   = size.width / 2f
+                        val dist   = raw.getDistance()
+                        val clamped = if (dist <= maxR) raw else raw * (maxR / dist)
+                        thumbOffset = clamped
+                        onDirectionChange(clamped.x / maxR, clamped.y / maxR)
+                    },
+                    onDragEnd = {
+                        thumbOffset = Offset.Zero
+                        onDirectionChange(0f, 0f)
+                    },
+                    onDragCancel = {
+                        thumbOffset = Offset.Zero
+                        onDirectionChange(0f, 0f)
+                    }
+                )
+            }
+    ) {
+        val center  = this.center
+        val baseR   = size.minDimension / 2f
+        val thumbR  = thumbSize.toPx() / 2f
+
+        // 베이스 원
+        drawCircle(color = Color.White.copy(alpha = 0.12f), radius = baseR,  center = center)
+        drawCircle(color = Color.White.copy(alpha = 0.30f), radius = baseR,  center = center,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()))
+
+        // 썸(조이스틱 핸들)
+        drawCircle(color = Color.White.copy(alpha = 0.55f), radius = thumbR, center = center + thumbOffset)
+        drawCircle(color = Color.White.copy(alpha = 0.25f), radius = thumbR, center = center + thumbOffset,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx()))
     }
 }
 

@@ -2,8 +2,11 @@ package com.a_survivor.app.viewmodel
 
 import androidx.lifecycle.ViewModel
 import com.a_survivor.app.model.DefaultWeapon
+import com.a_survivor.app.model.DefaultWorld
 import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
+import com.a_survivor.app.model.GameWorld
+import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
 import com.a_survivor.app.model.Weapon
@@ -20,12 +23,18 @@ data class UiState(
     val weapon: Weapon?,
     val inventory: List<InventoryItem>,
     val selectedScrollType: ScrollType? = null,
-    val lastResult: EnhancementResult? = null
+    val lastResult: EnhancementResult? = null,
+    val player: Player = Player(),
+    val world: GameWorld = DefaultWorld
 )
 
 class MainViewModel : ViewModel() {
 
     private val service = EnhancementService()
+
+    companion object {
+        private const val MOVE_SPEED = 3f
+    }
 
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
@@ -102,6 +111,16 @@ class MainViewModel : ViewModel() {
                 selectedScrollType = null,
                 lastResult = null
             )
+        }
+    }
+
+    fun movePlayer(dirX: Float, dirY: Float) {
+        _uiState.update { state ->
+            val p = state.player
+            val rawX = p.positionX + dirX * MOVE_SPEED
+            val rawY = p.positionY + dirY * MOVE_SPEED
+            val (clampedX, clampedY) = state.world.clampPosition(rawX, rawY)
+            state.copy(player = p.copy(positionX = clampedX, positionY = clampedY))
         }
     }
 

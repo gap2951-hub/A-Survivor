@@ -24,12 +24,15 @@ com.a_survivor.app/
 │   ├── Player.kt                 (플레이어 데이터 — 불변 data class)
 │   ├── PlayerJob.kt              (직업 enum + 직업별 초기 스탯 팩토리)
 │   ├── PlayerStats.kt            (스탯 데이터 — str/dex/int/luk)
-│   └── Weapon.kt                 (무기 데이터 + DefaultWeapon "낡은 검")
+│   ├── Weapon.kt                 (무기 데이터 + DefaultWeapon "낡은 검")
+│   ├── GameWorld.kt              (월드 크기 + 좌표 유틸리티)
+│   └── Monster.kt                (몬스터 데이터 + slime() 팩토리)
 ├── service/
 │   ├── EnhancementService.kt     (강화 로직 / 확률 계산)
-│   └── CombatStatCalculator.kt   (직업별 공격력/마력 계산)
+│   ├── CombatStatCalculator.kt   (직업별 공격력/마력 계산)
+│   └── MonsterSpawner.kt         (몬스터 랜덤 스폰 / 최소 거리 보장)
 ├── viewmodel/
-│   └── MainViewModel.kt          (UiState, 인벤토리 상태 관리)
+│   └── MainViewModel.kt          (UiState, 인벤토리 + 플레이어 상태 관리)
 └── res/drawable/
     ├── nogada_glove.png          (노가다 목장갑 픽셀아트 이미지)
     └── nogada_sword.png          (낡은 검 픽셀아트 이미지)
@@ -61,7 +64,6 @@ com.a_survivor.app/
 | 최대 업그레이드 횟수 | 7 |
 | 가위 사용 가능 횟수 | 10 |
 | 착용 가능 직업 | 전사 |
-| 요구 레벨 | 1 |
 
 ---
 
@@ -78,7 +80,7 @@ com.a_survivor.app/
 | stats | PlayerStats | WARRIOR 초기 스탯 |
 | availableStatPoint | Int | 0 |
 | weapon | Weapon | DefaultWeapon |
-| positionX / positionY | Float | 0f |
+| positionX / positionY | Float | 0f (월드 좌표) |
 
 ### 직업(PlayerJob) 및 초기 스탯
 
@@ -90,6 +92,83 @@ com.a_survivor.app/
 | ARCHER   | 궁수   | 5  | 20 | 4  | 4  |
 | THIEF    | 도적   | 5  | 10 | 4  | 15 |
 | PIRATE   | 해적   | 10 | 16 | 4  | 6  |
+
+---
+
+## 월드 시스템
+
+### GameWorld
+
+| 필드/메서드 | 설명 |
+|---|---|
+| `width = 1600f` | 월드 가로 크기 |
+| `height = 1200f` | 월드 세로 크기 |
+| `contains(x, y)` | 좌표가 월드 범위 안인지 확인 |
+| `clampPosition(x, y)` | 좌표를 경계 안으로 제한, `Pair<Float, Float>` 반환 |
+
+- `DefaultWorld = GameWorld()` 기본 인스턴스
+- `Player.positionX / positionY` 가 월드 좌표계와 직접 호환
+
+---
+
+## 몬스터 시스템
+
+### Monster 모델
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| id | Int | 인스턴스 식별자 |
+| name | String | 몬스터 이름 |
+| hp / maxHp | Int | 현재/최대 HP |
+| positionX / positionY | Float | 월드 좌표 |
+| speed | Float | 이동 속도 |
+| expReward | Int | 처치 시 경험치 |
+
+### 첫 번째 몬스터 — 슬라임
+
+| 항목 | 값 |
+|------|-----|
+| hp / maxHp | 20 |
+| speed | 1f |
+| expReward | 5 |
+
+- `slime(id, positionX, positionY)` 팩토리 함수로 생성
+- `Monster.distanceTo(x, y)` 확장 함수 제공
+
+### MonsterSpawner
+
+| 파라미터 | 기본값 | 설명 |
+|---|---|---|
+| `count` | — | 생성할 몬스터 수 |
+| `minDistance` | `100f` | 몬스터 간 최소 거리 |
+| `margin` | `50f` | 맵 가장자리 여백 |
+| `random` | `Random.Default` | 테스트 시 시드 고정 가능 |
+
+- 후보 좌표 랜덤 생성 → 기존 몬스터와 거리 비교 → 최대 50회 재시도
+- 50회 안에 자리 못 찾으면 해당 몬스터 건너뜀
+
+---
+
+## 가상 조이스틱 시스템
+
+### 동작 구조
+
+```
+터치 드래그
+  → JoystickControl (방향 벡터 -1~1)
+  → 게임 루프 LaunchedEffect(delay 16ms, ~60fps)
+  → ViewModel.movePlayer(dirX, dirY)
+  → 위치 += 방향 × MOVE_SPEED(3f)
+  → GameWorld.clampPosition (월드 경계 제한)
+  → Player.positionX/Y 업데이트
+```
+
+### JoystickControl Composable
+
+- 화면 **왼쪽 하단** 고정 오버레이
+- Canvas 기반: 베이스 원(반투명) + 썸 원(밝은)
+- 썸은 베이스 반경 안으로 벡터 clamping
+- 드래그 종료 시 썸 중앙 복귀, 방향 (0,0) 전달
 
 ---
 
@@ -113,8 +192,6 @@ com.a_survivor.app/
 | 백의 1% | 1% | 실패 횟수 -1, 남은 횟수 +1 | 장비 파괴 |
 | 백의 3% | 3% | 실패 횟수 -1, 남은 횟수 +1 | 장비 파괴 |
 
-- 사용 조건: 실패 횟수 ≥ 1
-
 ---
 
 ## 전투 스탯 계산 (CombatStatCalculator)
@@ -126,105 +203,42 @@ com.a_survivor.app/
 | 도적          | 무기공격력 + 장갑공격력 + LUK × 0.5 |
 | 마법사        | 무기마력 + 장갑마력 + INT × 0.5 (장갑 공격력 임시 합산) |
 
-- `EquipmentStatProvider` 인터페이스로 장비 수치 추상화 → 무기/마력 장갑 추가 시 확장 용이
-
----
-
-## 인벤토리 초기 구성
-
-| 아이템 | 수량 |
-|--------|------|
-| 장갑 공격력 주문서 100% | 10 |
-| 장갑 공격력 주문서 60%  | 10 |
-| 장갑 공격력 주문서 10%  | 10 |
-| 백의 주문서 1% | 10 |
-| 백의 주문서 3% | 10 |
-
 ---
 
 ## UI 구성
 
 ### 장비창
 
-사람 신체 형태 기반 슬롯 배치 (위→아래):
-
 ```
 ①  [모자]
 ②  [얼굴] [눈장식] [귀걸이]
 ③  [목걸이]
 ④  [어깨]  [상의]  [망토]
-⑤  [🧤장갑] [하의] [⚔무기]    ← 장갑 = 강화 드롭 타겟 / 무기 = 낡은 검
+⑤  [🧤장갑] [하의] [⚔무기]
 ⑥  [신발]  [벨트]
 ```
 
 - **활성 슬롯:** 장갑(드래그 드롭 강화), 무기(탭=정보/꾹=해제)
-- **잠금 슬롯:** 나머지 10개 — 어두운 배경 + "잠금" 레이블
+- **잠금 슬롯:** 나머지 10개
 
 ### 아이템 정보 다이얼로그 (맵스토리 스타일)
 
-두 아이템 모두 동일한 5섹션 구조:
-
 | 섹션 | 내용 |
 |------|------|
-| ① 헤더 | 아이템명 (흰색 굵게) + "교환 불가" (주황) |
-| ② 이미지 + 정보 | 96dp 이미지박스 + 우측 세부 정보 |
-| ③ 직업 탭 | 초보자/전사/마법사/궁수/도적/해적 — 착용 가능 직업 주황 강조 |
-| ④ 스탯 | `·` 불릿 형식, 중요 수치 주황 |
+| ① 헤더 | 아이템명 + "교환 불가" |
+| ② 이미지 + 정보 | 96dp 이미지박스 + 세부 정보 |
+| ③ 직업 탭 | 6개 직업, 착용 가능 직업 주황 강조 |
+| ④ 스탯 | `·` 불릿 형식 |
 | ⑤ 설명 | 플레이버 텍스트 |
-
-- 색상 테마: 쿨 다크 블루-그레이 (`TipBg = #262630`)
-
-### 인벤토리창
-
-- "인벤토리 열기/닫기" 버튼으로 토글
-- 주문서 4열 그리드 표시
-- **꾹 누르고 드래그** → 장갑 슬롯 위에서 손 떼면 강화 실행
-- 드래그 중 고스트 이미지가 손가락 따라 이동
-- 장갑 슬롯 위에 올라오면 파란 하이라이트
-
-### 결과 메시지
-
-| 결과 | 색상 |
-|------|------|
-| 성공 | 초록 |
-| 실패 | 빨강 |
-| 장비 파괴 | 분홍 |
-| 오류/불가 | 주황 |
 
 ---
 
 ## 핵심 클래스
 
-### EnhancementService
-- `applyScroll(equipment, scroll): Pair<Equipment, EnhancementResult>`
-- 일반 주문서 / 백의 주문서 로직 분리
-
-### CombatStatCalculator
-- `calculate(job, stats, equipment): CombatStats`
-- `EquipmentStatProvider` 인터페이스로 장비 수치 추상화
-- `CombatStats(attackPower, magicPower)` 반환
-
 ### MainViewModel
-- `UiState(equipment, weapon, inventory, selectedScrollType, lastResult)`
-- `selectScroll()` / `useSelectedScroll()` / `unequipEquipment()` / `resetEquipment()`
-- `unequipWeapon()` / `resetWeapon()`
-
-### DragDropState
-- `scrollType: ScrollType?` / `position: Offset`
-- `isDragging` 파생 프로퍼티
-
----
-
-## 현재 상태
-
-- 강화 시스템 로직 완성 (성공/실패/파괴 모두 동작)
-- 장비창 + 인벤토리창 UI 구현 완료
-- 드래그 앤 드롭 강화 동작
-- 탭/꾹 누르기 인터랙션 구현
-- 플레이어 / 직업 / 스탯 모델 완성 (6직업)
-- 무기 시스템 완성 (낡은 검 기본 장착)
-- 전투 스탯 계산 서비스 완성
-- 아이템 정보창 맵스토리 스타일로 통일
+- `UiState(equipment, weapon, inventory, selectedScrollType, lastResult, player, world)`
+- `MOVE_SPEED = 3f`
+- `movePlayer(dirX, dirY)` — 방향 벡터 입력, 월드 경계 clamp 후 위치 갱신
 
 ---
 
@@ -232,37 +246,42 @@ com.a_survivor.app/
 
 | # | 작업 | 상태 |
 |---|------|------|
-| 1 | 강화 시스템 로직 구현 (Service / ViewModel / Model) | ✅ 완료 |
-| 2 | 장비창 UI — 신체 형태 슬롯 레이아웃 | ✅ 완료 |
-| 3 | 인벤토리창 UI — 토글 + 그리드 | ✅ 완료 |
-| 4 | 드래그 앤 드롭 강화 | ✅ 완료 |
-| 5 | 장갑 이미지 적용 (nogada_glove.png) | ✅ 완료 |
-| 6 | 탭=정보 다이얼로그, 꾹누르기=해제/초기화 다이얼로그 | ✅ 완료 |
-| 7 | Player 모델 추가 (level/exp/hp/stats/position) | ✅ 완료 |
-| 8 | PlayerJob enum 추가 (6직업 + 직업별 초기 스탯) | ✅ 완료 |
-| 9 | PlayerStats 모델 추가 | ✅ 완료 |
-| 10 | CombatStatCalculator 서비스 추가 | ✅ 완료 |
-| 11 | Weapon 모델 + DefaultWeapon "낡은 검" 추가 | ✅ 완료 |
-| 12 | 장비창 무기 슬롯 활성화, 나머지 잠금 처리 | ✅ 완료 |
-| 13 | 낡은 검 이미지 (nogada_sword.png) 추가 | ✅ 완료 |
-| 14 | 아이템 정보창 맵스토리 스타일 UI로 통일 | ✅ 완료 |
+| 1 | 강화 시스템 로직 구현 | ✅ |
+| 2 | 장비창 UI — 신체 형태 슬롯 레이아웃 | ✅ |
+| 3 | 인벤토리창 UI — 토글 + 그리드 | ✅ |
+| 4 | 드래그 앤 드롭 강화 | ✅ |
+| 5 | 장갑 이미지 적용 | ✅ |
+| 6 | 탭=정보 / 꾹=해제·초기화 다이얼로그 | ✅ |
+| 7 | Player 모델 추가 | ✅ |
+| 8 | PlayerJob enum 추가 (6직업) | ✅ |
+| 9 | PlayerStats 모델 추가 | ✅ |
+| 10 | CombatStatCalculator 서비스 추가 | ✅ |
+| 11 | Weapon 모델 + DefaultWeapon 추가 | ✅ |
+| 12 | 장비창 무기 슬롯 활성화, 잠금 처리 | ✅ |
+| 13 | 낡은 검 이미지 추가 | ✅ |
+| 14 | 아이템 정보창 맵스토리 스타일 통일 | ✅ |
+| 15 | GameWorld 모델 추가 (1600×1200) | ✅ |
+| 16 | Monster 모델 + slime() 팩토리 추가 | ✅ |
+| 17 | MonsterSpawner 서비스 추가 (최소 거리 보장) | ✅ |
+| 18 | 가상 조이스틱 + 플레이어 이동 시스템 추가 | ✅ |
 
 ---
 
 ## 컨벤션
 
 - **커밋 메시지:** 제목·본문 모두 **한글**로 작성
-  - 예: `feat: 강화 시스템 구현`, `fix: 드래그 좌표 오류 수정`
 
 ---
 
 ## 다음 작업 후보
 
-- [ ] 다른 장비 슬롯 활성화 (모자, 무기 등)
-- [ ] 주문서 종류 추가
-- [ ] 강화 내역 로그 표시
-- [ ] 애니메이션 (성공/실패 이펙트)
-- [ ] 장비 교체 시스템
-- [ ] Player를 ViewModel에 연결 (직업 선택 UI)
-- [ ] 전투 화면 구현 (CombatStatCalculator 활용)
+- [ ] 게임 화면 분리 (강화 시뮬레이터 ↔ 게임 플레이)
+- [ ] 몬스터 렌더링 (월드 좌표 → 화면 좌표 변환)
+- [ ] 카메라 시스템 (플레이어 중심 뷰포트)
+- [ ] 플레이어 렌더링
+- [ ] 몬스터 AI — 플레이어 추적
+- [ ] 전투 시스템 (공격 / 피격 / HP 감소)
+- [ ] Player ↔ ViewModel 연결 (직업 선택 UI)
 - [ ] 스탯 포인트 배분 UI
+- [ ] 강화 내역 로그
+- [ ] 애니메이션 (성공/실패 이펙트)
