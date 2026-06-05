@@ -23,10 +23,10 @@ com.a_survivor.app/
 │   ├── EnhancementResult.kt      (강화 결과 sealed class)
 │   ├── Player.kt                 (플레이어 — 불변 data class)
 │   ├── PlayerJob.kt              (직업 enum + 초기 스탯 팩토리)
-│   ├── PlayerStats.kt            (str / dex / int / luk)
+│   ├── PlayerStats.kt            (str/dex/int/luk + StatType enum)
 │   ├── Weapon.kt                 (무기 + DefaultWeapon "낡은 검")
 │   ├── GameWorld.kt              (월드 크기 + 좌표 유틸리티)
-│   ├── Monster.kt                (몬스터 + slime() 팩토리 + distanceTo())
+│   ├── Monster.kt                (몬스터 + slime() + distanceTo())
 │   ├── CameraState.kt            (카메라 — 추적 / 좌표 변환)
 │   └── DropTable.kt              (DropItem sealed class + SlimeDropTable)
 ├── service/
@@ -52,9 +52,10 @@ Box (게임 화면 기본)
  ├── GameWorldView          ← 배경 (향후 맵 렌더링 자리)
  ├── GameHud (좌상단)        ← Lv. 직업명 + HP 바
  ├── ResultPanel (상단 중앙) ← 강화 결과 (있을 때만)
+ ├── PanelOverlay > StatWindow       ← 스탯 버튼으로 토글
  ├── PanelOverlay > EquipmentWindow  ← 장비 버튼으로 토글
  ├── PanelOverlay > InventoryWindow  ← 인벤 버튼으로 토글
- ├── HudButton ×2 (우하단)  ← 장비 / 인벤
+ ├── HudButton ×3 (우하단)  ← 스탯 / 장비 / 인벤
  ├── JoystickControl (좌하단)
  └── DragGhost
 ```
@@ -91,55 +92,27 @@ Box (게임 화면 기본)
 
 ---
 
-## 월드 / 카메라 시스템
+## 스탯 시스템
 
-### GameWorld (1600 × 1200)
+### StatType enum (`PlayerStats.kt`)
+`STR`, `DEX`, `INT`, `LUK`
 
-- `contains(x, y)`, `clampPosition(x, y)`
+### StatWindow (스탯창)
 
-### CameraState
+- 우하단 "스탯" HUD 버튼으로 오버레이 토글
+- 남은 SP 표시 (SP > 0이면 초록)
+- 각 스탯 현재값 + `[+]` 버튼
+- `[+]`는 SP 없으면 비활성
 
-| 메서드 | 설명 |
-|---|---|
-| `toScreenOffset(worldX, worldY, w, h)` | 월드 → Offset (Canvas 직접 전달) |
-| `toWorldX/Y(screenX, w)` | 스크린 → 월드 역변환 |
-| `followPlayer(x, y)` | 플레이어 중심으로 이동 |
-| `clampToWorld(world, w, h)` | 뷰포트 경계 제한 |
-
----
-
-## 몬스터 / 스폰 시스템
-
-### Monster (슬라임)
-
-| 항목 | 값 |
-|------|-----|
-| hp / maxHp | 20 |
-| speed | 1f |
-| expReward | 5 |
-
-### MonsterSpawner
-
-- `spawnSlimes(world, count, minDistance=100f, margin=50f)`
-- 최대 50회 재시도로 최소 거리 보장
-
----
-
-## 자동 공격 시스템 (AutoAttackService)
-
-| 항목 | 값 |
-|------|-----|
-| 공격 범위 | 120f |
-| 공격 주기 | 1초 (viewModelScope 루프) |
-| 타겟 선정 | 범위 내 가장 가까운 몬스터 |
-| 데미지 | CombatStatCalculator 결과 (최소 1) |
+### allocateStat 흐름
 
 ```
-AutoAttackResult
- ├── updatedMonsters   : HP 갱신된 생존 몬스터 목록
- ├── targetId          : 공격 대상 ID
- ├── damage            : 가한 데미지
- └── killedMonsters    : 이번 틱에 처치된 몬스터 목록
+[+] 버튼 탭
+  → ViewModel.allocateStat(StatType)
+  → availableStatPoint > 0 체크
+  → stats.copy(해당 스탯 +1)
+  → availableStatPoint -1
+  → AutoAttackService 다음 틱부터 새 스탯으로 데미지 계산
 ```
 
 ---
@@ -150,23 +123,22 @@ AutoAttackResult
 - 레벨업 1회: SP +5 (`availableStatPoint += 5`)
 - 연속 레벨업 지원 (while 루프)
 
-| 레벨 | 필요 EXP | 슬라임 처치 수 |
-|------|----------|--------------|
-| 1 → 2 | 20 | 4 |
-| 2 → 3 | 40 | 8 |
-| 3 → 4 | 60 | 12 |
+---
+
+## 자동 공격 시스템 (AutoAttackService)
+
+| 항목 | 값 |
+|------|-----|
+| 공격 범위 | 120f |
+| 공격 주기 | 1초 |
+| 타겟 | 범위 내 최근접 몬스터 |
+| 데미지 | CombatStatCalculator (최소 1) |
+
+`AutoAttackResult`: `updatedMonsters`, `targetId`, `damage`, `killedMonsters`
 
 ---
 
-## 드랍 시스템 (DropService + DropTable)
-
-### DropItem sealed class
-
-```
-DropItem
- ├── ScrollDrop(scrollType: ScrollType)
- └── EquipmentDrop(equipment: Equipment)
-```
+## 드랍 시스템
 
 ### SlimeDropTable
 
@@ -178,9 +150,9 @@ DropItem
 | 장갑 공격력 10% | 3% |
 | 백의 주문서 1% | 1% |
 
-- 각 항목은 **독립 확률 판정** (중복 드랍 가능)
+- 독립 확률 판정 (중복 드랍 가능)
 - `ScrollDrop` → 인벤토리 수량 +1
-- `EquipmentDrop` → 장비 슬롯 비어 있으면 즉시 장착, 차 있으면 무시
+- `EquipmentDrop` → 장비 슬롯 비면 즉시 장착
 
 ---
 
@@ -195,14 +167,16 @@ DropItem
 
 ---
 
+## 월드 / 카메라 시스템
+
+- **GameWorld**: 1600 × 1200, `contains()`, `clampPosition()`
+- **CameraState**: `toScreenOffset()`, `followPlayer()`, `clampToWorld()`
+
+---
+
 ## 가상 조이스틱
 
-```
-JoystickControl → 방향 벡터 (-1~1)
-  → 게임 루프 delay(16ms)
-  → movePlayer(dirX, dirY) × MOVE_SPEED(3f)
-  → GameWorld.clampPosition
-```
+- 좌하단 고정, 이동속도 3f, `GameWorld.clampPosition`으로 경계 제한
 
 ---
 
@@ -222,19 +196,15 @@ JoystickControl → 방향 벡터 (-1~1)
 
 ```kotlin
 UiState(
-    equipment        : Equipment?,
-    weapon           : Weapon?,
-    inventory        : List<InventoryItem>,
-    selectedScrollType,
-    lastResult,
-    player           : Player,
-    world            : GameWorld,
-    monsters         : List<Monster>
+    equipment, weapon, inventory,
+    selectedScrollType, lastResult,
+    player: Player,
+    world: GameWorld,
+    monsters: List<Monster>
 )
 ```
 
-- `MOVE_SPEED = 3f`, `AUTO_ATTACK_INTERVAL = 1000ms`
-- `init` 블록: 자동 공격 루프 + 슬라임 5마리 초기 스폰
+`MOVE_SPEED = 3f` / `AUTO_ATTACK_INTERVAL = 1000ms`
 
 ---
 
@@ -253,11 +223,12 @@ UiState(
 | 9 | GameWorld 모델 | ✅ |
 | 10 | Monster 모델 + MonsterSpawner | ✅ |
 | 11 | 가상 조이스틱 + 플레이어 이동 | ✅ |
-| 12 | 기본 게임 화면 구조 개편 (오버레이 방식) | ✅ |
+| 12 | 기본 게임 화면 구조 개편 (오버레이) | ✅ |
 | 13 | CameraState — 좌표 변환 / 추적 | ✅ |
 | 14 | AutoAttackService — 자동 공격 | ✅ |
 | 15 | LevelService — 경험치 / 레벨업 / SP | ✅ |
 | 16 | DropService + DropTable — 드랍 시스템 | ✅ |
+| 17 | StatType enum + StatWindow + allocateStat | ✅ |
 
 ---
 
@@ -273,7 +244,6 @@ UiState(
 - [ ] 몬스터 AI — 플레이어 추적 이동
 - [ ] 전투 피격 시스템 (몬스터 → 플레이어 HP 감소)
 - [ ] 직업 선택 화면
-- [ ] 스탯 포인트 배분 UI
 - [ ] 장비 창고 (EquipmentDrop 슬롯 점유 시 보관)
 - [ ] 강화 내역 로그
 - [ ] 무기 강화 시스템

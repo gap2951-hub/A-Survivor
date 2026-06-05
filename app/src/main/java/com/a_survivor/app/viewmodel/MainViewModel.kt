@@ -12,6 +12,7 @@ import com.a_survivor.app.model.Monster
 import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
+import com.a_survivor.app.model.StatType
 import com.a_survivor.app.model.SlimeDropTable
 import com.a_survivor.app.model.Weapon
 import com.a_survivor.app.service.AutoAttackService
@@ -186,6 +187,25 @@ class MainViewModel : ViewModel() {
             }
         }
         return s
+    }
+
+    fun allocateStat(type: StatType) {
+        _uiState.update { state ->
+            val player = state.player
+            if (player.availableStatPoint <= 0) return@update state
+            val newStats = when (type) {
+                StatType.STR -> player.stats.copy(str = player.stats.str + 1)
+                StatType.DEX -> player.stats.copy(dex = player.stats.dex + 1)
+                StatType.INT -> player.stats.copy(`int` = player.stats.`int` + 1)
+                StatType.LUK -> player.stats.copy(luk = player.stats.luk + 1)
+            }
+            state.copy(
+                player = player.copy(
+                    stats              = newStats,
+                    availableStatPoint = player.availableStatPoint - 1
+                )
+            )
+        }
     }
 
     fun movePlayer(dirX: Float, dirY: Float) {

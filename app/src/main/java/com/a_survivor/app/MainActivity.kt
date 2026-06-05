@@ -70,6 +70,7 @@ import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.PlayerJob
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
+import com.a_survivor.app.model.StatType
 import com.a_survivor.app.model.Weapon
 import com.a_survivor.app.viewmodel.InventoryItem
 import com.a_survivor.app.viewmodel.MainViewModel
@@ -127,7 +128,8 @@ class MainActivity : ComponentActivity() {
                 vm::resetEquipment,
                 vm::unequipWeapon,
                 vm::resetWeapon,
-                vm::movePlayer
+                vm::movePlayer,
+                vm::allocateStat
             )
         }
     }
@@ -143,11 +145,13 @@ fun MainScreen(
     onReset: () -> Unit,
     onUnequipWeapon: () -> Unit,
     onResetWeapon: () -> Unit,
-    onMovePlayer: (Float, Float) -> Unit
+    onMovePlayer: (Float, Float) -> Unit,
+    onAllocateStat: (StatType) -> Unit
 ) {
     val dragState        = remember { DragDropState() }
     var isEquipmentOpen  by remember { mutableStateOf(false) }
     var isInventoryOpen  by remember { mutableStateOf(false) }
+    var isStatOpen       by remember { mutableStateOf(false) }
     var equipSlotBounds  by remember { mutableStateOf<Rect?>(null) }
     var rootWindowOffset by remember { mutableStateOf(Offset.Zero) }
 
@@ -211,7 +215,18 @@ fun MainScreen(
             }
         }
 
-        // ⑤ 인벤토리 오버레이
+        // ⑤ 스탯창 오버레이
+        if (isStatOpen) {
+            PanelOverlay(onDismiss = { isStatOpen = false }) {
+                StatWindow(
+                    player    = state.player,
+                    onAllocate = onAllocateStat,
+                    onClose   = { isStatOpen = false }
+                )
+            }
+        }
+
+        // ⑥ 인벤토리 오버레이
         if (isInventoryOpen) {
             PanelOverlay(onDismiss = { isInventoryOpen = false }) {
                 InventoryWindow(
@@ -231,7 +246,7 @@ fun MainScreen(
             }
         }
 
-        // ⑥ 오른쪽 하단 HUD 버튼
+        // ⑦ 오른쪽 하단 HUD 버튼
         Row(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -239,8 +254,9 @@ fun MainScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            HudButton(label = "장비", isActive = isEquipmentOpen) { isEquipmentOpen = !isEquipmentOpen }
-            HudButton(label = "인벤", isActive = isInventoryOpen) { isInventoryOpen = !isInventoryOpen }
+            HudButton(label = "스탯", isActive = isStatOpen)       { isStatOpen = !isStatOpen }
+            HudButton(label = "장비", isActive = isEquipmentOpen)  { isEquipmentOpen = !isEquipmentOpen }
+            HudButton(label = "인벤", isActive = isInventoryOpen)  { isInventoryOpen = !isInventoryOpen }
         }
 
         // ⑦ 가상 조이스틱 (왼쪽 하단 고정)
@@ -1058,6 +1074,112 @@ private fun HudButton(
             fontSize = 12.sp,
             fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
         )
+    }
+}
+
+// ── 스탯창 ───────────────────────────────────────────────────────────────────
+@Composable
+private fun StatWindow(
+    player: Player,
+    onAllocate: (StatType) -> Unit,
+    onClose: (() -> Unit)? = null
+) {
+    val hasPoints = player.availableStatPoint > 0
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(PanelBg)
+            .border(1.dp, BorderGold, RoundedCornerShape(8.dp))
+    ) {
+        WindowTitleBar("스탯창", onClose = onClose)
+
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+
+            // 남은 SP
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("남은 SP", color = TextMuted, fontSize = 13.sp)
+                Text(
+                    text = "${player.availableStatPoint}",
+                    color = if (hasPoints) ColorSuccess else TextMuted,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            HorizontalDivider(
+                color = BorderGold.copy(alpha = 0.3f),
+                modifier = Modifier.padding(vertical = 10.dp)
+            )
+
+            // 스탯 행
+            StatAllocRow("STR", player.stats.str, hasPoints) { onAllocate(StatType.STR) }
+            StatAllocRow("DEX", player.stats.dex, hasPoints) { onAllocate(StatType.DEX) }
+            StatAllocRow("INT", player.stats.`int`, hasPoints) { onAllocate(StatType.INT) }
+            StatAllocRow("LUK", player.stats.luk, hasPoints) { onAllocate(StatType.LUK) }
+        }
+    }
+}
+
+@Composable
+private fun StatAllocRow(
+    label: String,
+    value: Int,
+    canAllocate: Boolean,
+    onPlus: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = TextMuted,
+            fontSize = 13.sp,
+            modifier = Modifier.width(40.dp)
+        )
+        Text(
+            text = value.toString(),
+            color = TextGold,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f),
+            textAlign = TextAlign.End
+        )
+        Spacer(Modifier.width(12.dp))
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(if (canAllocate) Color(0xFF3A2800) else ColorDisabled)
+                .border(
+                    1.dp,
+                    if (canAllocate) BorderGold else SlotBorder,
+                    RoundedCornerShape(4.dp)
+                )
+                .then(
+                    if (canAllocate) Modifier.clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onPlus() } else Modifier
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "+",
+                color = if (canAllocate) TextGold else TextMuted.copy(alpha = 0.3f),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 

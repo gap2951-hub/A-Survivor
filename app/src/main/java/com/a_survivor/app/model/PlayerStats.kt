@@ -6,3 +6,5 @@ data class PlayerStats(
     val `int`: Int,
     val luk: Int
 )
+
+enum class StatType { STR, DEX, INT, LUK }
