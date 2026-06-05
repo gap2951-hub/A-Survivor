@@ -1,20 +1,30 @@
 package com.a_survivor.app.viewmodel
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.a_survivor.app.model.DefaultWeapon
 import com.a_survivor.app.model.DefaultWorld
+import com.a_survivor.app.model.DropItem
 import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
 import com.a_survivor.app.model.GameWorld
+import com.a_survivor.app.model.Monster
 import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
+import com.a_survivor.app.model.SlimeDropTable
 import com.a_survivor.app.model.Weapon
+import com.a_survivor.app.service.AutoAttackService
+import com.a_survivor.app.service.DropService
 import com.a_survivor.app.service.EnhancementService
+import com.a_survivor.app.service.LevelService
+import com.a_survivor.app.service.MonsterSpawner
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 data class InventoryItem(val scrollType: ScrollType, val quantity: Int)
 
@@ -25,21 +35,36 @@ data class UiState(
     val selectedScrollType: ScrollType? = null,
     val lastResult: EnhancementResult? = null,
     val player: Player = Player(),
-    val world: GameWorld = DefaultWorld
+    val world: GameWorld = DefaultWorld,
+    val monsters: List<Monster> = emptyList()
 )
 
 class MainViewModel : ViewModel() {
 
-    private val service = EnhancementService()
+    private val service           = EnhancementService()
+    private val autoAttackService = AutoAttackService()
+    private val levelService      = LevelService()
+    private val dropService       = DropService()
 
     companion object {
-        private const val MOVE_SPEED = 3f
+        private const val MOVE_SPEED          = 3f
+        private const val AUTO_ATTACK_INTERVAL = 1000L  // ms
+    }
+
+    init {
+        viewModelScope.launch {
+            while (true) {
+                delay(AUTO_ATTACK_INTERVAL)
+                autoAttackTick()
+            }
+        }
     }
 
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     private fun createInitialState() = UiState(
+        monsters = MonsterSpawner().spawnSlimes(world = DefaultWorld, count = 5),
         weapon = DefaultWeapon,
         equipment = Equipment(
             name = "노가다 목장갑",
@@ -112,6 +137,55 @@ class MainViewModel : ViewModel() {
                 lastResult = null
             )
         }
+    }
+
+    private fun autoAttackTick() {
+        _uiState.update { state ->
+            val result = autoAttackService.tick(
+                player    = state.player,
+                equipment = state.equipment,
+                monsters  = state.monsters
+            )
+
+            // 경험치 적용
+            val gainedExp = result.killedMonsters.sumOf { it.expReward }
+            val updatedPlayer = if (gainedExp > 0)
+                levelService.applyExp(state.player, gainedExp)
+            else
+                state.player
+
+            // 드랍 처리
+            val drops = result.killedMonsters.flatMap {
+                dropService.roll(SlimeDropTable.entries)
+            }
+
+            var newState = state.copy(
+                monsters = result.updatedMonsters,
+                player   = updatedPlayer
+            )
+            newState = applyDrops(newState, drops)
+            newState
+        }
+    }
+
+    private fun applyDrops(state: UiState, drops: List<DropItem>): UiState {
+        var s = state
+        for (drop in drops) {
+            s = when (drop) {
+                is DropItem.ScrollDrop -> s.copy(
+                    inventory = s.inventory.map { item ->
+                        if (item.scrollType == drop.scrollType)
+                            item.copy(quantity = item.quantity + 1)
+                        else item
+                    }
+                )
+                is DropItem.EquipmentDrop -> {
+                    // 장비 슬롯이 비어 있을 때만 장착
+                    if (s.equipment == null) s.copy(equipment = drop.equipment) else s
+                }
+            }
+        }
+        return s
     }
 
     fun movePlayer(dirX: Float, dirY: Float) {
