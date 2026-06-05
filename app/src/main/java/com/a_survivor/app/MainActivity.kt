@@ -7,9 +7,13 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.Arrangement
@@ -62,6 +66,7 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
+import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.PlayerJob
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
@@ -140,10 +145,11 @@ fun MainScreen(
     onResetWeapon: () -> Unit,
     onMovePlayer: (Float, Float) -> Unit
 ) {
-    val dragState         = remember { DragDropState() }
-    var isInventoryOpen   by remember { mutableStateOf(false) }
-    var equipSlotBounds   by remember { mutableStateOf<Rect?>(null) }
-    var rootWindowOffset  by remember { mutableStateOf(Offset.Zero) }
+    val dragState        = remember { DragDropState() }
+    var isEquipmentOpen  by remember { mutableStateOf(false) }
+    var isInventoryOpen  by remember { mutableStateOf(false) }
+    var equipSlotBounds  by remember { mutableStateOf<Rect?>(null) }
+    var rootWindowOffset by remember { mutableStateOf(Offset.Zero) }
 
     var joystickDirX by remember { mutableStateOf(0f) }
     var joystickDirY by remember { mutableStateOf(0f) }
@@ -158,6 +164,7 @@ fun MainScreen(
     }
 
     val isDragOver = dragState.isDragging &&
+            isEquipmentOpen &&
             state.equipment != null &&
             !state.equipment.destroyed &&
             equipSlotBounds?.contains(dragState.position) == true
@@ -168,50 +175,53 @@ fun MainScreen(
             .background(BgDark)
             .onGloballyPositioned { rootWindowOffset = it.positionInWindow() }
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = "메이플 강화 시뮬레이터",
-                color = TextGold, fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center
+        // ① 게임 월드 배경
+        GameWorldView()
+
+        // ② 상단 HUD
+        GameHud(
+            player = state.player,
+            modifier = Modifier.align(Alignment.TopStart)
+        )
+
+        // ③ 강화 결과 메시지
+        state.lastResult?.let {
+            ResultPanel(
+                result = it,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 72.dp, start = 16.dp, end = 16.dp)
             )
+        }
 
-            EquipmentWindow(
-                equipment = state.equipment,
-                weapon = state.weapon,
-                isDragOver = isDragOver,
-                onSlotBounds = { equipSlotBounds = it },
-                onUnequip = onUnequip,
-                onReset = onReset,
-                onUnequipWeapon = onUnequipWeapon,
-                onResetWeapon = onResetWeapon
-            )
-
-            state.lastResult?.let { ResultPanel(it) }
-
-            Button(
-                onClick = { isInventoryOpen = !isInventoryOpen },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E1F00))
-            ) {
-                Text(
-                    text = if (isInventoryOpen) "인벤토리 닫기  ▲" else "인벤토리 열기  ▼",
-                    color = TextGold, fontWeight = FontWeight.Bold
+        // ④ 장비창 오버레이
+        if (isEquipmentOpen) {
+            PanelOverlay(onDismiss = { isEquipmentOpen = false }) {
+                EquipmentWindow(
+                    equipment = state.equipment,
+                    weapon = state.weapon,
+                    isDragOver = isDragOver,
+                    onSlotBounds = { equipSlotBounds = it },
+                    onUnequip = onUnequip,
+                    onReset = onReset,
+                    onUnequipWeapon = onUnequipWeapon,
+                    onResetWeapon = onResetWeapon,
+                    onClose = { isEquipmentOpen = false }
                 )
             }
+        }
 
-            if (isInventoryOpen) {
+        // ⑤ 인벤토리 오버레이
+        if (isInventoryOpen) {
+            PanelOverlay(onDismiss = { isInventoryOpen = false }) {
                 InventoryWindow(
                     inventory = state.inventory,
                     dragState = dragState,
                     rootWindowOffset = rootWindowOffset,
+                    onClose = { isInventoryOpen = false },
                     onDragEnd = { scrollType, dropPos ->
-                        if (equipSlotBounds?.contains(dropPos) == true &&
+                        if (isEquipmentOpen &&
+                            equipSlotBounds?.contains(dropPos) == true &&
                             state.equipment != null && !state.equipment.destroyed) {
                             onScrollSelected(scrollType)
                             onEnhance()
@@ -219,11 +229,21 @@ fun MainScreen(
                     }
                 )
             }
-
-            Spacer(Modifier.height(100.dp))
         }
 
-        // 가상 조이스틱 (왼쪽 하단 고정)
+        // ⑥ 오른쪽 하단 HUD 버튼
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            HudButton(label = "장비", isActive = isEquipmentOpen) { isEquipmentOpen = !isEquipmentOpen }
+            HudButton(label = "인벤", isActive = isInventoryOpen) { isInventoryOpen = !isInventoryOpen }
+        }
+
+        // ⑦ 가상 조이스틱 (왼쪽 하단 고정)
         JoystickControl(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -234,7 +254,7 @@ fun MainScreen(
             }
         )
 
-        // 드래그 중인 아이템 고스트
+        // ⑧ 드래그 중인 아이템 고스트
         if (dragState.isDragging) {
             DragGhost(
                 scrollType = dragState.scrollType!!,
@@ -255,7 +275,8 @@ fun EquipmentWindow(
     onUnequip: () -> Unit,
     onReset: () -> Unit,
     onUnequipWeapon: () -> Unit,
-    onResetWeapon: () -> Unit
+    onResetWeapon: () -> Unit,
+    onClose: (() -> Unit)? = null
 ) {
     Column(
         modifier = Modifier
@@ -264,7 +285,7 @@ fun EquipmentWindow(
             .background(PanelBg)
             .border(1.dp, BorderGold, RoundedCornerShape(8.dp))
     ) {
-        WindowTitleBar("장비창")
+        WindowTitleBar("장비창", onClose = onClose)
 
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -340,7 +361,7 @@ private fun BodyRow(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun WindowTitleBar(title: String) {
+private fun WindowTitleBar(title: String, onClose: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -355,7 +376,26 @@ private fun WindowTitleBar(title: String) {
                 .background(BorderGold)
         )
         Spacer(Modifier.width(8.dp))
-        Text(title, color = TextGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(
+            text = title,
+            color = TextGold,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f)
+        )
+        if (onClose != null) {
+            Text(
+                text = "✕",
+                color = TextMuted,
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onClose() }
+                    .padding(horizontal = 4.dp)
+            )
+        }
     }
 }
 
@@ -908,7 +948,7 @@ private fun ConfirmDialog(
 
 // ── 결과 패널 ─────────────────────────────────────────────────────────────────
 @Composable
-fun ResultPanel(result: EnhancementResult) {
+fun ResultPanel(result: EnhancementResult, modifier: Modifier = Modifier) {
     val (bg, fg) = when (result) {
         is EnhancementResult.Success   -> Color(0xFF1B5E20) to ColorSuccess
         is EnhancementResult.Failure   -> Color(0xFF4E1210) to ColorFailure
@@ -916,7 +956,7 @@ fun ResultPanel(result: EnhancementResult) {
         is EnhancementResult.Error     -> Color(0xFF3E2400) to ColorError
     }
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(bg)
@@ -932,13 +972,135 @@ fun ResultPanel(result: EnhancementResult) {
     }
 }
 
+// ── 게임 월드 뷰 (렌더링 미구현 — 배경 플레이스홀더) ─────────────────────────
+@Composable
+private fun GameWorldView() {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF080E08)))
+}
+
+// ── 상단 HUD ─────────────────────────────────────────────────────────────────
+@Composable
+private fun GameHud(player: Player, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = "Lv.${player.level}  ${player.job.koreanName()}",
+            color = TextGold,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold
+        )
+        HpBar(current = player.hp, max = player.maxHp)
+    }
+}
+
+@Composable
+private fun HpBar(current: Int, max: Int) {
+    val fraction = (current.toFloat() / max).coerceIn(0f, 1f)
+    Box(
+        modifier = Modifier
+            .width(150.dp)
+            .height(14.dp)
+            .clip(RoundedCornerShape(7.dp))
+            .background(Color(0xFF3A0000))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(fraction)
+                .background(Color(0xFFCC2222))
+        )
+        Text(
+            text = "$current / $max",
+            color = Color.White,
+            fontSize = 8.sp,
+            modifier = Modifier.align(Alignment.Center)
+        )
+    }
+}
+
+private fun PlayerJob.koreanName() = when (this) {
+    PlayerJob.BEGINNER -> "초보자"
+    PlayerJob.WARRIOR  -> "전사"
+    PlayerJob.MAGE     -> "마법사"
+    PlayerJob.ARCHER   -> "궁수"
+    PlayerJob.THIEF    -> "도적"
+    PlayerJob.PIRATE   -> "해적"
+}
+
+// ── HUD 버튼 ─────────────────────────────────────────────────────────────────
+@Composable
+private fun HudButton(
+    label: String,
+    isActive: Boolean = false,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(56.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isActive) Color(0xFF3A2800) else Color(0xFF1A1008))
+            .border(
+                width = if (isActive) 1.5.dp else 1.dp,
+                color = if (isActive) BorderGold else BorderGold.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (isActive) TextGold else TextMuted,
+            fontSize = 12.sp,
+            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+        )
+    }
+}
+
+// ── 패널 오버레이 (스크림 + 스크롤 가능한 패널) ─────────────────────────────
+@Composable
+private fun PanelOverlay(
+    onDismiss: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.55f))
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .heightIn(max = 680.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .verticalScroll(rememberScrollState())
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) {}
+        ) {
+            content()
+        }
+    }
+}
+
 // ── 인벤토리창 ────────────────────────────────────────────────────────────────
 @Composable
 fun InventoryWindow(
     inventory: List<InventoryItem>,
     dragState: DragDropState,
     rootWindowOffset: Offset,
-    onDragEnd: (ScrollType, Offset) -> Unit
+    onDragEnd: (ScrollType, Offset) -> Unit,
+    onClose: (() -> Unit)? = null
 ) {
     Column(
         modifier = Modifier
@@ -947,7 +1109,7 @@ fun InventoryWindow(
             .background(PanelBg)
             .border(1.dp, BorderGold, RoundedCornerShape(8.dp))
     ) {
-        WindowTitleBar("인벤토리 - 주문서")
+        WindowTitleBar("인벤토리 - 주문서", onClose = onClose)
 
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
