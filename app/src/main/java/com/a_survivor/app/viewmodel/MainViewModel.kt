@@ -1,10 +1,12 @@
 package com.a_survivor.app.viewmodel
 
 import androidx.lifecycle.ViewModel
+import com.a_survivor.app.model.DefaultWeapon
 import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
+import com.a_survivor.app.model.Weapon
 import com.a_survivor.app.service.EnhancementService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +17,7 @@ data class InventoryItem(val scrollType: ScrollType, val quantity: Int)
 
 data class UiState(
     val equipment: Equipment?,
+    val weapon: Weapon?,
     val inventory: List<InventoryItem>,
     val selectedScrollType: ScrollType? = null,
     val lastResult: EnhancementResult? = null
@@ -28,13 +31,15 @@ class MainViewModel : ViewModel() {
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     private fun createInitialState() = UiState(
+        weapon = DefaultWeapon,
         equipment = Equipment(
             name = "노가다 목장갑",
             attackPower = 0,
             maxUpgradeCount = 5,
             remainingUpgradeCount = 5,
             failedUpgradeCount = 0,
-            destroyed = false
+            destroyed = false,
+            description = "노동을 위해 만들어진 낡은 장갑이다.\n강화하면 공격력이 오를 것 같다."
         ),
         inventory = listOf(
             InventoryItem(ScrollType.GLOVE_ATK_100, 10),
@@ -85,10 +90,26 @@ class MainViewModel : ViewModel() {
     fun resetEquipment() {
         _uiState.update {
             it.copy(
-                equipment = Equipment("노가다 목장갑", 0, 5, 5, 0, false),
+                equipment = Equipment(
+                    name = "노가다 목장갑",
+                    attackPower = 0,
+                    maxUpgradeCount = 5,
+                    remainingUpgradeCount = 5,
+                    failedUpgradeCount = 0,
+                    destroyed = false,
+                    description = "노동을 위해 만들어진 낡은 장갑이다.\n강화하면 공격력이 오를 것 같다."
+                ),
                 selectedScrollType = null,
                 lastResult = null
             )
         }
+    }
+
+    fun unequipWeapon() {
+        _uiState.update { it.copy(weapon = null) }
+    }
+
+    fun resetWeapon() {
+        _uiState.update { it.copy(weapon = DefaultWeapon) }
     }
 }

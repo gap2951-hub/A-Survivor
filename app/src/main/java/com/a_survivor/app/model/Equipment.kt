@@ -6,5 +6,7 @@ data class Equipment(
     val maxUpgradeCount: Int,
     val remainingUpgradeCount: Int,
     val failedUpgradeCount: Int,
-    val destroyed: Boolean
+    val destroyed: Boolean,
+    val availableJobs: List<PlayerJob> = PlayerJob.values().toList(),
+    val description: String = ""
 )

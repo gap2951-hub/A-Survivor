@@ -29,6 +29,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -57,8 +58,10 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
+import com.a_survivor.app.model.PlayerJob
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
+import com.a_survivor.app.model.Weapon
 import com.a_survivor.app.viewmodel.InventoryItem
 import com.a_survivor.app.viewmodel.MainViewModel
 import com.a_survivor.app.viewmodel.UiState
@@ -82,6 +85,17 @@ private val DotNormal      = Color(0xFFFFD54F)
 private val DotWhite       = Color(0xFF80DEEA)
 private val DropHighlight  = Color(0xFF42A5F5)
 
+// ── 아이템 툴팁 색상 (맵스토리 스타일) ────────────────────────────────────────
+private val TipBg      = Color(0xFF262630)
+private val TipSection = Color(0xFF1E1E28)
+private val TipBorder  = Color(0xFF484858)
+private val TipImgBg   = Color(0xFF383848)
+private val TipImgBdr  = Color(0xFF585868)
+private val TipText    = Color(0xFFEEEEEE)
+private val TipOrange  = Color(0xFFFFAA00)
+private val TipMuted   = Color(0xFF888899)
+private val TipLine    = Color(0xFF3A3A4A)
+
 // ── 드래그 상태 ───────────────────────────────────────────────────────────────
 class DragDropState {
     var scrollType by mutableStateOf<ScrollType?>(null)
@@ -101,7 +115,9 @@ class MainActivity : ComponentActivity() {
                 vm::selectScroll,
                 vm::useSelectedScroll,
                 vm::unequipEquipment,
-                vm::resetEquipment
+                vm::resetEquipment,
+                vm::unequipWeapon,
+                vm::resetWeapon
             )
         }
     }
@@ -114,7 +130,9 @@ fun MainScreen(
     onScrollSelected: (ScrollType) -> Unit,
     onEnhance: () -> Unit,
     onUnequip: () -> Unit,
-    onReset: () -> Unit
+    onReset: () -> Unit,
+    onUnequipWeapon: () -> Unit,
+    onResetWeapon: () -> Unit
 ) {
     val dragState         = remember { DragDropState() }
     var isInventoryOpen   by remember { mutableStateOf(false) }
@@ -147,10 +165,13 @@ fun MainScreen(
 
             EquipmentWindow(
                 equipment = state.equipment,
+                weapon = state.weapon,
                 isDragOver = isDragOver,
                 onSlotBounds = { equipSlotBounds = it },
                 onUnequip = onUnequip,
-                onReset = onReset
+                onReset = onReset,
+                onUnequipWeapon = onUnequipWeapon,
+                onResetWeapon = onResetWeapon
             )
 
             state.lastResult?.let { ResultPanel(it) }
@@ -199,10 +220,13 @@ fun MainScreen(
 @Composable
 fun EquipmentWindow(
     equipment: Equipment?,
+    weapon: Weapon?,
     isDragOver: Boolean,
     onSlotBounds: (Rect) -> Unit,
     onUnequip: () -> Unit,
-    onReset: () -> Unit
+    onReset: () -> Unit,
+    onUnequipWeapon: () -> Unit,
+    onResetWeapon: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -219,27 +243,27 @@ fun EquipmentWindow(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // ① 머리 — 모자
-            BodyRow { EmptySlot("모자", Modifier.size(SlotSize)) }
+            BodyRow { LockedSlot("모자", Modifier.size(SlotSize)) }
 
             // ② 얼굴 — 얼굴장식 / 눈장식 / 귀걸이
             BodyRow {
-                EmptySlot("얼굴", Modifier.size(SlotSize))
+                LockedSlot("얼굴", Modifier.size(SlotSize))
                 Spacer(Modifier.width(6.dp))
-                EmptySlot("눈장식", Modifier.size(SlotSize))
+                LockedSlot("눈장식", Modifier.size(SlotSize))
                 Spacer(Modifier.width(6.dp))
-                EmptySlot("귀걸이", Modifier.size(SlotSize))
+                LockedSlot("귀걸이", Modifier.size(SlotSize))
             }
 
             // ③ 목 — 목걸이
-            BodyRow { EmptySlot("목걸이", Modifier.size(SlotSize)) }
+            BodyRow { LockedSlot("목걸이", Modifier.size(SlotSize)) }
 
             // ④ 어깨·상의·망토
             BodyRow {
-                EmptySlot("어깨", Modifier.size(SlotSize))
+                LockedSlot("어깨", Modifier.size(SlotSize))
                 Spacer(Modifier.width(6.dp))
-                EmptySlot("상의", Modifier.size(SlotSize))
+                LockedSlot("상의", Modifier.size(SlotSize))
                 Spacer(Modifier.width(6.dp))
-                EmptySlot("망토", Modifier.size(SlotSize))
+                LockedSlot("망토", Modifier.size(SlotSize))
             }
 
             // ⑤ 장갑·하의·무기  (장갑 = 드롭 타겟)
@@ -256,16 +280,20 @@ fun EquipmentWindow(
                     onReset = onReset
                 )
                 Spacer(Modifier.width(6.dp))
-                EmptySlot("하의", Modifier.size(SlotSize))
+                LockedSlot("하의", Modifier.size(SlotSize))
                 Spacer(Modifier.width(6.dp))
-                EmptySlot("무기", Modifier.size(SlotSize))
+                WeaponSlot(
+                    weapon = weapon,
+                    onUnequip = onUnequipWeapon,
+                    onReset = onResetWeapon
+                )
             }
 
             // ⑥ 신발·벨트
             BodyRow {
-                EmptySlot("신발", Modifier.size(SlotSize))
+                LockedSlot("신발", Modifier.size(SlotSize))
                 Spacer(Modifier.width(6.dp))
-                EmptySlot("벨트", Modifier.size(SlotSize))
+                LockedSlot("벨트", Modifier.size(SlotSize))
             }
         }
     }
@@ -318,6 +346,35 @@ private fun EmptySlot(label: String, modifier: Modifier = Modifier) {
             textAlign = TextAlign.Center,
             lineHeight = 9.sp
         )
+    }
+}
+
+@Composable
+private fun LockedSlot(label: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(ColorDisabled)
+            .border(1.dp, SlotBorder.copy(alpha = 0.3f), RoundedCornerShape(4.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = label,
+                color = TextMuted.copy(alpha = 0.25f),
+                fontSize = 7.sp,
+                textAlign = TextAlign.Center,
+                lineHeight = 9.sp
+            )
+            Text(
+                text = "잠금",
+                color = TextMuted.copy(alpha = 0.18f),
+                fontSize = 6.sp
+            )
+        }
     }
 }
 
@@ -422,90 +479,357 @@ private fun GlovesSlot(
     }
 }
 
+// 무기 슬롯 — 탭=정보, 꾹=해제/초기화
+@Composable
+private fun WeaponSlot(
+    weapon: Weapon?,
+    onUnequip: () -> Unit,
+    onReset: () -> Unit
+) {
+    var showInfo    by remember { mutableStateOf(false) }
+    var showConfirm by remember { mutableStateOf(false) }
+
+    val borderColor = if (weapon != null) Color(0xFF6A5500) else SlotBorder
+    val bgColor     = if (weapon != null) Color(0xFF1C1600) else SlotEmpty
+
+    Box(
+        modifier = Modifier
+            .size(SlotSize)
+            .clip(RoundedCornerShape(4.dp))
+            .background(bgColor)
+            .border(1.dp, borderColor, RoundedCornerShape(4.dp))
+            .then(
+                if (weapon != null)
+                    Modifier.pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { showInfo = true },
+                            onLongPress = { showConfirm = true }
+                        )
+                    }
+                else Modifier
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            weapon != null -> Image(
+                painter = painterResource(id = R.drawable.nogada_sword),
+                contentDescription = null,
+                modifier = Modifier.size(42.dp),
+                contentScale = ContentScale.Fit
+            )
+            else -> Text("무기", color = TextMuted.copy(alpha = 0.45f), fontSize = 7.sp)
+        }
+    }
+
+    if (showInfo && weapon != null) {
+        WeaponInfoDialog(weapon = weapon, onDismiss = { showInfo = false })
+    }
+
+    if (showConfirm && weapon != null) {
+        ConfirmDialog(
+            title = "무기 해제",
+            message = "${weapon.name}을(를) 해제하시겠습니까?",
+            confirmText = "해제",
+            onConfirm = { showConfirm = false; onUnequip() },
+            onDismiss = { showConfirm = false }
+        )
+    }
+}
+
 // ── 아이템 정보 다이얼로그 ────────────────────────────────────────────────────
 @Composable
 private fun ItemInfoDialog(equipment: Equipment, onDismiss: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss) {
+    val isDestroyed = equipment.destroyed
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Column(
             modifier = Modifier
+                .fillMaxWidth(0.92f)
                 .clip(RoundedCornerShape(10.dp))
-                .background(PanelBg)
-                .border(1.dp, BorderGold, RoundedCornerShape(10.dp))
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .background(TipBg)
+                .border(1.dp, TipBorder, RoundedCornerShape(10.dp))
+                .verticalScroll(rememberScrollState())
         ) {
-            // 이름 + 이미지
+            // ① 헤더: 이름 + 상태
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = equipment.name,
+                    color = if (isDestroyed) ColorDestroyed else TipText,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+                Text(
+                    text = if (isDestroyed) "파괴됨" else "교환 불가",
+                    color = if (isDestroyed) ColorDestroyed else TipOrange,
+                    fontSize = 13.sp
+                )
+            }
+
+            HorizontalDivider(color = TipLine)
+
+            // ② 이미지 + 강화 정보
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.Top
             ) {
                 Box(
                     modifier = Modifier
-                        .size(52.dp)
+                        .size(96.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(if (equipment.destroyed) Color(0xFF3E0010) else Color(0xFF0A1200))
-                        .border(1.dp, if (equipment.destroyed) ColorDestroyed else Color(0xFF446000), RoundedCornerShape(4.dp)),
+                        .background(if (isDestroyed) Color(0xFF3E0010) else TipImgBg)
+                        .border(1.dp, if (isDestroyed) ColorDestroyed else TipImgBdr, RoundedCornerShape(4.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (equipment.destroyed) {
-                        Text("✕", color = ColorDestroyed, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    if (isDestroyed) {
+                        Text("✕", color = ColorDestroyed, fontSize = 32.sp, fontWeight = FontWeight.Bold)
                     } else {
                         Image(
                             painter = painterResource(id = R.drawable.nogada_glove),
                             contentDescription = null,
-                            modifier = Modifier.size(44.dp),
+                            modifier = Modifier.size(80.dp),
                             contentScale = ContentScale.Fit
                         )
                     }
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(
-                        text = equipment.name,
-                        color = if (equipment.destroyed) ColorDestroyed else TextGold,
-                        fontSize = 15.sp, fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = if (equipment.destroyed) "파괴됨" else "장착 중",
-                        color = if (equipment.destroyed) ColorDestroyed else ColorSuccess,
-                        fontSize = 12.sp
+                Spacer(Modifier.width(14.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    WeaponReqRow("최대 강화", "${equipment.maxUpgradeCount}회")
+                    WeaponReqRow("남은 강화", "${equipment.remainingUpgradeCount}회")
+                    WeaponReqRow(
+                        "실패 횟수",
+                        if (equipment.failedUpgradeCount > 0) "${equipment.failedUpgradeCount}회" else "-"
                     )
                 }
             }
 
-            HorizontalDivider(color = BorderGold.copy(alpha = 0.4f))
+            HorizontalDivider(color = TipLine)
 
-            // 스탯
-            InfoStatRow("공격력",       "+${equipment.attackPower}",       DotWhite)
-            InfoStatRow(
-                "남은 강화 횟수",
-                "${equipment.remainingUpgradeCount} / ${equipment.maxUpgradeCount}",
-                TextGold
-            )
-            InfoStatRow(
-                "실패 횟수",
-                "${equipment.failedUpgradeCount}",
-                if (equipment.failedUpgradeCount > 0) ColorFailure else TextGold
-            )
-
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A1800))
+            // ③ 직업 탭
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(TipSection)
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("닫기", color = TextGold)
+                listOf(
+                    PlayerJob.BEGINNER to "초보자",
+                    PlayerJob.WARRIOR  to "전사",
+                    PlayerJob.MAGE     to "마법사",
+                    PlayerJob.ARCHER   to "궁수",
+                    PlayerJob.THIEF    to "도적",
+                    PlayerJob.PIRATE   to "해적"
+                ).forEachIndexed { i, (job, label) ->
+                    if (i > 0) {
+                        Box(modifier = Modifier.width(1.dp).height(14.dp).background(TipLine))
+                    }
+                    val canEquip = equipment.availableJobs.contains(job)
+                    Text(
+                        text = label,
+                        color = if (canEquip) TipOrange else TipMuted,
+                        fontSize = 12.sp,
+                        fontWeight = if (canEquip) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
+            }
+
+            HorizontalDivider(color = TipLine)
+
+            // ④ 스탯
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                WeaponStatRow("공격력", "+${equipment.attackPower}")
+                WeaponStatRow(
+                    "업그레이드 가능 횟수",
+                    "${equipment.remainingUpgradeCount} / ${equipment.maxUpgradeCount}"
+                )
+                WeaponStatRow(
+                    "실패 횟수",
+                    equipment.failedUpgradeCount.toString(),
+                    isOrange = equipment.failedUpgradeCount > 0
+                )
+            }
+
+            // ⑤ 설명
+            if (equipment.description.isNotBlank()) {
+                HorizontalDivider(color = TipLine)
+                Text(
+                    text = equipment.description,
+                    color = TipMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 19.sp,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+                )
+            }
+        }
+    }
+}
+
+// ── 무기 정보 다이얼로그 ──────────────────────────────────────────────────────
+@Composable
+private fun WeaponInfoDialog(weapon: Weapon, onDismiss: () -> Unit) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .clip(RoundedCornerShape(10.dp))
+                .background(TipBg)
+                .border(1.dp, TipBorder, RoundedCornerShape(10.dp))
+                .verticalScroll(rememberScrollState())
+        ) {
+            // ① 헤더: 이름 + 교환 불가
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = weapon.name,
+                    color = TipText,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+                Text(text = "교환 불가", color = TipOrange, fontSize = 13.sp)
+            }
+
+            HorizontalDivider(color = TipLine)
+
+            // ② 이미지 + 요구사항
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(96.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(TipImgBg)
+                        .border(1.dp, TipImgBdr, RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.nogada_sword),
+                        contentDescription = null,
+                        modifier = Modifier.size(80.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    WeaponReqRow("REQ LEV", weapon.reqLevel.toString())
+                    WeaponReqRow("REQ STR", weapon.reqStr.toString())
+                    WeaponReqRow("REQ DEX", weapon.reqDex.toString())
+                    WeaponReqRow("REQ INT", weapon.reqInt.toString())
+                    WeaponReqRow("REQ LUK", weapon.reqLuk.toString())
+                    WeaponReqRow("REQ POP", "-")
+                }
+            }
+
+            HorizontalDivider(color = TipLine)
+
+            // ③ 직업 탭
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(TipSection)
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                listOf(
+                    PlayerJob.BEGINNER to "초보자",
+                    PlayerJob.WARRIOR  to "전사",
+                    PlayerJob.MAGE     to "마법사",
+                    PlayerJob.ARCHER   to "궁수",
+                    PlayerJob.THIEF    to "도적",
+                    PlayerJob.PIRATE   to "해적"
+                ).forEachIndexed { i, (job, label) ->
+                    if (i > 0) {
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(14.dp)
+                                .background(TipLine)
+                        )
+                    }
+                    val canEquip = weapon.availableJobs.contains(job)
+                    Text(
+                        text = label,
+                        color = if (canEquip) TipOrange else TipMuted,
+                        fontSize = 12.sp,
+                        fontWeight = if (canEquip) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
+            }
+
+            HorizontalDivider(color = TipLine)
+
+            // ④ 스탯 목록
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                WeaponStatRow("무기분류", weapon.weaponType)
+                WeaponStatRow("공격속도", weapon.attackSpeed)
+                WeaponStatRow("STR", "+${weapon.strBonus}")
+                WeaponStatRow("공격력", "+${weapon.attackPower}")
+                WeaponStatRow("업그레이드 가능 횟수", weapon.maxUpgradeCount.toString())
+                WeaponStatRow("가위 사용 가능 횟수", weapon.scissorCount.toString(), isOrange = true)
+            }
+
+            HorizontalDivider(color = TipLine)
+
+            // ⑤ 설명
+            if (weapon.description.isNotBlank()) {
+                Text(
+                    text = weapon.description,
+                    color = TipMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 19.sp,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+                )
             }
         }
     }
 }
 
 @Composable
-private fun InfoStatRow(label: String, value: String, valueColor: Color) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(label, color = TextMuted, fontSize = 13.sp)
-        Text(value, color = valueColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+private fun WeaponReqRow(label: String, value: String) {
+    Row {
+        Text(text = "$label : ", color = TipText, fontSize = 12.sp)
+        Text(text = value,       color = TipText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun WeaponStatRow(label: String, value: String, isOrange: Boolean = false) {
+    val color = if (isOrange) TipOrange else TipText
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("· ",         color = if (isOrange) TipOrange else TipMuted, fontSize = 13.sp)
+        Text("$label : ", color = color, fontSize = 13.sp)
+        Text(value,        color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 

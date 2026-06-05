@@ -20,13 +20,19 @@ com.a_survivor.app/
 ├── model/
 │   ├── Equipment.kt              (장비 데이터 — 불변 data class)
 │   ├── Scroll.kt                 (주문서 타입 / ScrollCatalog)
-│   └── EnhancementResult.kt      (강화 결과 sealed class)
+│   ├── EnhancementResult.kt      (강화 결과 sealed class)
+│   ├── Player.kt                 (플레이어 데이터 — 불변 data class)
+│   ├── PlayerJob.kt              (직업 enum + 직업별 초기 스탯 팩토리)
+│   ├── PlayerStats.kt            (스탯 데이터 — str/dex/int/luk)
+│   └── Weapon.kt                 (무기 데이터 + DefaultWeapon "낡은 검")
 ├── service/
-│   └── EnhancementService.kt     (강화 로직 / 확률 계산)
+│   ├── EnhancementService.kt     (강화 로직 / 확률 계산)
+│   └── CombatStatCalculator.kt   (직업별 공격력/마력 계산)
 ├── viewmodel/
 │   └── MainViewModel.kt          (UiState, 인벤토리 상태 관리)
 └── res/drawable/
-    └── nogada_glove.png          (노가다 목장갑 픽셀아트 이미지)
+    ├── nogada_glove.png          (노가다 목장갑 픽셀아트 이미지)
+    └── nogada_sword.png          (낡은 검 픽셀아트 이미지)
 ```
 
 ---
@@ -42,6 +48,48 @@ com.a_survivor.app/
 | 남은 업그레이드 횟수 | 5 |
 | 실패 횟수 | 0 |
 | 파괴 여부 | false |
+| 착용 가능 직업 | 전 직업 |
+
+### 낡은 검 (DefaultWeapon)
+
+| 항목 | 값 |
+|------|-----|
+| 공격력 | 5 |
+| 마력 | 0 |
+| 무기분류 | 한손검 |
+| 공격속도 | 보통 |
+| 최대 업그레이드 횟수 | 7 |
+| 가위 사용 가능 횟수 | 10 |
+| 착용 가능 직업 | 전사 |
+| 요구 레벨 | 1 |
+
+---
+
+## 플레이어 시스템
+
+### Player 모델
+
+| 필드 | 타입 | 초기값 |
+|------|------|--------|
+| level | Int | 1 |
+| exp | Int | 0 |
+| hp / maxHp | Int | 100 |
+| job | PlayerJob | WARRIOR |
+| stats | PlayerStats | WARRIOR 초기 스탯 |
+| availableStatPoint | Int | 0 |
+| weapon | Weapon | DefaultWeapon |
+| positionX / positionY | Float | 0f |
+
+### 직업(PlayerJob) 및 초기 스탯
+
+| 직업 | 한국명 | STR | DEX | INT | LUK |
+|------|--------|-----|-----|-----|-----|
+| BEGINNER | 초보자 | 10 | 10 | 10 | 10 |
+| WARRIOR  | 전사   | 20 | 5  | 4  | 4  |
+| MAGE     | 마법사 | 4  | 4  | 20 | 5  |
+| ARCHER   | 궁수   | 5  | 20 | 4  | 4  |
+| THIEF    | 도적   | 5  | 10 | 4  | 15 |
+| PIRATE   | 해적   | 10 | 16 | 4  | 6  |
 
 ---
 
@@ -69,6 +117,19 @@ com.a_survivor.app/
 
 ---
 
+## 전투 스탯 계산 (CombatStatCalculator)
+
+| 직업 | 계산식 |
+|------|--------|
+| 전사 / 초보자 | 무기공격력 + 장갑공격력 + STR × 0.5 |
+| 궁수 / 해적   | 무기공격력 + 장갑공격력 + DEX × 0.5 |
+| 도적          | 무기공격력 + 장갑공격력 + LUK × 0.5 |
+| 마법사        | 무기마력 + 장갑마력 + INT × 0.5 (장갑 공격력 임시 합산) |
+
+- `EquipmentStatProvider` 인터페이스로 장비 수치 추상화 → 무기/마력 장갑 추가 시 확장 용이
+
+---
+
 ## 인벤토리 초기 구성
 
 | 아이템 | 수량 |
@@ -92,14 +153,26 @@ com.a_survivor.app/
 ②  [얼굴] [눈장식] [귀걸이]
 ③  [목걸이]
 ④  [어깨]  [상의]  [망토]
-⑤  [🧤장갑] [하의] [무기]    ← 장갑 슬롯이 강화 드롭 타겟
+⑤  [🧤장갑] [하의] [⚔무기]    ← 장갑 = 강화 드롭 타겟 / 무기 = 낡은 검
 ⑥  [신발]  [벨트]
 ```
 
-**장갑 슬롯 인터랙션:**
-- 슬롯에는 이미지(nogada_glove.png)만 표시
-- **탭** → 아이템 정보 다이얼로그 (공격력, 강화 횟수, 실패 횟수, 상태)
-- **꾹 누르기** → 장비 해제 확인 다이얼로그 / 파괴 시 초기화 다이얼로그
+- **활성 슬롯:** 장갑(드래그 드롭 강화), 무기(탭=정보/꾹=해제)
+- **잠금 슬롯:** 나머지 10개 — 어두운 배경 + "잠금" 레이블
+
+### 아이템 정보 다이얼로그 (맵스토리 스타일)
+
+두 아이템 모두 동일한 5섹션 구조:
+
+| 섹션 | 내용 |
+|------|------|
+| ① 헤더 | 아이템명 (흰색 굵게) + "교환 불가" (주황) |
+| ② 이미지 + 정보 | 96dp 이미지박스 + 우측 세부 정보 |
+| ③ 직업 탭 | 초보자/전사/마법사/궁수/도적/해적 — 착용 가능 직업 주황 강조 |
+| ④ 스탯 | `·` 불릿 형식, 중요 수치 주황 |
+| ⑤ 설명 | 플레이버 텍스트 |
+
+- 색상 테마: 쿨 다크 블루-그레이 (`TipBg = #262630`)
 
 ### 인벤토리창
 
@@ -125,11 +198,16 @@ com.a_survivor.app/
 ### EnhancementService
 - `applyScroll(equipment, scroll): Pair<Equipment, EnhancementResult>`
 - 일반 주문서 / 백의 주문서 로직 분리
-- UI 코드에서 확률 계산 없음
+
+### CombatStatCalculator
+- `calculate(job, stats, equipment): CombatStats`
+- `EquipmentStatProvider` 인터페이스로 장비 수치 추상화
+- `CombatStats(attackPower, magicPower)` 반환
 
 ### MainViewModel
-- `UiState(equipment: Equipment?, inventory, selectedScrollType, lastResult)`
+- `UiState(equipment, weapon, inventory, selectedScrollType, lastResult)`
 - `selectScroll()` / `useSelectedScroll()` / `unequipEquipment()` / `resetEquipment()`
+- `unequipWeapon()` / `resetWeapon()`
 
 ### DragDropState
 - `scrollType: ScrollType?` / `position: Offset`
@@ -143,6 +221,10 @@ com.a_survivor.app/
 - 장비창 + 인벤토리창 UI 구현 완료
 - 드래그 앤 드롭 강화 동작
 - 탭/꾹 누르기 인터랙션 구현
+- 플레이어 / 직업 / 스탯 모델 완성 (6직업)
+- 무기 시스템 완성 (낡은 검 기본 장착)
+- 전투 스탯 계산 서비스 완성
+- 아이템 정보창 맵스토리 스타일로 통일
 
 ---
 
@@ -156,6 +238,21 @@ com.a_survivor.app/
 | 4 | 드래그 앤 드롭 강화 | ✅ 완료 |
 | 5 | 장갑 이미지 적용 (nogada_glove.png) | ✅ 완료 |
 | 6 | 탭=정보 다이얼로그, 꾹누르기=해제/초기화 다이얼로그 | ✅ 완료 |
+| 7 | Player 모델 추가 (level/exp/hp/stats/position) | ✅ 완료 |
+| 8 | PlayerJob enum 추가 (6직업 + 직업별 초기 스탯) | ✅ 완료 |
+| 9 | PlayerStats 모델 추가 | ✅ 완료 |
+| 10 | CombatStatCalculator 서비스 추가 | ✅ 완료 |
+| 11 | Weapon 모델 + DefaultWeapon "낡은 검" 추가 | ✅ 완료 |
+| 12 | 장비창 무기 슬롯 활성화, 나머지 잠금 처리 | ✅ 완료 |
+| 13 | 낡은 검 이미지 (nogada_sword.png) 추가 | ✅ 완료 |
+| 14 | 아이템 정보창 맵스토리 스타일 UI로 통일 | ✅ 완료 |
+
+---
+
+## 컨벤션
+
+- **커밋 메시지:** 제목·본문 모두 **한글**로 작성
+  - 예: `feat: 강화 시스템 구현`, `fix: 드래그 좌표 오류 수정`
 
 ---
 
@@ -166,3 +263,6 @@ com.a_survivor.app/
 - [ ] 강화 내역 로그 표시
 - [ ] 애니메이션 (성공/실패 이펙트)
 - [ ] 장비 교체 시스템
+- [ ] Player를 ViewModel에 연결 (직업 선택 UI)
+- [ ] 전투 화면 구현 (CombatStatCalculator 활용)
+- [ ] 스탯 포인트 배분 UI
