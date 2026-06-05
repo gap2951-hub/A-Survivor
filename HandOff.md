@@ -18,24 +18,23 @@
 com.a_survivor.app/
 ├── MainActivity.kt
 ├── model/
-│   ├── Equipment.kt              (장비 — 불변 data class)
-│   ├── Scroll.kt                 (주문서 타입 / ScrollCatalog)
-│   ├── EnhancementResult.kt      (강화 결과 sealed class)
-│   ├── Player.kt                 (플레이어 — 불변 data class)
-│   ├── PlayerJob.kt              (직업 enum + 초기 스탯 팩토리)
-│   ├── PlayerStats.kt            (str/dex/int/luk + StatType enum)
-│   ├── Weapon.kt                 (무기 + DefaultWeapon "낡은 검")
-│   ├── GameWorld.kt              (월드 크기 + 좌표 유틸리티)
-│   ├── Monster.kt                (몬스터 + slime() + distanceTo())
-│   ├── CameraState.kt            (카메라 — 추적 / 좌표 변환)
-│   └── DropTable.kt              (DropItem sealed class + SlimeDropTable)
+│   ├── Equipment.kt
+│   ├── Scroll.kt / EnhancementResult.kt
+│   ├── Player.kt
+│   ├── PlayerJob.kt
+│   ├── PlayerStats.kt            (+ StatType enum)
+│   ├── Weapon.kt                 (+ DefaultWeapon)
+│   ├── GameWorld.kt              (1600×1200)
+│   ├── Monster.kt                (+ slime() + distanceTo())
+│   ├── CameraState.kt            (좌표 변환 / 추적)
+│   └── DropTable.kt              (DropItem + SlimeDropTable)
 ├── service/
-│   ├── EnhancementService.kt     (강화 확률 계산)
-│   ├── CombatStatCalculator.kt   (직업별 공격력/마력 계산)
-│   ├── MonsterSpawner.kt         (랜덤 스폰 / 최소 거리 보장)
-│   ├── AutoAttackService.kt      (자동 공격 / 몬스터 HP 감소)
-│   ├── LevelService.kt           (경험치 적용 / 레벨업 / SP 지급)
-│   └── DropService.kt            (드랍 확률 롤링)
+│   ├── EnhancementService.kt
+│   ├── CombatStatCalculator.kt
+│   ├── MonsterSpawner.kt
+│   ├── AutoAttackService.kt      (ATTACK_RANGE = 120f)
+│   ├── LevelService.kt
+│   └── DropService.kt
 ├── viewmodel/
 │   └── MainViewModel.kt
 └── res/drawable/
@@ -48,36 +47,62 @@ com.a_survivor.app/
 ## 화면 구조
 
 ```
-Box (게임 화면 기본)
- ├── GameWorldView          ← 배경 (향후 맵 렌더링 자리)
- ├── GameHud (좌상단)        ← Lv. 직업명 + HP 바
- ├── ResultPanel (상단 중앙) ← 강화 결과 (있을 때만)
- ├── PanelOverlay > StatWindow       ← 스탯 버튼으로 토글
- ├── PanelOverlay > EquipmentWindow  ← 장비 버튼으로 토글
- ├── PanelOverlay > InventoryWindow  ← 인벤 버튼으로 토글
- ├── HudButton ×3 (우하단)  ← 스탯 / 장비 / 인벤
+Box (게임 화면)
+ ├── GameCanvas              ← Canvas 기반 게임 렌더링 (fillMaxSize)
+ ├── GameHud (좌상단)         ← Lv. 직업명 + HP 바
+ ├── ResultPanel (상단 중앙)  ← 강화 결과 (있을 때만)
+ ├── PanelOverlay > StatWindow
+ ├── PanelOverlay > EquipmentWindow
+ ├── PanelOverlay > InventoryWindow
+ ├── HudButton ×3 (우하단)   ← 스탯 / 장비 / 인벤
  ├── JoystickControl (좌하단)
  └── DragGhost
 ```
 
-- 오버레이: 스크림 탭 or ✕ 버튼으로 닫기
-- 강화 드래그: 장비창 + 인벤토리 둘 다 열려 있어야 인식
+---
+
+## 렌더링 시스템 (GameCanvas)
+
+### 렌더 순서
+
+| 레이어 | 내용 |
+|--------|------|
+| 1 | `drawWorldBackground` — 배경(`#080E08`) + 100u 격자 + 월드 경계 |
+| 2 | `drawAttackRange` — 공격 범위 원 (반투명 흰색, r=120) |
+| 3 | `drawMonster` × N — 그림자 → 몸통 → 눈 → HP바 |
+| 4 | `drawPlayer` — 그림자 → 몸통 → 테두리 → 하이라이트 |
+
+### 시각 사양
+
+| 대상 | 색 | 반지름 |
+|------|-----|--------|
+| 플레이어 | 주황 `#FFAA33` | 15f × zoom |
+| 슬라임 | 초록 `#44BB44` | 12f × zoom |
+| HP 바 | 빨강/초록 | 몬스터 위 자동 위치 |
+
+### 카메라
+
+```kotlin
+CameraState()
+  .followPlayer(player.positionX, player.positionY)
+  .clampToWorld(world, screenW, screenH)
+```
+
+- 플레이어 항상 화면 중앙 추적
+- 월드 경계에서 clamp
 
 ---
 
 ## 플레이어 시스템
-
-### Player 모델
 
 | 필드 | 초기값 |
 |------|--------|
 | level / exp | 1 / 0 |
 | hp / maxHp | 100 / 100 |
 | job | WARRIOR |
-| stats | WARRIOR 초기 스탯 |
 | availableStatPoint | 0 |
 | weapon | DefaultWeapon |
-| positionX / positionY | 0f / 0f |
+| positionX / positionY | 0f |
 
 ### 직업 및 초기 스탯
 
@@ -94,38 +119,21 @@ Box (게임 화면 기본)
 
 ## 스탯 시스템
 
-### StatType enum (`PlayerStats.kt`)
-`STR`, `DEX`, `INT`, `LUK`
-
-### StatWindow (스탯창)
-
-- 우하단 "스탯" HUD 버튼으로 오버레이 토글
-- 남은 SP 표시 (SP > 0이면 초록)
-- 각 스탯 현재값 + `[+]` 버튼
-- `[+]`는 SP 없으면 비활성
-
-### allocateStat 흐름
-
-```
-[+] 버튼 탭
-  → ViewModel.allocateStat(StatType)
-  → availableStatPoint > 0 체크
-  → stats.copy(해당 스탯 +1)
-  → availableStatPoint -1
-  → AutoAttackService 다음 틱부터 새 스탯으로 데미지 계산
-```
+- `StatType`: STR / DEX / INT / LUK
+- `allocateStat(type)`: SP 1 소모 → 해당 스탯 +1 → 다음 공격 틱부터 자동 반영
+- **StatWindow** (우하단 "스탯" 버튼): 남은 SP + 스탯별 [+] 버튼
 
 ---
 
-## 레벨 시스템 (LevelService)
+## 레벨 시스템
 
-- 필요 경험치: `level * 20`
-- 레벨업 1회: SP +5 (`availableStatPoint += 5`)
-- 연속 레벨업 지원 (while 루프)
+- 필요 EXP: `level × 20`
+- 레벨업: SP +5
+- 슬라임 처치 EXP: 5
 
 ---
 
-## 자동 공격 시스템 (AutoAttackService)
+## 자동 공격 (AutoAttackService)
 
 | 항목 | 값 |
 |------|-----|
@@ -138,9 +146,7 @@ Box (게임 화면 기본)
 
 ---
 
-## 드랍 시스템
-
-### SlimeDropTable
+## 드랍 시스템 (SlimeDropTable)
 
 | 아이템 | 확률 |
 |--------|------|
@@ -150,13 +156,11 @@ Box (게임 화면 기본)
 | 장갑 공격력 10% | 3% |
 | 백의 주문서 1% | 1% |
 
-- 독립 확률 판정 (중복 드랍 가능)
-- `ScrollDrop` → 인벤토리 수량 +1
-- `EquipmentDrop` → 장비 슬롯 비면 즉시 장착
+독립 확률 판정 / ScrollDrop → 인벤 +1 / EquipmentDrop → 빈 슬롯 장착
 
 ---
 
-## 전투 스탯 계산 (CombatStatCalculator)
+## 전투 스탯 계산
 
 | 직업 | 계산식 |
 |------|--------|
@@ -167,16 +171,9 @@ Box (게임 화면 기본)
 
 ---
 
-## 월드 / 카메라 시스템
-
-- **GameWorld**: 1600 × 1200, `contains()`, `clampPosition()`
-- **CameraState**: `toScreenOffset()`, `followPlayer()`, `clampToWorld()`
-
----
-
 ## 가상 조이스틱
 
-- 좌하단 고정, 이동속도 3f, `GameWorld.clampPosition`으로 경계 제한
+- 좌하단 고정, 이동속도 3f, 월드 경계 clamp
 
 ---
 
@@ -184,27 +181,21 @@ Box (게임 화면 기본)
 
 | 주문서 | 성공률 | 성공 시 |
 |--------|--------|---------|
-| 장갑 공격력 100% | 100% | 공격력 +1 |
-| 장갑 공격력 60%  | 60%  | 공격력 +2 |
-| 장갑 공격력 10%  | 10%  | 공격력 +3 |
-| 백의 1% | 1% | 실패 횟수 -1 / 실패 시 장비 파괴 |
-| 백의 3% | 3% | 실패 횟수 -1 / 실패 시 장비 파괴 |
+| 100% | 100% | 공격력 +1 |
+| 60%  | 60%  | 공격력 +2 |
+| 10%  | 10%  | 공격력 +3 |
+| 백의 1%/3% | 1%/3% | 실패 횟수 -1 / 실패 시 파괴 |
 
 ---
 
 ## MainViewModel — UiState
 
 ```kotlin
-UiState(
-    equipment, weapon, inventory,
-    selectedScrollType, lastResult,
-    player: Player,
-    world: GameWorld,
-    monsters: List<Monster>
-)
+UiState(equipment, weapon, inventory, selectedScrollType, lastResult,
+        player, world, monsters)
+MOVE_SPEED = 3f / AUTO_ATTACK_INTERVAL = 1000ms
+init → 자동 공격 루프 + 슬라임 5마리 초기 스폰
 ```
-
-`MOVE_SPEED = 3f` / `AUTO_ATTACK_INTERVAL = 1000ms`
 
 ---
 
@@ -213,22 +204,23 @@ UiState(
 | # | 작업 | 상태 |
 |---|------|------|
 | 1 | 강화 시스템 로직 구현 | ✅ |
-| 2 | 장비창 UI — 슬롯 레이아웃 | ✅ |
+| 2 | 장비창 UI | ✅ |
 | 3 | 인벤토리창 UI | ✅ |
 | 4 | 드래그 앤 드롭 강화 | ✅ |
-| 5 | 장갑 / 낡은 검 이미지 + 아이템 정보창 | ✅ |
+| 5 | 아이템 이미지 + 정보창 (맵스토리 스타일) | ✅ |
 | 6 | Player / PlayerJob / PlayerStats 모델 | ✅ |
-| 7 | CombatStatCalculator 서비스 | ✅ |
-| 8 | Weapon 모델 + DefaultWeapon | ✅ |
+| 7 | CombatStatCalculator | ✅ |
+| 8 | Weapon + DefaultWeapon | ✅ |
 | 9 | GameWorld 모델 | ✅ |
-| 10 | Monster 모델 + MonsterSpawner | ✅ |
-| 11 | 가상 조이스틱 + 플레이어 이동 | ✅ |
-| 12 | 기본 게임 화면 구조 개편 (오버레이) | ✅ |
-| 13 | CameraState — 좌표 변환 / 추적 | ✅ |
-| 14 | AutoAttackService — 자동 공격 | ✅ |
-| 15 | LevelService — 경험치 / 레벨업 / SP | ✅ |
-| 16 | DropService + DropTable — 드랍 시스템 | ✅ |
-| 17 | StatType enum + StatWindow + allocateStat | ✅ |
+| 10 | Monster + MonsterSpawner | ✅ |
+| 11 | 가상 조이스틱 + 이동 | ✅ |
+| 12 | 게임 화면 구조 개편 (오버레이) | ✅ |
+| 13 | CameraState | ✅ |
+| 14 | AutoAttackService | ✅ |
+| 15 | LevelService | ✅ |
+| 16 | DropService + DropTable | ✅ |
+| 17 | StatType + StatWindow + allocateStat | ✅ |
+| 18 | Canvas 렌더링 (플레이어 / 몬스터 / 배경 / 공격 범위) | ✅ |
 
 ---
 
@@ -240,11 +232,11 @@ UiState(
 
 ## 다음 작업 후보
 
-- [ ] 플레이어 + 몬스터 Canvas 렌더링 (CameraState 활용)
 - [ ] 몬스터 AI — 플레이어 추적 이동
 - [ ] 전투 피격 시스템 (몬스터 → 플레이어 HP 감소)
 - [ ] 직업 선택 화면
-- [ ] 장비 창고 (EquipmentDrop 슬롯 점유 시 보관)
+- [ ] 장비 창고 (슬롯 점유 시 드랍 보관)
 - [ ] 강화 내역 로그
 - [ ] 무기 강화 시스템
 - [ ] 애니메이션 (공격 이펙트, 레벨업 연출)
+- [ ] 몬스터 리스폰 시스템

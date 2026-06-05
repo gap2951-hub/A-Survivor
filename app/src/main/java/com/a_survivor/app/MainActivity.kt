@@ -50,7 +50,10 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
@@ -66,12 +69,16 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
+import com.a_survivor.app.model.CameraState
+import com.a_survivor.app.model.GameWorld
+import com.a_survivor.app.model.Monster
 import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.PlayerJob
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
 import com.a_survivor.app.model.StatType
 import com.a_survivor.app.model.Weapon
+import com.a_survivor.app.service.AutoAttackService
 import com.a_survivor.app.viewmodel.InventoryItem
 import com.a_survivor.app.viewmodel.MainViewModel
 import com.a_survivor.app.viewmodel.UiState
@@ -179,8 +186,12 @@ fun MainScreen(
             .background(BgDark)
             .onGloballyPositioned { rootWindowOffset = it.positionInWindow() }
     ) {
-        // ① 게임 월드 배경
-        GameWorldView()
+        // ① 게임 캔버스 렌더링
+        GameCanvas(
+            player   = state.player,
+            monsters = state.monsters,
+            world    = state.world
+        )
 
         // ② 상단 HUD
         GameHud(
@@ -988,10 +999,113 @@ fun ResultPanel(result: EnhancementResult, modifier: Modifier = Modifier) {
     }
 }
 
-// ── 게임 월드 뷰 (렌더링 미구현 — 배경 플레이스홀더) ─────────────────────────
+// ── 게임 캔버스 ───────────────────────────────────────────────────────────────
 @Composable
-private fun GameWorldView() {
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF080E08)))
+private fun GameCanvas(
+    player: Player,
+    monsters: List<Monster>,
+    world: GameWorld,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier.fillMaxSize()) {
+        val cam = CameraState()
+            .followPlayer(player.positionX, player.positionY)
+            .clampToWorld(world, size.width, size.height)
+
+        drawWorldBackground(cam, world)
+        drawAttackRange(player, cam)
+        monsters.forEach { drawMonster(it, cam) }
+        drawPlayer(player, cam)
+    }
+}
+
+private fun DrawScope.drawWorldBackground(cam: CameraState, world: GameWorld) {
+    drawRect(color = Color(0xFF080E08), size = size)
+
+    // 격자선
+    val gridUnit = 100f
+    val lineColor = Color(0xFF1A2A1A)
+    val leftW   = cam.toWorldX(0f, size.width)
+    val rightW  = cam.toWorldX(size.width, size.width)
+    val topW    = cam.toWorldY(0f, size.height)
+    val bottomW = cam.toWorldY(size.height, size.height)
+
+    var wx = (leftW / gridUnit).toInt() * gridUnit
+    while (wx <= rightW) {
+        val sx = cam.toScreenX(wx, size.width)
+        drawLine(lineColor, Offset(sx, 0f), Offset(sx, size.height), strokeWidth = 1f)
+        wx += gridUnit
+    }
+    var wy = (topW / gridUnit).toInt() * gridUnit
+    while (wy <= bottomW) {
+        val sy = cam.toScreenY(wy, size.height)
+        drawLine(lineColor, Offset(0f, sy), Offset(size.width, sy), strokeWidth = 1f)
+        wy += gridUnit
+    }
+
+    // 월드 경계
+    val tl = cam.toScreenOffset(0f, 0f, size.width, size.height)
+    val br = cam.toScreenOffset(world.width, world.height, size.width, size.height)
+    drawRect(
+        color   = Color(0xFF335533),
+        topLeft = tl,
+        size    = Size(br.x - tl.x, br.y - tl.y),
+        style   = Stroke(width = 2f)
+    )
+}
+
+private fun DrawScope.drawAttackRange(player: Player, cam: CameraState) {
+    val center = cam.toScreenOffset(player.positionX, player.positionY, size.width, size.height)
+    val r = AutoAttackService.ATTACK_RANGE * cam.zoom
+    drawCircle(Color.White.copy(alpha = 0.05f), radius = r, center = center)
+    drawCircle(Color.White.copy(alpha = 0.12f), radius = r, center = center,
+        style = Stroke(width = 1f))
+}
+
+private fun DrawScope.drawPlayer(player: Player, cam: CameraState) {
+    val c = cam.toScreenOffset(player.positionX, player.positionY, size.width, size.height)
+    val r = 15f * cam.zoom
+
+    // 그림자
+    drawCircle(Color.Black.copy(alpha = 0.35f), radius = r * 1.15f,
+        center = Offset(c.x, c.y + r * 0.4f))
+    // 몸통
+    drawCircle(Color(0xFFFFAA33), radius = r, center = c)
+    // 테두리
+    drawCircle(Color(0xFFFFDD88), radius = r, center = c, style = Stroke(width = 2f))
+    // 중심 하이라이트
+    drawCircle(Color.White.copy(alpha = 0.5f), radius = r * 0.28f,
+        center = Offset(c.x - r * 0.2f, c.y - r * 0.2f))
+}
+
+private fun DrawScope.drawMonster(monster: Monster, cam: CameraState) {
+    val c = cam.toScreenOffset(monster.positionX, monster.positionY, size.width, size.height)
+    val r = 12f * cam.zoom
+
+    // 그림자
+    drawCircle(Color.Black.copy(alpha = 0.35f), radius = r * 1.15f,
+        center = Offset(c.x, c.y + r * 0.4f))
+    // 몸통
+    drawCircle(Color(0xFF44BB44), radius = r, center = c)
+    // 테두리
+    drawCircle(Color(0xFF88EE88), radius = r, center = c, style = Stroke(width = 1.5f))
+    // 눈
+    val eo = r * 0.32f
+    val ey = c.y - r * 0.15f
+    drawCircle(Color.White,            radius = r * 0.24f, center = Offset(c.x - eo, ey))
+    drawCircle(Color.White,            radius = r * 0.24f, center = Offset(c.x + eo, ey))
+    drawCircle(Color(0xFF224422), radius = r * 0.12f, center = Offset(c.x - eo, ey))
+    drawCircle(Color(0xFF224422), radius = r * 0.12f, center = Offset(c.x + eo, ey))
+
+    // HP 바
+    val barW = r * 3f
+    val barH = 4f * cam.zoom
+    val barX = c.x - barW / 2f
+    val barY = c.y - r - 8f * cam.zoom
+    val frac = (monster.hp.toFloat() / monster.maxHp).coerceIn(0f, 1f)
+    drawRect(Color(0xFF661111), topLeft = Offset(barX, barY), size = Size(barW, barH))
+    if (frac > 0f) drawRect(Color(0xFF44BB00),
+        topLeft = Offset(barX, barY), size = Size(barW * frac, barH))
 }
 
 // ── 상단 HUD ─────────────────────────────────────────────────────────────────
