@@ -1151,7 +1151,11 @@ private fun GameCanvas(
     val scroll100Bitmap = remember { loadBitmap(context, R.drawable.scroll_100, 256) }
     val scroll60Bitmap  = remember { loadBitmap(context, R.drawable.scroll_60,  256) }
     val scroll10Bitmap  = remember { loadBitmap(context, R.drawable.scroll_10,  256) }
-    val gloveBitmap     = remember { loadBitmap(context, R.drawable.nogada_glove, 256) }
+    val gloveBitmap       = remember { loadBitmap(context, R.drawable.nogada_glove, 256) }
+    val energyBolt1       = remember { loadBitmap(context, R.drawable.energy_bolt_1, 128) }
+    val energyBolt2       = remember { loadBitmap(context, R.drawable.energy_bolt_2, 128) }
+    val energyBolt3       = remember { loadBitmap(context, R.drawable.energy_bolt_3, 128) }
+    val energyBoltFrames  = remember { listOf(energyBolt1, energyBolt2, energyBolt3) }
 
     Canvas(modifier = modifier.fillMaxSize()) {
         val zoom = maxOf(size.width / world.width, size.height / world.height)
@@ -1165,7 +1169,7 @@ private fun GameCanvas(
         portals.forEach { drawPortal(it, cam) }
         drawAttackRange(player, cam)
         monsters.forEach { drawMonster(it, cam, slimeBitmap) }
-        projectiles.forEach { drawProjectile(it, cam) }
+        projectiles.forEach { drawProjectile(it, cam, energyBoltFrames) }
         drawPlayer(player, cam)
         damageNumbers.forEach { drawDamageNumber(it, cam) }
     }
@@ -1277,14 +1281,30 @@ private fun DrawScope.drawAttackRange(player: Player, cam: CameraState) {
         style = Stroke(width = 1f))
 }
 
-private fun DrawScope.drawProjectile(proj: com.a_survivor.app.model.Projectile, cam: CameraState) {
+private fun DrawScope.drawProjectile(
+    proj: com.a_survivor.app.model.Projectile,
+    cam: CameraState,
+    energyBoltFrames: List<ImageBitmap> = emptyList()
+) {
     val c  = cam.toScreenOffset(proj.positionX, proj.positionY, size.width, size.height)
     val sp = size.height / 1080f
 
     when (proj.type) {
         com.a_survivor.app.model.ProjectileType.ENERGY_BOLT -> {
-            drawCircle(Color(0xFF4488FF).copy(alpha = 0.5f), radius = 10f * sp, center = c)
-            drawCircle(Color(0xFF88CCFF), radius = 5f * sp, center = c)
+            if (energyBoltFrames.isNotEmpty()) {
+                val frameIndex = ((System.currentTimeMillis() / 100L) % energyBoltFrames.size).toInt()
+                val bitmap = energyBoltFrames[frameIndex]
+                val imgSize = (size.height * 0.06f).toInt().coerceAtLeast(16)
+                drawImage(
+                    image         = bitmap,
+                    dstOffset     = IntOffset((c.x - imgSize / 2).toInt(), (c.y - imgSize / 2).toInt()),
+                    dstSize       = IntSize(imgSize, imgSize),
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High
+                )
+            } else {
+                drawCircle(Color(0xFF4488FF).copy(alpha = 0.5f), radius = 10f * sp, center = c)
+                drawCircle(Color(0xFF88CCFF), radius = 5f * sp, center = c)
+            }
         }
         com.a_survivor.app.model.ProjectileType.ARROW -> {
             val dx  = proj.targetX - proj.positionX
