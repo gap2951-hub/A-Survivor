@@ -1,8 +1,8 @@
 package com.a_survivor.app.model
 
 data class GameWorld(
-    val width: Float = 1144f,
-    val height: Float = 2048f
+    val width: Float = 1024f,
+    val height: Float = 572f
 ) {
     /** 주어진 좌표가 월드 범위 안에 있는지 확인 */
     fun contains(x: Float, y: Float): Boolean =

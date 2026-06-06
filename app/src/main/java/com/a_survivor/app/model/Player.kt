@@ -12,6 +12,6 @@ data class Player(
     val availableStatPoint: Int = 0,
     val weapon: Weapon = DefaultWeapon,
 
-    val positionX: Float = 572f,
-    val positionY: Float = 1300f
+    val positionX: Float = 512f,
+    val positionY: Float = 286f
 )

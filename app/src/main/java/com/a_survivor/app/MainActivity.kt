@@ -1054,7 +1054,9 @@ private fun GameCanvas(
     val gloveBitmap     = remember { loadBitmap(context, R.drawable.nogada_glove, 256) }
 
     Canvas(modifier = modifier.fillMaxSize()) {
-        val cam = CameraState()
+        // 화면에 맵이 꽉 차도록 줌 자동 계산 (빈 공간 없음)
+        val zoom = maxOf(size.width / world.width, size.height / world.height)
+        val cam = CameraState(zoom = zoom)
             .followPlayer(player.positionX, player.positionY)
             .clampToWorld(world, size.width, size.height)
 
