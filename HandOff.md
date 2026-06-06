@@ -24,7 +24,7 @@ com.a_survivor.app/
 │   ├── PlayerJob.kt
 │   ├── PlayerStats.kt            (+ StatType enum)
 │   ├── Weapon.kt                 (+ DefaultWeapon)
-│   ├── GameWorld.kt              (1600×1200)
+│   ├── GameWorld.kt              (1144×2048)
 │   ├── Monster.kt                (+ slime() + distanceTo())
 │   ├── CameraState.kt            (좌표 변환 / 추적)
 │   ├── DropTable.kt              (DropItem + SlimeDropTable)
@@ -32,13 +32,15 @@ com.a_survivor.app/
 ├── service/
 │   ├── EnhancementService.kt
 │   ├── CombatStatCalculator.kt
-│   ├── MonsterSpawner.kt
+│   ├── MonsterSpawner.kt         (isBlocked 람다 파라미터)
 │   ├── AutoAttackService.kt      (ATTACK_RANGE = 120f)
 │   ├── LevelService.kt
 │   └── DropService.kt
 ├── viewmodel/
-│   └── MainViewModel.kt
+│   └── MainViewModel.kt          (AndroidViewModel — 충돌 비트맵 보유)
 └── res/drawable/
+    ├── map_beginner.jpg           ← 초보자 사냥터 맵 배경
+    ├── slime.png                  ← 슬라임 몬스터 이미지 (※ 흰색 배경 제거 필요)
     ├── nogada_glove.png
     ├── nogada_sword.png
     ├── scroll_100.png
@@ -71,19 +73,19 @@ Box (게임 화면)
 
 | 레이어 | 내용 |
 |--------|------|
-| 1 | `drawWorldBackground` — 배경(`#080E08`) + 100u 격자 + 월드 경계 |
+| 1 | `drawWorldBackground` — `map_beginner.jpg` 이미지를 월드 전체에 렌더링 |
 | 2 | `drawGroundItem` × N — 바닥 드랍 아이템 (글로우 → 이미지 → 이름 텍스트) |
 | 3 | `drawAttackRange` — 공격 범위 원 (반투명 흰색, r=120) |
-| 4 | `drawMonster` × N — 그림자 → 몸통 → 눈 → HP바 |
+| 4 | `drawMonster` × N — 그림자 → 슬라임 이미지(96f×zoom) → HP 바 |
 | 5 | `drawPlayer` — 그림자 → 몸통 → 테두리 → 하이라이트 |
 
 ### 시각 사양
 
-| 대상 | 색 | 반지름 |
-|------|-----|--------|
-| 플레이어 | 주황 `#FFAA33` | 25f × zoom |
-| 슬라임 | 초록 `#44BB44` | 12f × zoom |
-| HP 바 | 빨강/초록 | 몬스터 위 자동 위치 |
+| 대상 | 표현 방식 | 크기 |
+|------|-----------|------|
+| 플레이어 | 주황 원 `#FFAA33` | 25f × zoom |
+| 슬라임 | PNG 이미지 (slime.png) | 96f × zoom |
+| HP 바 | 빨강/초록 rect | 몬스터 이미지 위 자동 위치 |
 | 바닥 아이템 | PNG 이미지 | 52f × zoom |
 
 ### 카메라
@@ -99,8 +101,37 @@ CameraState()
 
 ### 비트맵 로딩
 
-- `loadBitmap(context, resId, maxSize=256)` — `inSampleSize`로 다운샘플링 후 `ARGB_8888` 로드
+- `loadBitmap(context, resId, maxSize)` — `inSampleSize`로 다운샘플링 후 `ARGB_8888` 로드
 - `drawImage(filterQuality = FilterQuality.High)` — 고품질 축소 렌더링
+- 맵 비트맵: `maxSize=2048`, 아이템/슬라임: `maxSize=256`
+
+---
+
+## 맵 배경 시스템
+
+### 월드 / 맵 설정
+
+| 항목 | 값 |
+|------|-----|
+| 월드 크기 | 1144 × 2048 |
+| 원본 맵 이미지 | `map_beginner.jpg` (초보자 사냥터, 픽셀아트) |
+| 플레이어 초기 위치 | (572f, 1300f) — 중앙 X, 하단 개활지 |
+
+### 픽셀 충돌 시스템 (MainViewModel)
+
+```kotlin
+// AndroidViewModel로 변경 — application.resources로 비트맵 로드
+private val collisionBitmap: Bitmap? by lazy {
+    BitmapFactory.decodeResource(application.resources, R.drawable.map_beginner,
+        BitmapFactory.Options().apply { inSampleSize = 4; inPreferredConfig = ARGB_8888 })
+}
+```
+
+- `isPixelBlocked(worldX, worldY, world)`: 픽셀 루미넌스 < 130 → 나무/풀숲으로 판정
+  - 루미넌스 = 0.299R + 0.587G + 0.114B
+- `isBlocked(worldX, worldY, world)`: 중심 + 상하좌우 22f 지점 5곳 중 하나라도 막히면 true
+- `movePlayer`: X/Y 축 독립 판정 → 벽 슬라이딩 구현
+- `MonsterSpawner.spawnSlimes(isBlocked = { x, y -> isBlocked(x, y, DefaultWorld) })` → 나무 위 스폰 방지
 
 ---
 
@@ -113,7 +144,7 @@ CameraState()
 | job | WARRIOR |
 | availableStatPoint | 0 |
 | weapon | DefaultWeapon |
-| positionX / positionY | 800f / 600f (월드 중앙) |
+| positionX / positionY | 572f / 1300f |
 
 ### 직업 및 초기 스탯
 
@@ -204,7 +235,7 @@ data class GroundItem(
 
 ## 가상 조이스틱
 
-- 좌하단 고정, 이동속도 3f, 월드 경계 clamp
+- 좌하단 고정, 이동속도 3f, 월드 경계 clamp + 픽셀 충돌 clamp
 
 ---
 
@@ -225,7 +256,8 @@ data class GroundItem(
 UiState(equipment, weapon, inventory, selectedScrollType, lastResult,
         player, world, monsters, groundItems)
 MOVE_SPEED = 3f / AUTO_ATTACK_INTERVAL = 1000ms / PICKUP_RANGE = 50f
-init → 자동 공격 루프 + 슬라임 5마리 초기 스폰
+COLLISION_RADIUS = 22f / LUMINANCE_THRESHOLD = 130f
+init → 자동 공격 루프 + 슬라임 5마리 초기 스폰 (isBlocked 적용)
 ```
 
 ---
@@ -242,8 +274,8 @@ init → 자동 공격 루프 + 슬라임 5마리 초기 스폰
 | 6 | Player / PlayerJob / PlayerStats 모델 | ✅ |
 | 7 | CombatStatCalculator | ✅ |
 | 8 | Weapon + DefaultWeapon | ✅ |
-| 9 | GameWorld 모델 | ✅ |
-| 10 | Monster + MonsterSpawner | ✅ |
+| 9 | GameWorld 모델 (1144×2048) | ✅ |
+| 10 | Monster + MonsterSpawner (isBlocked 지원) | ✅ |
 | 11 | 가상 조이스틱 + 이동 | ✅ |
 | 12 | 게임 화면 구조 개편 (오버레이) | ✅ |
 | 13 | CameraState | ✅ |
@@ -255,9 +287,14 @@ init → 자동 공격 루프 + 슬라임 5마리 초기 스폰
 | 19 | GroundItem — 바닥 드랍 아이템 스폰 + Canvas 렌더링 | ✅ |
 | 20 | 자동 픽업 시스템 (PICKUP_RANGE = 50f) | ✅ |
 | 21 | 아이템 PNG 이미지 적용 (scroll_100/60/10, nogada_glove) | ✅ |
-| 22 | 플레이어 시작 위치 월드 중앙(800, 600) 설정 | ✅ |
+| 22 | 플레이어 시작 위치 (572f, 1300f) 설정 | ✅ |
 | 23 | 플레이어(25f) / 아이템(52f) 크기 확대 | ✅ |
 | 24 | 비트맵 다운샘플링 + FilterQuality.High 적용 | ✅ |
+| 25 | 초보자 사냥터 맵 배경 (map_beginner.jpg) 적용 | ✅ |
+| 26 | 픽셀 루미넌스 기반 충돌 시스템 (나무/풀숲 통과 불가) | ✅ |
+| 27 | AndroidViewModel 전환 — Application 컨텍스트로 충돌 비트맵 로드 | ✅ |
+| 28 | 벽 슬라이딩 이동 (X/Y 축 독립 충돌 판정) | ✅ |
+| 29 | 슬라임 PNG 이미지 적용 (slime.png, 96f×zoom) | ✅ |
 
 ---
 
@@ -269,6 +306,7 @@ init → 자동 공격 루프 + 슬라임 5마리 초기 스폰
 
 ## 다음 작업 후보
 
+- [ ] slime.png 흰색 배경 제거 후 재적용 (현재 배경 있음)
 - [ ] 몬스터 AI — 플레이어 추적 이동
 - [ ] 전투 피격 시스템 (몬스터 → 플레이어 HP 감소)
 - [ ] 몬스터 리스폰 시스템

@@ -1147,7 +1147,7 @@ private fun DrawScope.drawPlayer(player: Player, cam: CameraState) {
 
 private fun DrawScope.drawMonster(monster: Monster, cam: CameraState, slimeBitmap: ImageBitmap) {
     val c       = cam.toScreenOffset(monster.positionX, monster.positionY, size.width, size.height)
-    val imgSize = (48f * cam.zoom).toInt().coerceAtLeast(12)
+    val imgSize = (96f * cam.zoom).toInt().coerceAtLeast(20)
 
     // 그림자
     drawCircle(
