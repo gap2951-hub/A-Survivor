@@ -62,9 +62,9 @@ Box (게임 화면)
  ├── GameCanvas              ← Canvas 기반 게임 렌더링 (fillMaxSize)
  ├── GameHud (좌상단)         ← Lv. 직업명 + HP 바
  ├── ResultPanel (상단 중앙)  ← 강화 결과 (있을 때만)
- ├── PanelOverlay > StatWindow
- ├── PanelOverlay > EquipmentWindow
- ├── PanelOverlay > InventoryWindow
+ ├── Column + zIndex(10) > EquipmentWindow  ← 플로팅 드래그 창
+ ├── Column + zIndex(10) > StatWindow       ← 플로팅 드래그 창
+ ├── Column + zIndex(10) > InventoryWindow  ← 플로팅 드래그 창
  ├── HudButton ×3 (우하단)   ← 스탯 / 장비 / 인벤
  ├── JoystickControl (좌하단)
  └── DragGhost
@@ -366,12 +366,70 @@ PORTAL_COOLDOWN        = 2000ms
 | 36 | 포탈 렌더링 — 다층 파란 글로우 + 맵 이름 레이블 | ✅ |
 | 37 | 마을 충돌 비트맵 분리 (townCollisionBitmap) | ✅ |
 | 38 | 마을 포탈 위치 픽셀 분석 후 안전 지점 확정 (x=250, lum=146) | ✅ |
+| 39 | 장비창/스탯창/인벤토리창 — 타이틀바 드래그로 창 이동 기능 추가 | ✅ |
+| 40 | SlotSize 48.dp → 40.dp 축소 (창 크기 최적화) | ✅ |
 
 ---
 
 ## 컨벤션
 
 - **커밋 메시지:** 제목·본문 모두 **한글**로 작성
+
+---
+
+## 드래그 창 시스템 (MainActivity)
+
+### 플로팅 창 공통 구조
+
+```kotlin
+// MainScreen 내부
+val density       = LocalDensity.current
+val configuration = LocalConfiguration.current
+val screenW  = with(density) { configuration.screenWidthDp.dp.toPx() }
+val screenH  = with(density) { configuration.screenHeightDp.dp.toPx() }
+val panelWPx = with(density) { 280.dp.toPx() }
+val headerPx = with(density) { 36.dp.toPx() }
+val initPad  = with(density) { 8.dp.toPx() }
+
+var equipOffset  by remember { mutableStateOf(Offset(initPad, initPad)) }
+var statOffset   by remember { mutableStateOf(Offset(initPad, initPad)) }
+var inventOffset by remember { mutableStateOf(Offset(initPad, initPad)) }
+
+fun clampWin(o: Offset) = Offset(
+    o.x.coerceIn(0f, (screenW - panelWPx).coerceAtLeast(0f)),
+    o.y.coerceIn(0f, (screenH - headerPx).coerceAtLeast(0f))
+)
+```
+
+### WindowTitleBar 드래그 핸들러
+
+```kotlin
+@Composable
+private fun WindowTitleBar(
+    title: String,
+    onClose: (() -> Unit)? = null,
+    onDrag: ((Offset) -> Unit)? = null
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(PanelHeader)
+            .padding(horizontal = 12.dp, vertical = 7.dp)
+            .then(
+                if (onDrag != null) Modifier.pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        onDrag(dragAmount)
+                    }
+                } else Modifier
+            ),
+        verticalAlignment = Alignment.CenterVertically
+    ) { ... }
+}
+```
+
+- `EquipmentWindow`, `StatWindow`, `InventoryWindow` 모두 `onDrag: ((Offset) -> Unit)? = null` 파라미터 추가
+- 각 창은 `zIndex(10f)` + `offset { IntOffset(...) }` + `width(280.dp)` 적용
 
 ---
 
