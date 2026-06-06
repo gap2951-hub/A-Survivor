@@ -74,6 +74,8 @@ import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
 import com.a_survivor.app.model.CameraState
@@ -187,6 +189,24 @@ fun MainScreen(
     var joystickDirX by remember { mutableStateOf(0f) }
     var joystickDirY by remember { mutableStateOf(0f) }
 
+    // 플로팅 창 위치 및 경계 계산
+    val density       = LocalDensity.current
+    val configuration = LocalConfiguration.current
+    val screenW  = with(density) { configuration.screenWidthDp.dp.toPx() }
+    val screenH  = with(density) { configuration.screenHeightDp.dp.toPx() }
+    val panelWPx = with(density) { 280.dp.toPx() }
+    val headerPx = with(density) { 36.dp.toPx() }
+    val initPad  = with(density) { 8.dp.toPx() }
+
+    var equipOffset  by remember { mutableStateOf(Offset(initPad, initPad)) }
+    var statOffset   by remember { mutableStateOf(Offset(initPad, initPad)) }
+    var inventOffset by remember { mutableStateOf(Offset(initPad, initPad)) }
+
+    fun clampWin(o: Offset) = Offset(
+        o.x.coerceIn(0f, (screenW - panelWPx).coerceAtLeast(0f)),
+        o.y.coerceIn(0f, (screenH - headerPx).coerceAtLeast(0f))
+    )
+
     LaunchedEffect(Unit) {
         while (true) {
             delay(16L)
@@ -235,9 +255,14 @@ fun MainScreen(
         }
 
 
-        // ④ 장비창 오버레이
+        // ④ 장비창 플로팅
         if (isEquipmentOpen) {
-            PanelOverlay(onDismiss = { isEquipmentOpen = false }) {
+            Column(
+                modifier = Modifier
+                    .zIndex(10f)
+                    .offset { IntOffset(equipOffset.x.roundToInt(), equipOffset.y.roundToInt()) }
+                    .width(280.dp)
+            ) {
                 EquipmentWindow(
                     equipment = state.equipment,
                     weapon = state.weapon,
@@ -247,39 +272,51 @@ fun MainScreen(
                     onReset = onReset,
                     onUnequipWeapon = onUnequipWeapon,
                     onResetWeapon = onResetWeapon,
-                    onClose = { isEquipmentOpen = false }
+                    onClose = { isEquipmentOpen = false },
+                    onDrag = { delta -> equipOffset = clampWin(equipOffset + delta) }
                 )
             }
         }
 
-        // ⑤ 스탯창 오버레이
+        // ⑤ 스탯창 플로팅
         if (isStatOpen) {
-            PanelOverlay(onDismiss = { isStatOpen = false }) {
+            Column(
+                modifier = Modifier
+                    .zIndex(10f)
+                    .offset { IntOffset(statOffset.x.roundToInt(), statOffset.y.roundToInt()) }
+                    .width(280.dp)
+            ) {
                 StatWindow(
-                    player    = state.player,
+                    player     = state.player,
                     onAllocate = onAllocateStat,
-                    onClose   = { isStatOpen = false }
+                    onClose    = { isStatOpen = false },
+                    onDrag     = { delta -> statOffset = clampWin(statOffset + delta) }
                 )
             }
         }
 
-        // ⑥ 인벤토리 오버레이
+        // ⑥ 인벤토리창 플로팅
         if (isInventoryOpen) {
-            PanelOverlay(onDismiss = { isInventoryOpen = false }) {
+            Column(
+                modifier = Modifier
+                    .zIndex(10f)
+                    .offset { IntOffset(inventOffset.x.roundToInt(), inventOffset.y.roundToInt()) }
+                    .width(280.dp)
+            ) {
                 InventoryWindow(
-                    inventory = state.inventory,
-                    dragState = dragState,
+                    inventory        = state.inventory,
+                    dragState        = dragState,
                     rootWindowOffset = rootWindowOffset,
-                    onClose = { isInventoryOpen = false },
-                    onDragEnd = { scrollType, dropPos ->
+                    onClose          = { isInventoryOpen = false },
+                    onDragEnd        = { scrollType, dropPos ->
                         if (isEquipmentOpen &&
                             equipSlotBounds?.contains(dropPos) == true &&
                             state.equipment != null && !state.equipment.destroyed) {
                             onScrollSelected(scrollType)
                             onEnhance()
                         }
-                    }
-
+                    },
+                    onDrag = { delta -> inventOffset = clampWin(inventOffset + delta) }
                 )
             }
         }
@@ -330,7 +367,8 @@ fun EquipmentWindow(
     onReset: () -> Unit,
     onUnequipWeapon: () -> Unit,
     onResetWeapon: () -> Unit,
-    onClose: (() -> Unit)? = null
+    onClose: (() -> Unit)? = null,
+    onDrag: ((Offset) -> Unit)? = null
 ) {
     Column(
         modifier = Modifier
@@ -339,7 +377,7 @@ fun EquipmentWindow(
             .background(PanelBg)
             .border(1.dp, BorderGold, RoundedCornerShape(8.dp))
     ) {
-        WindowTitleBar("장비창", onClose = onClose)
+        WindowTitleBar("장비창", onClose = onClose, onDrag = onDrag)
 
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -403,7 +441,7 @@ fun EquipmentWindow(
     }
 }
 
-private val SlotSize = 48.dp
+private val SlotSize = 40.dp
 
 @Composable
 private fun BodyRow(content: @Composable () -> Unit) {
@@ -415,12 +453,24 @@ private fun BodyRow(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun WindowTitleBar(title: String, onClose: (() -> Unit)? = null) {
+private fun WindowTitleBar(
+    title: String,
+    onClose: (() -> Unit)? = null,
+    onDrag: ((Offset) -> Unit)? = null
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(PanelHeader)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp)
+            .then(
+                if (onDrag != null) Modifier.pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        onDrag(dragAmount)
+                    }
+                } else Modifier
+            ),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -1365,7 +1415,8 @@ private fun HudButton(
 private fun StatWindow(
     player: Player,
     onAllocate: (StatType) -> Unit,
-    onClose: (() -> Unit)? = null
+    onClose: (() -> Unit)? = null,
+    onDrag: ((Offset) -> Unit)? = null
 ) {
     val hasPoints = player.availableStatPoint > 0
 
@@ -1376,7 +1427,7 @@ private fun StatWindow(
             .background(PanelBg)
             .border(1.dp, BorderGold, RoundedCornerShape(8.dp))
     ) {
-        WindowTitleBar("스탯창", onClose = onClose)
+        WindowTitleBar("스탯창", onClose = onClose, onDrag = onDrag)
 
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
 
@@ -1505,7 +1556,8 @@ fun InventoryWindow(
     dragState: DragDropState,
     rootWindowOffset: Offset,
     onDragEnd: (ScrollType, Offset) -> Unit,
-    onClose: (() -> Unit)? = null
+    onClose: (() -> Unit)? = null,
+    onDrag: ((Offset) -> Unit)? = null
 ) {
     Column(
         modifier = Modifier
@@ -1514,7 +1566,7 @@ fun InventoryWindow(
             .background(PanelBg)
             .border(1.dp, BorderGold, RoundedCornerShape(8.dp))
     ) {
-        WindowTitleBar("인벤토리 - 주문서", onClose = onClose)
+        WindowTitleBar("인벤토리 - 주문서", onClose = onClose, onDrag = onDrag)
 
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
