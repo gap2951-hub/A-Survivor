@@ -16,15 +16,16 @@ class MonsterSpawner {
     fun spawnSlimes(
         world: GameWorld,
         count: Int,
+        isBlocked: ((Float, Float) -> Boolean)? = null,
         minDistance: Float = 100f,
-        margin: Float = 50f,
+        margin: Float = 200f,
         random: Random = Random.Default
     ): List<Monster> {
         val placed = mutableListOf<Monster>()
         var nextId = 1
 
         repeat(count) {
-            val monster = tryPlace(world, placed, minDistance, margin, nextId, random)
+            val monster = tryPlace(world, placed, isBlocked, minDistance, margin, nextId, random)
             if (monster != null) {
                 placed.add(monster)
                 nextId++
@@ -36,11 +37,12 @@ class MonsterSpawner {
     private fun tryPlace(
         world: GameWorld,
         placed: List<Monster>,
+        isBlocked: ((Float, Float) -> Boolean)?,
         minDistance: Float,
         margin: Float,
         id: Int,
         random: Random,
-        maxAttempts: Int = 50
+        maxAttempts: Int = 100
     ): Monster? {
         val xRange = margin..(world.width - margin)
         val yRange = margin..(world.height - margin)
@@ -50,7 +52,8 @@ class MonsterSpawner {
             val y = random.nextFloat() * (yRange.endInclusive - yRange.start) + yRange.start
 
             val tooClose = placed.any { it.distanceTo(x, y) < minDistance }
-            if (!tooClose) return slime(id, x, y)
+            val blocked  = isBlocked?.invoke(x, y) == true
+            if (!tooClose && !blocked) return slime(id, x, y)
         }
         return null
     }

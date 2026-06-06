@@ -39,6 +39,8 @@ import kotlin.math.sqrt
 
 data class InventoryItem(val scrollType: ScrollType, val quantity: Int)
 
+data class PendingRespawn(val monsterId: Int, val diedAt: Long)
+
 data class UiState(
     val equipment: Equipment?,
     val weapon: Weapon?,
@@ -48,7 +50,8 @@ data class UiState(
     val player: Player = Player(),
     val world: GameWorld = DefaultWorld,
     val monsters: List<Monster> = emptyList(),
-    val groundItems: List<GroundItem> = emptyList()
+    val groundItems: List<GroundItem> = emptyList(),
+    val pendingRespawns: List<PendingRespawn> = emptyList()
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -71,12 +74,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     companion object {
-        private const val MOVE_SPEED           = 3f
-        private const val AUTO_ATTACK_INTERVAL = 1000L
-        private const val AI_TICK_INTERVAL     = 16L
-        private const val PICKUP_RANGE         = 50f
-        private const val COLLISION_RADIUS     = 22f
-        private const val LUMINANCE_THRESHOLD  = 130f
+        private const val MOVE_SPEED             = 3f
+        private const val AUTO_ATTACK_INTERVAL   = 1000L
+        private const val AI_TICK_INTERVAL       = 16L
+        private const val RESPAWN_DELAY          = 5000L   // 처치 후 5초 뒤 리스폰
+        private const val RESPAWN_CHECK_INTERVAL = 1000L
+        private const val PICKUP_RANGE           = 50f
+        private const val COLLISION_RADIUS       = 22f
+        private const val LUMINANCE_THRESHOLD    = 130f
     }
 
     init {
@@ -92,10 +97,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 monsterAiTick()
             }
         }
+        viewModelScope.launch {
+            while (true) {
+                delay(RESPAWN_CHECK_INTERVAL)
+                respawnTick()
+            }
+        }
     }
 
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    // 초기 스폰된 몬스터 ID 다음 값부터 시작
+    private var nextMonsterId = (_uiState.value.monsters.maxOfOrNull { it.id } ?: 0) + 1
 
     private fun createInitialState() = UiState(
         monsters = MonsterSpawner().spawnSlimes(
@@ -215,13 +229,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
+            // 처치된 몬스터를 리스폰 대기열에 추가
+            val now = System.currentTimeMillis()
+            val newPending = result.killedMonsters.map { PendingRespawn(it.id, now) }
+
             var newState = state.copy(
-                monsters    = monstersWithAggro,
-                player      = updatedPlayer,
-                groundItems = state.groundItems + newGroundItems
+                monsters        = monstersWithAggro,
+                player          = updatedPlayer,
+                groundItems     = state.groundItems + newGroundItems,
+                pendingRespawns = state.pendingRespawns + newPending
             )
             newState = checkPickup(newState)
             newState
+        }
+    }
+
+    // ── 몬스터 리스폰 틱 ───────────────────────────────────────────────────────
+
+    private fun respawnTick() {
+        _uiState.update { state ->
+            val now = System.currentTimeMillis()
+            val (ready, waiting) = state.pendingRespawns.partition {
+                now - it.diedAt >= RESPAWN_DELAY
+            }
+            if (ready.isEmpty()) return@update state
+
+            val newMonsters = ready.mapNotNull {
+                MonsterSpawner().spawnSlimes(
+                    world     = state.world,
+                    count     = 1,
+                    isBlocked = { x, y -> isBlocked(x, y, state.world) }
+                ).firstOrNull()?.copy(id = nextMonsterId++)
+            }
+
+            state.copy(
+                monsters        = state.monsters + newMonsters,
+                pendingRespawns = waiting
+            )
         }
     }
 
