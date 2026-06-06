@@ -353,8 +353,22 @@ data class Projectile(
     val speed: Float,
     val damage: Int,
     val traveledDistance: Float = 0f,
-    val maxTravelDistance: Float = 300f  // attackRange * 1.5f
+    val maxTravelDistance: Float = 300f,  // attackRange * 1.5f
+    val targetMonsterId: Int = -1         // 중복 타겟 방지용
 )
+```
+
+### 투사체 중복 타겟 방지
+
+비행 중인 투사체가 이미 타겟하고 있는 몬스터는 다음 공격 사이클에서 타겟 제외.
+
+```kotlin
+// autoAttackTick
+val lockedIds = state.projectiles.map { it.targetMonsterId }.toSet()
+autoAttackService.tick(..., lockedMonsterIds = lockedIds)
+
+// AutoAttackService.findTarget
+.filter { it.id !in lockedIds && 거리 <= 공격범위 }
 ```
 
 ### ProjectileService
@@ -587,6 +601,7 @@ PORTAL_COOLDOWN        = 2000ms
 | 69 | 에너지볼트 방향 반전 수정 (angleDeg + 180f) | ✅ |
 | 70 | PC 방향키/WASD 이동 지원 — dispatchKeyEvent ACTION_DOWN마다 movePlayer 직접 호출 | ✅ |
 | 71 | 슬라임 HP 1 (빠른 테스트용) | ✅ |
+| 72 | 투사체 중복 타겟 방지 — 비행 중 투사체의 타겟 몬스터는 다음 공격에서 제외 (lockedMonsterIds) | ✅ |
 
 ---
 

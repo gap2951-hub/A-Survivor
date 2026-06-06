@@ -10,5 +10,6 @@ data class Projectile(
     val speed: Float,
     val damage: Int,
     val traveledDistance: Float = 0f,
-    val maxTravelDistance: Float = 300f
+    val maxTravelDistance: Float = 300f,
+    val targetMonsterId: Int = -1
 )

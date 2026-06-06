@@ -21,9 +21,10 @@ class AutoAttackService {
         monsters: List<Monster>,
         derivedStats: DerivedStats,
         attackRange: Float,
-        nextProjectileId: Int
+        nextProjectileId: Int,
+        lockedMonsterIds: Set<Int> = emptySet()
     ): AutoAttackResult {
-        val target = findTarget(player, monsters, attackRange)
+        val target = findTarget(player, monsters, attackRange, lockedMonsterIds)
             ?: return AutoAttackResult(monsters, targetId = null, damage = 0)
 
         // 명중 판정: accuracy / (accuracy + monster.avoidability)
@@ -59,7 +60,8 @@ class AutoAttackService {
                     targetY           = target.positionY,
                     speed             = player.job.projectileSpeed(),
                     damage            = damage,
-                    maxTravelDistance = attackRange * 1.5f
+                    maxTravelDistance = attackRange * 1.5f,
+                    targetMonsterId   = target.id
                 )
             )
         } else {
@@ -81,9 +83,9 @@ class AutoAttackService {
         }
     }
 
-    private fun findTarget(player: Player, monsters: List<Monster>, attackRange: Float): Monster? =
+    private fun findTarget(player: Player, monsters: List<Monster>, attackRange: Float, lockedIds: Set<Int>): Monster? =
         monsters
-            .filter { it.distanceTo(player.positionX, player.positionY) <= attackRange }
+            .filter { it.id !in lockedIds && it.distanceTo(player.positionX, player.positionY) <= attackRange }
             .minByOrNull { it.distanceTo(player.positionX, player.positionY) }
 }
 

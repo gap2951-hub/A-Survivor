@@ -294,13 +294,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun autoAttackTick() {
         _uiState.update { state ->
+            val lockedIds = state.projectiles.map { it.targetMonsterId }.toSet()
             val result = autoAttackService.tick(
                 player           = state.player,
                 equipment        = state.equipment,
                 monsters         = state.monsters,
                 derivedStats     = state.derivedStats,
                 attackRange      = state.player.job.attackRange(),
-                nextProjectileId = nextProjectileId
+                nextProjectileId = nextProjectileId,
+                lockedMonsterIds = lockedIds
             )
 
             val now = System.currentTimeMillis()
@@ -391,7 +393,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { state ->
             if (state.projectiles.isEmpty()) return@update state
 
-            val now       = System.currentTimeMillis()
+            val now        = System.currentTimeMillis()
             val projResult = projectileService.tick(state.projectiles, state.monsters)
             if (projResult.hitEvents.isEmpty()) {
                 return@update state.copy(projectiles = projResult.updatedProjectiles)
