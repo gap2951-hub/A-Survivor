@@ -1033,6 +1033,7 @@ private fun GameCanvas(
 ) {
     val context = LocalContext.current
     val mapBitmap       = remember { loadBitmap(context, R.drawable.map_beginner, 2048) }
+    val slimeBitmap     = remember { loadBitmap(context, R.drawable.slime, 256) }
     val scroll100Bitmap = remember { loadBitmap(context, R.drawable.scroll_100, 256) }
     val scroll60Bitmap  = remember { loadBitmap(context, R.drawable.scroll_60,  256) }
     val scroll10Bitmap  = remember { loadBitmap(context, R.drawable.scroll_10,  256) }
@@ -1046,7 +1047,7 @@ private fun GameCanvas(
         drawWorldBackground(cam, world, mapBitmap)
         groundItems.forEach { drawGroundItem(it, cam, scroll100Bitmap, scroll60Bitmap, scroll10Bitmap, gloveBitmap) }
         drawAttackRange(player, cam)
-        monsters.forEach { drawMonster(it, cam) }
+        monsters.forEach { drawMonster(it, cam, slimeBitmap) }
         drawPlayer(player, cam)
     }
 }
@@ -1144,30 +1145,33 @@ private fun DrawScope.drawPlayer(player: Player, cam: CameraState) {
         center = Offset(c.x - r * 0.2f, c.y - r * 0.2f))
 }
 
-private fun DrawScope.drawMonster(monster: Monster, cam: CameraState) {
-    val c = cam.toScreenOffset(monster.positionX, monster.positionY, size.width, size.height)
-    val r = 12f * cam.zoom
+private fun DrawScope.drawMonster(monster: Monster, cam: CameraState, slimeBitmap: ImageBitmap) {
+    val c       = cam.toScreenOffset(monster.positionX, monster.positionY, size.width, size.height)
+    val imgSize = (48f * cam.zoom).toInt().coerceAtLeast(12)
 
     // 그림자
-    drawCircle(Color.Black.copy(alpha = 0.35f), radius = r * 1.15f,
-        center = Offset(c.x, c.y + r * 0.4f))
-    // 몸통
-    drawCircle(Color(0xFF44BB44), radius = r, center = c)
-    // 테두리
-    drawCircle(Color(0xFF88EE88), radius = r, center = c, style = Stroke(width = 1.5f))
-    // 눈
-    val eo = r * 0.32f
-    val ey = c.y - r * 0.15f
-    drawCircle(Color.White,            radius = r * 0.24f, center = Offset(c.x - eo, ey))
-    drawCircle(Color.White,            radius = r * 0.24f, center = Offset(c.x + eo, ey))
-    drawCircle(Color(0xFF224422), radius = r * 0.12f, center = Offset(c.x - eo, ey))
-    drawCircle(Color(0xFF224422), radius = r * 0.12f, center = Offset(c.x + eo, ey))
+    drawCircle(
+        Color.Black.copy(alpha = 0.3f),
+        radius = imgSize * 0.35f,
+        center = Offset(c.x, c.y + imgSize * 0.3f)
+    )
+
+    // 슬라임 이미지
+    drawImage(
+        image         = slimeBitmap,
+        dstOffset     = androidx.compose.ui.unit.IntOffset(
+            (c.x - imgSize / 2).toInt(),
+            (c.y - imgSize / 2).toInt()
+        ),
+        dstSize       = IntSize(imgSize, imgSize),
+        filterQuality = androidx.compose.ui.graphics.FilterQuality.High
+    )
 
     // HP 바
-    val barW = r * 3f
+    val barW = imgSize * 1.2f
     val barH = 4f * cam.zoom
     val barX = c.x - barW / 2f
-    val barY = c.y - r - 8f * cam.zoom
+    val barY = c.y - imgSize * 0.6f - 6f * cam.zoom
     val frac = (monster.hp.toFloat() / monster.maxHp).coerceIn(0f, 1f)
     drawRect(Color(0xFF661111), topLeft = Offset(barX, barY), size = Size(barW, barH))
     if (frac > 0f) drawRect(Color(0xFF44BB00),
