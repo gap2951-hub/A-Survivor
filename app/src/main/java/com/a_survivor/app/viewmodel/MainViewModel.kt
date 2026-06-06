@@ -14,6 +14,7 @@ import com.a_survivor.app.model.Equipment
 import com.a_survivor.app.model.GameWorld
 import com.a_survivor.app.model.GroundItem
 import com.a_survivor.app.model.Monster
+import com.a_survivor.app.model.MonsterState
 import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
@@ -24,6 +25,7 @@ import com.a_survivor.app.service.AutoAttackService
 import com.a_survivor.app.service.DropService
 import com.a_survivor.app.service.EnhancementService
 import com.a_survivor.app.service.LevelService
+import com.a_survivor.app.service.MonsterAiService
 import com.a_survivor.app.service.MonsterSpawner
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,6 +55,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val service           = EnhancementService()
     private val autoAttackService = AutoAttackService()
+    private val monsterAiService  = MonsterAiService()
     private val levelService      = LevelService()
     private val dropService       = DropService()
 
@@ -70,9 +73,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val MOVE_SPEED           = 3f
         private const val AUTO_ATTACK_INTERVAL = 1000L
+        private const val AI_TICK_INTERVAL     = 16L
         private const val PICKUP_RANGE         = 50f
         private const val COLLISION_RADIUS     = 22f
-        private const val LUMINANCE_THRESHOLD  = 130f  // 이 값 미만 = 나무/풀숲
+        private const val LUMINANCE_THRESHOLD  = 130f
     }
 
     init {
@@ -80,6 +84,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             while (true) {
                 delay(AUTO_ATTACK_INTERVAL)
                 autoAttackTick()
+            }
+        }
+        viewModelScope.launch {
+            while (true) {
+                delay(AI_TICK_INTERVAL)
+                monsterAiTick()
             }
         }
     }
@@ -174,7 +184,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 monsters  = state.monsters
             )
 
-            val gainedExp    = result.killedMonsters.sumOf { it.expReward }
+            // 피격 몬스터가 IDLE이면 AGGRO로 전환
+            val killedIds = result.killedMonsters.map { it.id }.toSet()
+            val monstersWithAggro = result.updatedMonsters.map { m ->
+                if (m.id == result.targetId && m.id !in killedIds && m.state == MonsterState.IDLE)
+                    m.copy(state = MonsterState.AGGRO)
+                else m
+            }
+
+            val gainedExp     = result.killedMonsters.sumOf { it.expReward }
             val updatedPlayer = if (gainedExp > 0)
                 levelService.applyExp(state.player, gainedExp)
             else
@@ -198,12 +216,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             var newState = state.copy(
-                monsters    = result.updatedMonsters,
+                monsters    = monstersWithAggro,
                 player      = updatedPlayer,
                 groundItems = state.groundItems + newGroundItems
             )
             newState = checkPickup(newState)
             newState
+        }
+    }
+
+    private fun monsterAiTick() {
+        _uiState.update { state ->
+            val aiResult = monsterAiService.tick(
+                monsters    = state.monsters,
+                player      = state.player,
+                currentTime = System.currentTimeMillis(),
+                world       = state.world,
+                isBlocked   = { x, y -> isBlocked(x, y, state.world) }
+            )
+            val newHp = (state.player.hp - aiResult.playerDamage).coerceAtLeast(0)
+            state.copy(
+                monsters = aiResult.updatedMonsters,
+                player   = state.player.copy(hp = newHp)
+            )
         }
     }
 

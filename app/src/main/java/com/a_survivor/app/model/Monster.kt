@@ -12,7 +12,10 @@ data class Monster(
 
     val speed: Float,
 
-    val expReward: Int
+    val expReward: Int,
+
+    val state: MonsterState = MonsterState.IDLE,
+    val lastAttackTime: Long = 0L
 )
 
 fun Monster.distanceTo(x: Float, y: Float): Float {

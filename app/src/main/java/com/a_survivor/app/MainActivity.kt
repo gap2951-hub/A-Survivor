@@ -80,6 +80,7 @@ import com.a_survivor.app.model.Equipment
 import com.a_survivor.app.model.GameWorld
 import com.a_survivor.app.model.GroundItem
 import com.a_survivor.app.model.Monster
+import com.a_survivor.app.model.MonsterState
 import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.PlayerJob
 import com.a_survivor.app.model.ScrollCatalog
@@ -1168,14 +1169,35 @@ private fun DrawScope.drawMonster(monster: Monster, cam: CameraState, slimeBitma
     )
 
     // HP 바
+    val isAggro = monster.state != MonsterState.IDLE
     val barW = imgSize * 1.2f
     val barH = 4f * cam.zoom
     val barX = c.x - barW / 2f
     val barY = c.y - imgSize * 0.6f - 6f * cam.zoom
     val frac = (monster.hp.toFloat() / monster.maxHp).coerceIn(0f, 1f)
     drawRect(Color(0xFF661111), topLeft = Offset(barX, barY), size = Size(barW, barH))
-    if (frac > 0f) drawRect(Color(0xFF44BB00),
-        topLeft = Offset(barX, barY), size = Size(barW * frac, barH))
+    if (frac > 0f) drawRect(
+        if (isAggro) Color(0xFFFF6600) else Color(0xFF44BB00),
+        topLeft = Offset(barX, barY), size = Size(barW * frac, barH)
+    )
+
+    // 어그로 상태 "!" 표시
+    if (isAggro) {
+        val aggroPaint = android.graphics.Paint().apply {
+            color       = android.graphics.Color.RED
+            textSize    = 16f * cam.zoom
+            textAlign   = android.graphics.Paint.Align.CENTER
+            isFakeBoldText = true
+            isAntiAlias = true
+            setShadowLayer(3f, 0f, 1f, android.graphics.Color.BLACK)
+        }
+        drawContext.canvas.nativeCanvas.drawText(
+            "!",
+            c.x,
+            barY - 4f * cam.zoom,
+            aggroPaint
+        )
+    }
 }
 
 // ── 상단 HUD ─────────────────────────────────────────────────────────────────
