@@ -22,11 +22,13 @@ import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.PlayerJob
 import com.a_survivor.app.model.Portal
 import com.a_survivor.app.model.PortalRegistry
+import com.a_survivor.app.model.Projectile
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
 import com.a_survivor.app.model.StatType
 import com.a_survivor.app.model.SlimeDropTable
 import com.a_survivor.app.model.Weapon
+import com.a_survivor.app.model.attackRange
 import com.a_survivor.app.service.AutoAttackService
 import com.a_survivor.app.service.DerivedStatsCalculator
 import com.a_survivor.app.service.DropService
@@ -34,6 +36,7 @@ import com.a_survivor.app.service.EnhancementService
 import com.a_survivor.app.service.LevelService
 import com.a_survivor.app.service.MonsterAiService
 import com.a_survivor.app.service.MonsterSpawner
+import com.a_survivor.app.service.ProjectileService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -63,49 +66,52 @@ data class UiState(
     val portals: List<Portal> = PortalRegistry.portalsFor(MapType.BEGINNER_FIELD),
     val lastTeleportAt: Long = 0L,
     val derivedStats: DerivedStats = DerivedStats(),
-    val jobAdvancementPending: Boolean = false
+    val jobAdvancementPending: Boolean = false,
+    val projectiles: List<Projectile> = emptyList()
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val service                  = EnhancementService()
-    private val autoAttackService        = AutoAttackService()
-    private val monsterAiService         = MonsterAiService()
-    private val levelService             = LevelService()
-    private val dropService              = DropService()
-    private val derivedStatsCalculator   = DerivedStatsCalculator()
+    private val service                = EnhancementService()
+    private val autoAttackService      = AutoAttackService()
+    private val monsterAiService       = MonsterAiService()
+    private val levelService           = LevelService()
+    private val dropService            = DropService()
+    private val derivedStatsCalculator = DerivedStatsCalculator()
+    private val projectileService      = ProjectileService()
 
-    private var nextGroundItemId = 0
+    private var nextGroundItemId    = 0
+    private var nextProjectileId    = 0
 
     // 충돌 판정용 저해상도 비트맵 (원본 1/4 크기)
     private val collisionBitmap: Bitmap? by lazy {
         val opts = BitmapFactory.Options().apply {
-            inSampleSize       = 4
-            inPreferredConfig  = Bitmap.Config.ARGB_8888
+            inSampleSize      = 4
+            inPreferredConfig = Bitmap.Config.ARGB_8888
         }
         BitmapFactory.decodeResource(application.resources, R.drawable.map_beginner, opts)
     }
     private val townCollisionBitmap: Bitmap? by lazy {
         val opts = BitmapFactory.Options().apply {
-            inSampleSize       = 4
-            inPreferredConfig  = Bitmap.Config.ARGB_8888
+            inSampleSize      = 4
+            inPreferredConfig = Bitmap.Config.ARGB_8888
         }
         BitmapFactory.decodeResource(application.resources, R.drawable.map_town, opts)
     }
 
     companion object {
-        private const val MOVE_SPEED             = 2f
-        private const val AUTO_ATTACK_INTERVAL   = 1000L
-        private const val AI_TICK_INTERVAL       = 16L
-        private const val RESPAWN_DELAY            = 5000L
-        private const val RESPAWN_CHECK_INTERVAL  = 1000L
-        private const val DAMAGE_NUMBER_DURATION  = 800L
-        private const val PICKUP_RANGE            = 50f
-        private const val PICKUP_DELAY            = 1500L  // 드랍 후 1.5초 뒤부터 픽업 가능
-        private const val COLLISION_RADIUS       = 10f
-        private const val LUMINANCE_THRESHOLD    = 80f
-        private const val PORTAL_RANGE           = 30f
-        private const val PORTAL_COOLDOWN        = 2000L
+        private const val MOVE_SPEED            = 2f
+        private const val AUTO_ATTACK_INTERVAL  = 1000L
+        private const val AI_TICK_INTERVAL      = 16L
+        private const val RESPAWN_DELAY         = 5000L
+        private const val RESPAWN_CHECK_INTERVAL = 1000L
+        private const val DAMAGE_NUMBER_DURATION = 800L
+        private const val PICKUP_RANGE          = 50f
+        private const val PICKUP_DELAY          = 1500L
+        private const val COLLISION_RADIUS      = 10f
+        private const val LUMINANCE_THRESHOLD   = 80f
+        private const val PORTAL_RANGE          = 30f
+        private const val PORTAL_COOLDOWN       = 2000L
     }
 
     init {
@@ -123,6 +129,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             while (true) {
+                delay(AI_TICK_INTERVAL)
+                projectileTick()
+            }
+        }
+        viewModelScope.launch {
+            while (true) {
                 delay(RESPAWN_CHECK_INTERVAL)
                 respawnTick()
             }
@@ -135,25 +147,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var nextMonsterId      = (_uiState.value.monsters.maxOfOrNull { it.id } ?: 0) + 1
     private var nextDamageNumberId = 0
 
-    fun startGame() {
-        _uiState.value = createInitialState()
+    fun startGame(job: PlayerJob = PlayerJob.BEGINNER) {
+        _uiState.value = createInitialState(job)
     }
 
     fun advanceJob(job: PlayerJob) {
         _uiState.update { state ->
-            computeDerived(
-                state.copy(
-                    player = state.player.copy(job = job),
-                    jobAdvancementPending = false
-                )
+            val beginnerBase   = PlayerJob.BEGINNER.initialStats()
+            val currentStats   = state.player.stats
+            val investedPoints = (currentStats.str + currentStats.dex + currentStats.`int` + currentStats.luk) -
+                (beginnerBase.str + beginnerBase.dex + beginnerBase.`int` + beginnerBase.luk)
+
+            val updatedPlayer = state.player.copy(
+                job                = job,
+                stats              = job.initialStats(),
+                availableStatPoint = state.player.availableStatPoint + investedPoints.coerceAtLeast(0)
             )
+            computeDerived(state.copy(
+                player                = updatedPlayer,
+                jobAdvancementPending = false
+            ))
         }
     }
 
     private fun computeDerived(state: UiState): UiState =
-        state.copy(
-            derivedStats = derivedStatsCalculator.calculate(state.player, state.equipment)
-        )
+        state.copy(derivedStats = derivedStatsCalculator.calculate(state.player, state.equipment))
 
     private fun createInitialState(job: PlayerJob = PlayerJob.BEGINNER): UiState {
         val initialPlayer = Player(job = job, stats = job.initialStats())
@@ -189,7 +207,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ── 충돌 판정 ──────────────────────────────────────────────────────────────
 
-    /** 플레이어 반경 내 5개 지점 중 하나라도 막혀 있으면 true */
     private fun isBlocked(worldX: Float, worldY: Float, world: GameWorld): Boolean {
         val r = COLLISION_RADIUS
         return listOf(
@@ -233,7 +250,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val rawY = p.positionY + dirY * MOVE_SPEED
             val (clampedX, clampedY) = world.clampPosition(rawX, rawY)
 
-            // 벽 슬라이딩: X / Y 축 독립 판정
             val newX = if (!isBlocked(clampedX, p.positionY, world)) clampedX else p.positionX
             val newY = if (!isBlocked(newX,     clampedY,    world)) clampedY else p.positionY
 
@@ -269,7 +285,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             groundItems     = emptyList(),
             pendingRespawns = emptyList(),
             portals         = PortalRegistry.portalsFor(portal.targetMap),
-            lastTeleportAt  = now
+            lastTeleportAt  = now,
+            projectiles     = emptyList()
         )
     }
 
@@ -278,13 +295,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun autoAttackTick() {
         _uiState.update { state ->
             val result = autoAttackService.tick(
-                player       = state.player,
-                equipment    = state.equipment,
-                monsters     = state.monsters,
-                derivedStats = state.derivedStats
+                player           = state.player,
+                equipment        = state.equipment,
+                monsters         = state.monsters,
+                derivedStats     = state.derivedStats,
+                attackRange      = state.player.job.attackRange(),
+                nextProjectileId = nextProjectileId
             )
 
-            // 피격 몬스터가 IDLE이면 AGGRO로 전환
+            val now = System.currentTimeMillis()
+
+            if (result.newProjectile != null) {
+                // 원거리 공격: 투사체 생성, 즉시 데미지 없음
+                nextProjectileId++
+                return@update state.copy(
+                    projectiles = state.projectiles + result.newProjectile
+                )
+            }
+
+            // 명중 실패
+            if (result.isMiss) {
+                val targetMonster = state.monsters.find { it.id == result.targetId }
+                val missNum = targetMonster?.let {
+                    DamageNumber(
+                        nextDamageNumberId++, 0,
+                        it.positionX, it.positionY, now,
+                        isPlayerDamage = false, isMiss = true
+                    )
+                }
+                return@update state.copy(
+                    damageNumbers = state.damageNumbers + listOfNotNull(missNum)
+                )
+            }
+
+            // 근접 공격 히트
             val killedIds = result.killedMonsters.map { it.id }.toSet()
             val monstersWithAggro = result.updatedMonsters.map { m ->
                 if (m.id == result.targetId && m.id !in killedIds && m.state == MonsterState.IDLE)
@@ -293,51 +337,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val gainedExp     = result.killedMonsters.sumOf { it.expReward }
-            val updatedPlayer = if (gainedExp > 0)
-                levelService.applyExp(state.player, gainedExp)
-            else
-                state.player
+            val updatedPlayer = if (gainedExp > 0) levelService.applyExp(state.player, gainedExp) else state.player
 
-            val now            = System.currentTimeMillis()
             val newGroundItems = mutableListOf<GroundItem>()
             result.killedMonsters.forEach { monster ->
                 val drops = dropService.roll(SlimeDropTable.entries)
                 drops.forEachIndexed { index, drop ->
                     val angle  = index * (Math.PI * 2.0 / drops.size.coerceAtLeast(1)).toFloat()
                     val spread = if (drops.size > 1) 20f else 0f
-                    newGroundItems.add(
-                        GroundItem(
-                            id        = nextGroundItemId++,
-                            positionX = monster.positionX + cos(angle) * spread,
-                            positionY = monster.positionY + sin(angle) * spread,
-                            dropItem  = drop,
-                            droppedAt = now
-                        )
-                    )
+                    newGroundItems.add(GroundItem(
+                        id        = nextGroundItemId++,
+                        positionX = monster.positionX + cos(angle) * spread,
+                        positionY = monster.positionY + sin(angle) * spread,
+                        dropItem  = drop,
+                        droppedAt = now
+                    ))
                 }
             }
 
             val newPending = result.killedMonsters.map { PendingRespawn(it.id, now) }
 
-            // 공격 데미지/MISS 숫자
             val targetMonster = state.monsters.find { it.id == result.targetId }
-            val attackDmgNum  = if (targetMonster != null) {
-                when {
-                    result.isMiss  -> DamageNumber(
-                        nextDamageNumberId++, 0,
-                        targetMonster.positionX, targetMonster.positionY, now,
-                        isPlayerDamage = false, isMiss = true
-                    )
-                    result.damage > 0 -> DamageNumber(
-                        nextDamageNumberId++, result.damage,
-                        targetMonster.positionX, targetMonster.positionY, now,
-                        isPlayerDamage = false
-                    )
-                    else -> null
-                }
+            val attackDmgNum  = if (targetMonster != null && result.damage > 0) {
+                DamageNumber(
+                    nextDamageNumberId++, result.damage,
+                    targetMonster.positionX, targetMonster.positionY, now,
+                    isPlayerDamage = false
+                )
             } else null
 
-            // 레벨 3 도달 시 전직 팝업 트리거
             val advancePending = state.jobAdvancementPending || (
                 gainedExp > 0 &&
                 updatedPlayer.job == PlayerJob.BEGINNER &&
@@ -357,14 +385,88 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ── 투사체 틱 ──────────────────────────────────────────────────────────────
+
+    private fun projectileTick() {
+        _uiState.update { state ->
+            if (state.projectiles.isEmpty()) return@update state
+
+            val now       = System.currentTimeMillis()
+            val projResult = projectileService.tick(state.projectiles, state.monsters)
+            if (projResult.hitEvents.isEmpty()) {
+                return@update state.copy(projectiles = projResult.updatedProjectiles)
+            }
+
+            val damageByMonster = projResult.hitEvents.groupBy { it.monsterId }
+            val killed          = mutableListOf<Monster>()
+            val hitIds          = projResult.hitEvents.map { it.monsterId }.toSet()
+
+            val updatedMonsters = state.monsters.mapNotNull { monster ->
+                val totalDamage = damageByMonster[monster.id]?.sumOf { it.damage } ?: 0
+                if (totalDamage == 0) return@mapNotNull monster
+                val newHp = monster.hp - totalDamage
+                if (newHp <= 0) { killed.add(monster); null }
+                else monster.copy(hp = newHp)
+            }.map { m ->
+                if (m.id in hitIds && m.state == MonsterState.IDLE) m.copy(state = MonsterState.AGGRO) else m
+            }
+
+            val newDmgNums = projResult.hitEvents.mapNotNull { event ->
+                val monster = state.monsters.find { it.id == event.monsterId } ?: return@mapNotNull null
+                DamageNumber(
+                    nextDamageNumberId++, event.damage,
+                    monster.positionX, monster.positionY, now,
+                    isPlayerDamage = false
+                )
+            }
+
+            val gainedExp     = killed.sumOf { it.expReward }
+            val updatedPlayer = if (gainedExp > 0) levelService.applyExp(state.player, gainedExp) else state.player
+
+            val newGroundItems = mutableListOf<GroundItem>()
+            killed.forEach { monster ->
+                val drops = dropService.roll(SlimeDropTable.entries)
+                drops.forEachIndexed { index, drop ->
+                    val angle  = index * (Math.PI * 2.0 / drops.size.coerceAtLeast(1)).toFloat()
+                    val spread = if (drops.size > 1) 20f else 0f
+                    newGroundItems.add(GroundItem(
+                        id        = nextGroundItemId++,
+                        positionX = monster.positionX + cos(angle) * spread,
+                        positionY = monster.positionY + sin(angle) * spread,
+                        dropItem  = drop,
+                        droppedAt = now
+                    ))
+                }
+            }
+
+            val newPending = killed.map { PendingRespawn(it.id, now) }
+
+            val advancePending = state.jobAdvancementPending || (
+                gainedExp > 0 &&
+                updatedPlayer.job == PlayerJob.BEGINNER &&
+                updatedPlayer.level >= 3 &&
+                state.player.level < 3
+            )
+
+            val newState = state.copy(
+                projectiles           = projResult.updatedProjectiles,
+                monsters              = updatedMonsters,
+                player                = updatedPlayer,
+                groundItems           = state.groundItems + newGroundItems,
+                pendingRespawns       = state.pendingRespawns + newPending,
+                damageNumbers         = state.damageNumbers + newDmgNums,
+                jobAdvancementPending = advancePending
+            )
+            if (gainedExp > 0) computeDerived(newState) else newState
+        }
+    }
+
     // ── 몬스터 리스폰 틱 ───────────────────────────────────────────────────────
 
     private fun respawnTick() {
         _uiState.update { state ->
             val now = System.currentTimeMillis()
-            val (ready, waiting) = state.pendingRespawns.partition {
-                now - it.diedAt >= RESPAWN_DELAY
-            }
+            val (ready, waiting) = state.pendingRespawns.partition { now - it.diedAt >= RESPAWN_DELAY }
             if (ready.isEmpty()) return@update state
 
             val newMonsters = ready.mapNotNull {
@@ -374,11 +476,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isBlocked = { x, y -> isBlocked(x, y, state.world) }
                 ).firstOrNull()?.copy(id = nextMonsterId++)
             }
-
-            state.copy(
-                monsters        = state.monsters + newMonsters,
-                pendingRespawns = waiting
-            )
+            state.copy(monsters = state.monsters + newMonsters, pendingRespawns = waiting)
         }
     }
 
@@ -395,7 +493,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             val newHp = (state.player.hp - aiResult.playerDamage).coerceAtLeast(0)
 
-            // 피격 또는 회피 숫자 생성
             val playerDmgNum = when {
                 aiResult.playerDamage > 0 -> DamageNumber(
                     nextDamageNumberId++, aiResult.playerDamage,
@@ -410,9 +507,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 else -> null
             }
 
-            // 만료된 데미지 숫자 정리
-            val activeDmgNums = state.damageNumbers
-                .filter { now - it.createdAt < DAMAGE_NUMBER_DURATION }
+            val activeDmgNums = state.damageNumbers.filter { now - it.createdAt < DAMAGE_NUMBER_DURATION }
 
             val newState = state.copy(
                 monsters      = aiResult.updatedMonsters,
@@ -486,28 +581,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun unequipEquipment() {
-        _uiState.update { s ->
-            computeDerived(s.copy(equipment = null, selectedScrollType = null, lastResult = null))
-        }
+        _uiState.update { s -> computeDerived(s.copy(equipment = null, selectedScrollType = null, lastResult = null)) }
     }
 
     fun resetEquipment() {
         _uiState.update { s ->
-            computeDerived(
-                s.copy(
-                    equipment = Equipment(
-                        name = "노가다 목장갑",
-                        attackPower = 0,
-                        maxUpgradeCount = 5,
-                        remainingUpgradeCount = 5,
-                        failedUpgradeCount = 0,
-                        destroyed = false,
-                        description = "노동을 위해 만들어진 낡은 장갑이다.\n강화하면 공격력이 오를 것 같다."
-                    ),
-                    selectedScrollType = null,
-                    lastResult = null
-                )
-            )
+            computeDerived(s.copy(
+                equipment = Equipment(
+                    name = "노가다 목장갑",
+                    attackPower = 0,
+                    maxUpgradeCount = 5,
+                    remainingUpgradeCount = 5,
+                    failedUpgradeCount = 0,
+                    destroyed = false,
+                    description = "노동을 위해 만들어진 낡은 장갑이다.\n강화하면 공격력이 오를 것 같다."
+                ),
+                selectedScrollType = null,
+                lastResult = null
+            ))
         }
     }
 
@@ -521,13 +612,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 StatType.INT -> player.stats.copy(`int` = player.stats.`int` + 1)
                 StatType.LUK -> player.stats.copy(luk = player.stats.luk + 1)
             }
-            val updated = state.copy(
-                player = player.copy(
-                    stats              = newStats,
-                    availableStatPoint = player.availableStatPoint - 1
-                )
-            )
-            computeDerived(updated)
+            computeDerived(state.copy(
+                player = player.copy(stats = newStats, availableStatPoint = player.availableStatPoint - 1)
+            ))
         }
     }
 

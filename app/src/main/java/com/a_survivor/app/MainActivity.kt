@@ -96,8 +96,8 @@ import com.a_survivor.app.model.Portal
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
 import com.a_survivor.app.model.StatType
+import com.a_survivor.app.model.attackRange
 import com.a_survivor.app.model.Weapon
-import com.a_survivor.app.service.AutoAttackService
 import com.a_survivor.app.viewmodel.InventoryItem
 import com.a_survivor.app.viewmodel.MainViewModel
 import com.a_survivor.app.viewmodel.UiState
@@ -164,14 +164,11 @@ class MainActivity : ComponentActivity() {
 
             when (currentScreen) {
                 AppScreen.Title -> TitleScreen(
-                    onStart = {
-                        vm.startGame()
-                        currentScreen = AppScreen.Game
-                    }
+                    onStart = { currentScreen = AppScreen.JobSelect }
                 )
                 AppScreen.JobSelect -> JobSelectScreen(
                     onConfirm = { job ->
-                        vm.startGame()
+                        vm.startGame(job)
                         currentScreen = AppScreen.Game
                     },
                     onBack = { currentScreen = AppScreen.Title }
@@ -263,7 +260,8 @@ fun MainScreen(
             world         = state.world,
             groundItems   = state.groundItems,
             damageNumbers = state.damageNumbers,
-            portals       = state.portals
+            portals       = state.portals,
+            projectiles   = state.projectiles
         )
 
         // ② 상단 HUD
@@ -1132,6 +1130,7 @@ private fun GameCanvas(
     groundItems: List<GroundItem>,
     damageNumbers: List<DamageNumber>,
     portals: List<Portal>,
+    projectiles: List<com.a_survivor.app.model.Projectile> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1155,6 +1154,7 @@ private fun GameCanvas(
         portals.forEach { drawPortal(it, cam) }
         drawAttackRange(player, cam)
         monsters.forEach { drawMonster(it, cam, slimeBitmap) }
+        projectiles.forEach { drawProjectile(it, cam) }
         drawPlayer(player, cam)
         damageNumbers.forEach { drawDamageNumber(it, cam) }
     }
@@ -1260,10 +1260,44 @@ private fun DrawScope.drawPortal(portal: Portal, cam: CameraState) {
 
 private fun DrawScope.drawAttackRange(player: Player, cam: CameraState) {
     val center = cam.toScreenOffset(player.positionX, player.positionY, size.width, size.height)
-    val r = AutoAttackService.ATTACK_RANGE * cam.zoom
+    val r = player.job.attackRange() * cam.zoom
     drawCircle(Color.White.copy(alpha = 0.05f), radius = r, center = center)
     drawCircle(Color.White.copy(alpha = 0.12f), radius = r, center = center,
         style = Stroke(width = 1f))
+}
+
+private fun DrawScope.drawProjectile(proj: com.a_survivor.app.model.Projectile, cam: CameraState) {
+    val c  = cam.toScreenOffset(proj.positionX, proj.positionY, size.width, size.height)
+    val sp = size.height / 1080f
+
+    when (proj.type) {
+        com.a_survivor.app.model.ProjectileType.ENERGY_BOLT -> {
+            drawCircle(Color(0xFF4488FF).copy(alpha = 0.5f), radius = 10f * sp, center = c)
+            drawCircle(Color(0xFF88CCFF), radius = 5f * sp, center = c)
+        }
+        com.a_survivor.app.model.ProjectileType.ARROW -> {
+            val dx  = proj.targetX - proj.positionX
+            val dy  = proj.targetY - proj.positionY
+            val len = kotlin.math.sqrt(dx * dx + dy * dy).coerceAtLeast(1f)
+            val nx  = dx / len
+            val ny  = dy / len
+            drawLine(
+                color       = Color(0xFFAA7744),
+                start       = Offset(c.x - nx * 14f * sp, c.y - ny * 14f * sp),
+                end         = c,
+                strokeWidth = 2.5f * sp
+            )
+        }
+        com.a_survivor.app.model.ProjectileType.THROWING_STAR -> {
+            drawCircle(Color(0xFFCCCCCC), radius = 5f * sp, center = c)
+            drawCircle(Color(0xFF888888).copy(alpha = 0.5f), radius = 8f * sp, center = c,
+                style = Stroke(width = 1f * sp))
+        }
+        com.a_survivor.app.model.ProjectileType.BULLET -> {
+            drawCircle(Color(0xFF555555), radius = 4f * sp, center = c)
+            drawCircle(Color(0xFFAAAAAA), radius = 2f * sp, center = c)
+        }
+    }
 }
 
 private fun DrawScope.drawPlayer(player: Player, cam: CameraState) {
