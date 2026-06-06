@@ -83,6 +83,7 @@ import androidx.activity.compose.BackHandler
 import com.a_survivor.app.model.CameraState
 import com.a_survivor.app.model.DamageNumber
 import com.a_survivor.app.model.DerivedStats
+import com.a_survivor.app.model.DialogueSession
 import com.a_survivor.app.model.DropItem
 import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
@@ -91,9 +92,12 @@ import com.a_survivor.app.model.GroundItem
 import com.a_survivor.app.model.MapType
 import com.a_survivor.app.model.Monster
 import com.a_survivor.app.model.MonsterState
+import com.a_survivor.app.model.Npc
 import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.PlayerJob
 import com.a_survivor.app.model.Portal
+import com.a_survivor.app.model.QuestState
+import com.a_survivor.app.model.QuestStatus
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
 import com.a_survivor.app.model.StatType
@@ -202,17 +206,21 @@ class MainActivity : ComponentActivity() {
                     onBack = { currentScreen = AppScreen.Title }
                 )
                 AppScreen.Game -> MainScreen(
-                    state             = state,
-                    onScrollSelected  = vm::selectScroll,
-                    onEnhance         = vm::useSelectedScroll,
-                    onUnequip         = vm::unequipEquipment,
-                    onReset           = vm::resetEquipment,
-                    onUnequipWeapon   = vm::unequipWeapon,
-                    onResetWeapon     = vm::resetWeapon,
-                    onMovePlayer      = vm::movePlayer,
-                    onAllocateStat    = vm::allocateStat,
-                    onAdvanceJob      = vm::advanceJob,
-                    onClearResult     = vm::clearLastResult
+                    state               = state,
+                    onScrollSelected    = vm::selectScroll,
+                    onEnhance           = vm::useSelectedScroll,
+                    onUnequip           = vm::unequipEquipment,
+                    onReset             = vm::resetEquipment,
+                    onUnequipWeapon     = vm::unequipWeapon,
+                    onResetWeapon       = vm::resetWeapon,
+                    onMovePlayer        = vm::movePlayer,
+                    onAllocateStat      = vm::allocateStat,
+                    onAdvanceJob        = vm::advanceJob,
+                    onClearResult       = vm::clearLastResult,
+                    onTalkToNpc         = vm::startDialogue,
+                    onNextDialoguePage  = vm::nextDialoguePage,
+                    onChooseOption      = vm::chooseDialogueOption,
+                    onCloseDialogue     = vm::closeDialogue
                 )
             }
         }
@@ -232,7 +240,11 @@ fun MainScreen(
     onMovePlayer: (Float, Float) -> Unit,
     onAllocateStat: (StatType) -> Unit,
     onAdvanceJob: (PlayerJob) -> Unit = {},
-    onClearResult: () -> Unit = {}
+    onClearResult: () -> Unit = {},
+    onTalkToNpc: (Int) -> Unit = {},
+    onNextDialoguePage: () -> Unit = {},
+    onChooseOption: (Int) -> Unit = {},
+    onCloseDialogue: () -> Unit = {}
 ) {
     val dragState        = remember { DragDropState() }
     var isEquipmentOpen  by remember { mutableStateOf(false) }
@@ -292,7 +304,8 @@ fun MainScreen(
             groundItems   = state.groundItems,
             damageNumbers = state.damageNumbers,
             portals       = state.portals,
-            projectiles   = state.projectiles
+            projectiles   = state.projectiles,
+            npcs          = state.npcs
         )
 
         // ② 상단 HUD
@@ -423,6 +436,44 @@ fun MainScreen(
         // ⑨ 전직 팝업
         if (state.jobAdvancementPending) {
             JobAdvancementDialog(onAdvance = onAdvanceJob)
+        }
+
+        // ⑩ NPC 근접 감지 및 [대화하기] 버튼
+        val nearbyNpc = state.npcs.firstOrNull { npc ->
+            val dx = state.player.positionX - npc.worldX
+            val dy = state.player.positionY - npc.worldY
+            kotlin.math.sqrt(dx * dx + dy * dy) <= npc.interactRange
+        }
+        if (nearbyNpc != null && state.activeDialogue == null) {
+            Button(
+                onClick = { onTalkToNpc(nearbyNpc.id) },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B6914)),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 120.dp)
+            ) {
+                Text("대화하기", color = Color.White, fontSize = 14.sp)
+            }
+        }
+
+        // ⑪ 대화창
+        state.activeDialogue?.let { dlg ->
+            DialogueWindow(
+                session = dlg,
+                onNext = onNextDialoguePage,
+                onChoose = onChooseOption,
+                onClose = onCloseDialogue
+            )
+        }
+
+        // ⑫ 퀘스트 트래커
+        if (state.questState.status == QuestStatus.IN_PROGRESS || state.questState.status == QuestStatus.READY_TO_COMPLETE) {
+            QuestTrackerPanel(
+                questState = state.questState,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 12.dp, top = 80.dp)
+            )
         }
     }
 }
@@ -1170,6 +1221,7 @@ private fun GameCanvas(
     damageNumbers: List<DamageNumber>,
     portals: List<Portal>,
     projectiles: List<com.a_survivor.app.model.Projectile> = emptyList(),
+    npcs: List<Npc> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1184,6 +1236,7 @@ private fun GameCanvas(
     val energyBolt2       = remember { loadBitmap(context, R.drawable.energy_bolt_2, 128) }
     val energyBolt3       = remember { loadBitmap(context, R.drawable.energy_bolt_3, 128) }
     val energyBoltFrames  = remember { listOf(energyBolt1, energyBolt2, energyBolt3) }
+    val npcChuchu         = remember { loadBitmap(context, R.drawable.npc_chuchu, 128) }
 
     Canvas(modifier = modifier.fillMaxSize()) {
         val zoom = maxOf(size.width / world.width, size.height / world.height)
@@ -1195,6 +1248,7 @@ private fun GameCanvas(
         drawWorldBackground(cam, world, currentMapBitmap)
         groundItems.forEach { drawGroundItem(it, cam, scroll100Bitmap, scroll60Bitmap, scroll10Bitmap, gloveBitmap) }
         portals.forEach { drawPortal(it, cam) }
+        npcs.forEach { drawNpc(it, cam, npcChuchu) }
         drawAttackRange(player, cam)
         monsters.forEach { drawMonster(it, cam, slimeBitmap) }
         projectiles.forEach { drawProjectile(it, cam, energyBoltFrames) }
@@ -2481,5 +2535,157 @@ private fun JobAdvancementDialog(onAdvance: (PlayerJob) -> Unit) {
                 }
             }
         }
+    }
+}
+
+// ── NPC 렌더링 ────────────────────────────────────────────────────────────────
+private fun DrawScope.drawNpc(npc: Npc, cam: CameraState, bitmap: ImageBitmap?) {
+    val c = cam.toScreenOffset(npc.worldX, npc.worldY, size.width, size.height)
+    val imgSize = (size.height * 0.10f).toInt().coerceAtLeast(32)
+    // 이미지
+    if (bitmap != null) {
+        drawImage(
+            image = bitmap,
+            dstOffset = IntOffset((c.x - imgSize / 2).toInt(), (c.y - imgSize).toInt()),
+            dstSize = IntSize(imgSize, imgSize),
+            filterQuality = androidx.compose.ui.graphics.FilterQuality.High
+        )
+    } else {
+        drawCircle(Color(0xFFFFCC44), radius = imgSize / 2f, center = Offset(c.x, c.y - imgSize / 2f))
+    }
+    // 이름 텍스트
+    drawContext.canvas.nativeCanvas.drawText(
+        npc.name,
+        c.x,
+        c.y - imgSize - 4f,
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = size.height * 0.018f
+            textAlign = android.graphics.Paint.Align.CENTER
+            setShadowLayer(3f, 0f, 1f, android.graphics.Color.BLACK)
+        }
+    )
+}
+
+// ── 대화창 ────────────────────────────────────────────────────────────────────
+@Composable
+private fun DialogueWindow(
+    session: DialogueSession,
+    onNext: () -> Unit,
+    onChoose: (Int) -> Unit,
+    onClose: () -> Unit
+) {
+    val page = session.currentPage
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(20f),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 16.dp)
+                .background(Color(0xEE1A1008), RoundedCornerShape(12.dp))
+                .border(1.dp, Color(0xFF8B6914), RoundedCornerShape(12.dp))
+                .padding(16.dp)
+        ) {
+            // 화자 이름
+            Text(
+                text = page.speaker,
+                color = Color(0xFFFFDF7E),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            // 대화 텍스트
+            Text(
+                text = page.text,
+                color = Color.White,
+                fontSize = 13.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp)
+            )
+            // 버튼
+            if (page.choices.isEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    if (session.isLastPage) {
+                        Button(
+                            onClick = onClose,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B6914))
+                        ) { Text("닫기", color = Color.White, fontSize = 12.sp) }
+                    } else {
+                        Button(
+                            onClick = onNext,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B6914))
+                        ) { Text("다음 ▶", color = Color.White, fontSize = 12.sp) }
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+                ) {
+                    page.choices.forEachIndexed { i, choice ->
+                        Button(
+                            onClick = { onChoose(i) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (i == 0) Color(0xFF8B6914) else Color(0xFF3A2A14)
+                            )
+                        ) { Text(choice, color = Color.White, fontSize = 12.sp) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── 퀘스트 트래커 ─────────────────────────────────────────────────────────────
+@Composable
+private fun QuestTrackerPanel(questState: QuestState, modifier: Modifier = Modifier) {
+    val isReady = questState.status == QuestStatus.READY_TO_COMPLETE
+    Column(
+        modifier = modifier
+            .background(Color(0xCC1A1008), RoundedCornerShape(6.dp))
+            .border(1.dp, if (isReady) Color(0xFFFFDF7E) else Color(0xFF4A3010), RoundedCornerShape(6.dp))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Text(
+            text = if (isReady) "★ 완료 가능" else "▶ 진행 중",
+            color = if (isReady) Color(0xFFFFDF7E) else Color(0xFF9A7D52),
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = "슬라임 소탕 작전",
+            color = Color.White,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold
+        )
+        val fraction = (questState.slimeKillCount.toFloat() / questState.slimeKillGoal).coerceIn(0f, 1f)
+        Box(
+            modifier = Modifier
+                .width(120.dp)
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color(0xFF3A2A14))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(fraction)
+                    .background(if (isReady) Color(0xFFFFDF7E) else Color(0xFFCC8800))
+            )
+        }
+        Text(
+            text = "슬라임 처치  ${questState.slimeKillCount} / ${questState.slimeKillGoal}",
+            color = Color(0xFF9A7D52),
+            fontSize = 10.sp
+        )
     }
 }

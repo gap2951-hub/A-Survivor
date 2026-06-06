@@ -10,6 +10,8 @@ import com.a_survivor.app.model.DamageNumber
 import com.a_survivor.app.model.DefaultWeapon
 import com.a_survivor.app.model.DefaultWorld
 import com.a_survivor.app.model.DerivedStats
+import com.a_survivor.app.model.DialoguePage
+import com.a_survivor.app.model.DialogueSession
 import com.a_survivor.app.model.DropItem
 import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
@@ -18,11 +20,15 @@ import com.a_survivor.app.model.GroundItem
 import com.a_survivor.app.model.MapType
 import com.a_survivor.app.model.Monster
 import com.a_survivor.app.model.MonsterState
+import com.a_survivor.app.model.Npc
+import com.a_survivor.app.model.NpcRegistry
 import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.PlayerJob
 import com.a_survivor.app.model.Portal
 import com.a_survivor.app.model.PortalRegistry
 import com.a_survivor.app.model.Projectile
+import com.a_survivor.app.model.QuestState
+import com.a_survivor.app.model.QuestStatus
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
 import com.a_survivor.app.model.StatType
@@ -67,7 +73,10 @@ data class UiState(
     val lastTeleportAt: Long = 0L,
     val derivedStats: DerivedStats = DerivedStats(),
     val jobAdvancementPending: Boolean = false,
-    val projectiles: List<Projectile> = emptyList()
+    val projectiles: List<Projectile> = emptyList(),
+    val npcs: List<Npc> = emptyList(),
+    val questState: QuestState = QuestState(),
+    val activeDialogue: DialogueSession? = null
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -286,7 +295,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             pendingRespawns = emptyList(),
             portals         = PortalRegistry.portalsFor(portal.targetMap),
             lastTeleportAt  = now,
-            projectiles     = emptyList()
+            projectiles     = emptyList(),
+            npcs            = NpcRegistry.npcsFor(portal.targetMap)
         )
     }
 
@@ -375,13 +385,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 state.player.level < 3
             )
 
+            // 퀘스트 킬 카운트
+            val questKillAdd = if (state.questState.status == QuestStatus.IN_PROGRESS) result.killedMonsters.size else 0
+            val newKillCount = (state.questState.slimeKillCount + questKillAdd)
+            val newQuestStatus = if (state.questState.status == QuestStatus.IN_PROGRESS && newKillCount >= state.questState.slimeKillGoal)
+                QuestStatus.READY_TO_COMPLETE else state.questState.status
+            val newQuestState = state.questState.copy(
+                slimeKillCount = newKillCount.coerceAtMost(state.questState.slimeKillGoal),
+                status = newQuestStatus
+            )
+
             val finalState = state.copy(
                 monsters              = monstersWithAggro,
                 player                = updatedPlayer,
                 groundItems           = state.groundItems + newGroundItems,
                 pendingRespawns       = state.pendingRespawns + newPending,
                 damageNumbers         = state.damageNumbers + listOfNotNull(attackDmgNum),
-                jobAdvancementPending = advancePending
+                jobAdvancementPending = advancePending,
+                questState            = newQuestState
             )
             if (gainedExp > 0) computeDerived(finalState) else finalState
         }
@@ -450,6 +471,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 state.player.level < 3
             )
 
+            // 퀘스트 킬 카운트 (투사체)
+            val questKillAddProj = if (state.questState.status == QuestStatus.IN_PROGRESS) killed.size else 0
+            val newKillCountProj = (state.questState.slimeKillCount + questKillAddProj)
+            val newQuestStatusProj = if (state.questState.status == QuestStatus.IN_PROGRESS && newKillCountProj >= state.questState.slimeKillGoal)
+                QuestStatus.READY_TO_COMPLETE else state.questState.status
+            val newQuestStateProj = state.questState.copy(
+                slimeKillCount = newKillCountProj.coerceAtMost(state.questState.slimeKillGoal),
+                status = newQuestStatusProj
+            )
+
             val newState = state.copy(
                 projectiles           = projResult.updatedProjectiles,
                 monsters              = updatedMonsters,
@@ -457,7 +488,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 groundItems           = state.groundItems + newGroundItems,
                 pendingRespawns       = state.pendingRespawns + newPending,
                 damageNumbers         = state.damageNumbers + newDmgNums,
-                jobAdvancementPending = advancePending
+                jobAdvancementPending = advancePending,
+                questState            = newQuestStateProj
             )
             if (gainedExp > 0) computeDerived(newState) else newState
         }
@@ -626,4 +658,89 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun unequipWeapon() { _uiState.update { computeDerived(it.copy(weapon = null)) } }
     fun resetWeapon()   { _uiState.update { computeDerived(it.copy(weapon = DefaultWeapon)) } }
+
+    // ── NPC 대화 / 퀘스트 ─────────────────────────────────────────────────────
+
+    fun startDialogue(npcId: Int) {
+        _uiState.update { state ->
+            val pages = buildDialoguePages(state.questState)
+            state.copy(activeDialogue = DialogueSession(pages = pages))
+        }
+    }
+
+    fun nextDialoguePage() {
+        _uiState.update { state ->
+            val dlg = state.activeDialogue ?: return@update state
+            if (dlg.currentPage.choices.isNotEmpty()) return@update state
+            if (dlg.isLastPage) state.copy(activeDialogue = null)
+            else state.copy(activeDialogue = dlg.copy(currentIndex = dlg.currentIndex + 1))
+        }
+    }
+
+    fun chooseDialogueOption(index: Int) {
+        _uiState.update { state ->
+            val dlg = state.activeDialogue ?: return@update state
+            val quest = state.questState
+            when {
+                quest.status == QuestStatus.NOT_STARTED -> if (index == 0) {
+                    // 수락
+                    val newPages = listOf(
+                        DialoguePage("츄츄", "정말 감사합니다!\n마을 밖 초보자 사냥터에 있는 슬라임들을 조금만 정리해 주세요."),
+                        DialoguePage("츄츄", "슬라임 5마리를 처치하면 다시 저를 찾아와 주세요.")
+                    )
+                    state.copy(
+                        questState = quest.copy(status = QuestStatus.IN_PROGRESS),
+                        activeDialogue = DialogueSession(pages = newPages)
+                    )
+                } else {
+                    // 거절
+                    val newPages = listOf(
+                        DialoguePage("츄츄", "그렇군요...\n혹시 마음이 바뀌면 다시 말을 걸어주세요.")
+                    )
+                    state.copy(activeDialogue = DialogueSession(pages = newPages))
+                }
+                quest.status == QuestStatus.READY_TO_COMPLETE -> {
+                    // 보상 받기
+                    val rewarded = levelService.applyExp(state.player, 50)
+                    val newInventory = state.inventory.map { item ->
+                        if (item.scrollType == ScrollType.GLOVE_ATK_100) item.copy(quantity = item.quantity + 1)
+                        else item
+                    }
+                    computeDerived(state.copy(
+                        player = rewarded,
+                        inventory = newInventory,
+                        questState = quest.copy(status = QuestStatus.COMPLETED),
+                        activeDialogue = null
+                    ))
+                }
+                else -> state.copy(activeDialogue = null)
+            }
+        }
+    }
+
+    fun closeDialogue() {
+        _uiState.update { it.copy(activeDialogue = null) }
+    }
+
+    private fun buildDialoguePages(quest: QuestState): List<DialoguePage> = when (quest.status) {
+        QuestStatus.NOT_STARTED -> listOf(
+            DialoguePage("츄츄", "안녕하세요!\n혹시 모험가이신가요?"),
+            DialoguePage("츄츄", "요즘 마을 주변이 이상해졌어요.\n원래는 슬라임이 이렇게 많지 않았는데 최근 들어 개체 수가 갑자기 늘어났어요."),
+            DialoguePage("츄츄", "주민들이 밭을 관리하러 나가지도 못하고 있어요.\n슬라임들이 농작물을 망가뜨리고 길까지 막고 있거든요."),
+            DialoguePage("츄츄", "저는 싸울 줄 몰라서 어떻게 할 수가 없어요.\n혹시 저를 도와주실 수 있나요?",
+                choices = listOf("도와준다", "거절한다"))
+        )
+        QuestStatus.IN_PROGRESS -> listOf(
+            DialoguePage("츄츄", "슬라임들이 아직 남아있어요. 힘내주세요!\n(${quest.slimeKillCount} / ${quest.slimeKillGoal})")
+        )
+        QuestStatus.READY_TO_COMPLETE -> listOf(
+            DialoguePage("츄츄", "정말 해내셨군요!"),
+            DialoguePage("츄츄", "주민들이 다시 밭으로 나갈 수 있게 되었어요."),
+            DialoguePage("츄츄", "모두가 모험가님 덕분이라며 감사하고 있어요."),
+            DialoguePage("츄츄", "이건 작은 감사의 표시예요.", choices = listOf("보상 받기"))
+        )
+        QuestStatus.COMPLETED -> listOf(
+            DialoguePage("츄츄", "덕분에 평화로워졌어요.\n정말 감사합니다!")
+        )
+    }
 }
