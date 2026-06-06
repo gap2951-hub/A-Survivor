@@ -1,9 +1,9 @@
-# 메이플스토리 강화 시뮬레이터 HandOff
+# A-Survivor HandOff
 
 ## 프로젝트 개요
 
-메이플스토리의 주문서 강화 시스템을 참고한 강화 시뮬레이터.
-서버/DB/로그인 없이 Android 단일 화면에서 강화 로직을 테스트하는 프로토타입.
+메이플스토리 스타일의 픽셀아트 사냥터를 배경으로 한 안드로이드 생존형 게임.
+주문서 강화 시스템, 몬스터 AI, 픽셀 충돌 등 핵심 시스템 구현 완료.
 
 - **패키지명:** `com.a_survivor.app`
 - **언어:** Kotlin + Jetpack Compose
@@ -25,7 +25,8 @@ com.a_survivor.app/
 │   ├── PlayerStats.kt            (+ StatType enum)
 │   ├── Weapon.kt                 (+ DefaultWeapon)
 │   ├── GameWorld.kt              (1144×2048)
-│   ├── Monster.kt                (+ slime() + distanceTo())
+│   ├── Monster.kt                (+ slime() + distanceTo() + MonsterState)
+│   ├── MonsterState.kt           (IDLE / AGGRO / ATTACKING)
 │   ├── CameraState.kt            (좌표 변환 / 추적)
 │   ├── DropTable.kt              (DropItem + SlimeDropTable)
 │   └── GroundItem.kt             (바닥 드랍 아이템)
@@ -34,13 +35,14 @@ com.a_survivor.app/
 │   ├── CombatStatCalculator.kt
 │   ├── MonsterSpawner.kt         (isBlocked 람다 파라미터)
 │   ├── AutoAttackService.kt      (ATTACK_RANGE = 120f)
+│   ├── MonsterAiService.kt       (추적 / 공격 / 어그로 해제)
 │   ├── LevelService.kt
 │   └── DropService.kt
 ├── viewmodel/
-│   └── MainViewModel.kt          (AndroidViewModel — 충돌 비트맵 보유)
+│   └── MainViewModel.kt          (AndroidViewModel — 충돌 비트맵 + AI 틱 루프)
 └── res/drawable/
     ├── map_beginner.jpg           ← 초보자 사냥터 맵 배경
-    ├── slime.png                  ← 슬라임 몬스터 이미지 (※ 흰색 배경 제거 필요)
+    ├── slime.png                  ← 슬라임 몬스터 이미지
     ├── nogada_glove.png
     ├── nogada_sword.png
     ├── scroll_100.png
@@ -76,7 +78,7 @@ Box (게임 화면)
 | 1 | `drawWorldBackground` — `map_beginner.jpg` 이미지를 월드 전체에 렌더링 |
 | 2 | `drawGroundItem` × N — 바닥 드랍 아이템 (글로우 → 이미지 → 이름 텍스트) |
 | 3 | `drawAttackRange` — 공격 범위 원 (반투명 흰색, r=120) |
-| 4 | `drawMonster` × N — 그림자 → 슬라임 이미지(96f×zoom) → HP 바 |
+| 4 | `drawMonster` × N — 그림자 → 슬라임 이미지(96f×zoom) → HP 바 → 어그로 "!" |
 | 5 | `drawPlayer` — 그림자 → 몸통 → 테두리 → 하이라이트 |
 
 ### 시각 사양
@@ -84,9 +86,9 @@ Box (게임 화면)
 | 대상 | 표현 방식 | 크기 |
 |------|-----------|------|
 | 플레이어 | 주황 원 `#FFAA33` | 25f × zoom |
-| 슬라임 | PNG 이미지 (slime.png) | 96f × zoom |
-| HP 바 | 빨강/초록 rect | 몬스터 이미지 위 자동 위치 |
-| 바닥 아이템 | PNG 이미지 | 52f × zoom |
+| 슬라임 (IDLE) | PNG 이미지 + 초록 HP 바 | 96f × zoom |
+| 슬라임 (AGGRO/ATTACKING) | PNG 이미지 + 주황 HP 바 + 빨간 "!" | 96f × zoom |
+| 바닥 아이템 | PNG 이미지 + 이름 텍스트 | 52f × zoom |
 
 ### 카메라
 
@@ -120,7 +122,7 @@ CameraState()
 ### 픽셀 충돌 시스템 (MainViewModel)
 
 ```kotlin
-// AndroidViewModel로 변경 — application.resources로 비트맵 로드
+// AndroidViewModel — application.resources로 1/4 해상도 충돌 비트맵 로드
 private val collisionBitmap: Bitmap? by lazy {
     BitmapFactory.decodeResource(application.resources, R.drawable.map_beginner,
         BitmapFactory.Options().apply { inSampleSize = 4; inPreferredConfig = ARGB_8888 })
@@ -131,7 +133,8 @@ private val collisionBitmap: Bitmap? by lazy {
   - 루미넌스 = 0.299R + 0.587G + 0.114B
 - `isBlocked(worldX, worldY, world)`: 중심 + 상하좌우 22f 지점 5곳 중 하나라도 막히면 true
 - `movePlayer`: X/Y 축 독립 판정 → 벽 슬라이딩 구현
-- `MonsterSpawner.spawnSlimes(isBlocked = { x, y -> isBlocked(x, y, DefaultWorld) })` → 나무 위 스폰 방지
+- `MonsterSpawner.spawnSlimes(isBlocked = ...)` → 나무 위 스폰 방지
+- `MonsterAiService.tick(isBlocked = ...)` → 몬스터도 나무 통과 불가
 
 ---
 
@@ -185,6 +188,38 @@ private val collisionBitmap: Bitmap? by lazy {
 | 데미지 | CombatStatCalculator (최소 1) |
 
 `AutoAttackResult`: `updatedMonsters`, `targetId`, `damage`, `killedMonsters`
+
+---
+
+## 몬스터 AI 시스템 (MonsterAiService)
+
+### MonsterState
+
+| 상태 | 설명 |
+|------|------|
+| IDLE | 기본 상태 — 아무 행동 없음 |
+| AGGRO | 플레이어 추적 중 |
+| ATTACKING | 공격 범위 내 공격 중 |
+
+### 상태 전환 규칙
+
+- **IDLE → AGGRO**: 플레이어 자동 공격에 피격 시
+- **AGGRO → ATTACKING**: 플레이어와 거리 ≤ 35f
+- **ATTACKING → AGGRO**: 플레이어와 거리 > 35f
+- **AGGRO/ATTACKING → IDLE**: 플레이어와 거리 > 500f (어그로 해제)
+
+### AI 수치
+
+| 항목 | 값 |
+|------|-----|
+| 몬스터 이동 속도 | 1.2f / tick |
+| AI 틱 간격 | 16ms |
+| 공격 범위 | 35f |
+| 공격 주기 | 1000ms |
+| 공격 데미지 | 5 |
+| 어그로 해제 범위 | 500f |
+
+- 몬스터 이동 시 `isBlocked()` 동일 적용 (나무/풀숲 통과 불가, 벽 슬라이딩)
 
 ---
 
@@ -250,52 +285,20 @@ data class GroundItem(
 
 ---
 
-## 몬스터 AI 시스템 (MonsterAiService)
-
-### MonsterState
-
-| 상태 | 설명 |
-|------|------|
-| IDLE | 기본 상태 — 아무 행동 없음 |
-| AGGRO | 플레이어 추적 중 |
-| ATTACKING | 공격 범위 내 공격 중 |
-
-### 상태 전환 규칙
-
-- **IDLE → AGGRO**: 플레이어 자동 공격에 피격 시
-- **AGGRO → ATTACKING**: 플레이어와 거리 ≤ 35f
-- **ATTACKING → AGGRO**: 플레이어와 거리 > 35f
-- **AGGRO/ATTACKING → IDLE**: 플레이어와 거리 > 500f (어그로 해제)
-
-### AI 수치
-
-| 항목 | 값 |
-|------|-----|
-| 몬스터 이동 속도 | 1.2f / tick |
-| AI 틱 간격 | 16ms |
-| 공격 범위 | 35f |
-| 공격 주기 | 1000ms |
-| 공격 데미지 | 5 |
-| 어그로 해제 범위 | 500f |
-
-- 몬스터 이동 시 `isBlocked()` 동일 적용 (나무/풀숲 통과 불가)
-- 벽 슬라이딩 X/Y 축 독립 판정
-
-### 시각 표시
-
-- IDLE: 초록 HP 바
-- AGGRO / ATTACKING: 주황 HP 바 + 머리 위 빨간 "!" 텍스트
-
----
-
 ## MainViewModel — UiState
 
 ```kotlin
 UiState(equipment, weapon, inventory, selectedScrollType, lastResult,
         player, world, monsters, groundItems)
-MOVE_SPEED = 3f / AUTO_ATTACK_INTERVAL = 1000ms / PICKUP_RANGE = 50f
-COLLISION_RADIUS = 22f / LUMINANCE_THRESHOLD = 130f
-init → 자동 공격 루프 + 슬라임 5마리 초기 스폰 (isBlocked 적용)
+
+MOVE_SPEED = 3f
+AUTO_ATTACK_INTERVAL = 1000ms
+AI_TICK_INTERVAL = 16ms
+PICKUP_RANGE = 50f
+COLLISION_RADIUS = 22f
+LUMINANCE_THRESHOLD = 130f
+
+init → 자동 공격 루프(1s) + 몬스터 AI 루프(16ms) + 슬라임 5마리 초기 스폰
 ```
 
 ---
