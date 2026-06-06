@@ -83,10 +83,12 @@ import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
 import com.a_survivor.app.model.GameWorld
 import com.a_survivor.app.model.GroundItem
+import com.a_survivor.app.model.MapType
 import com.a_survivor.app.model.Monster
 import com.a_survivor.app.model.MonsterState
 import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.PlayerJob
+import com.a_survivor.app.model.Portal
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
 import com.a_survivor.app.model.StatType
@@ -212,7 +214,8 @@ fun MainScreen(
             monsters      = state.monsters,
             world         = state.world,
             groundItems   = state.groundItems,
-            damageNumbers = state.damageNumbers
+            damageNumbers = state.damageNumbers,
+            portals       = state.portals
         )
 
         // ② 상단 HUD
@@ -1044,10 +1047,12 @@ private fun GameCanvas(
     world: GameWorld,
     groundItems: List<GroundItem>,
     damageNumbers: List<DamageNumber>,
+    portals: List<Portal>,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val mapBitmap       = remember { loadBitmap(context, R.drawable.map_beginner, 2048) }
+    val townBitmap      = remember { loadBitmap(context, R.drawable.map_town, 2048) }
     val slimeBitmap     = remember { loadBitmap(context, R.drawable.slime, 256) }
     val scroll100Bitmap = remember { loadBitmap(context, R.drawable.scroll_100, 256) }
     val scroll60Bitmap  = remember { loadBitmap(context, R.drawable.scroll_60,  256) }
@@ -1055,14 +1060,15 @@ private fun GameCanvas(
     val gloveBitmap     = remember { loadBitmap(context, R.drawable.nogada_glove, 256) }
 
     Canvas(modifier = modifier.fillMaxSize()) {
-        // 화면에 맵이 꽉 차도록 줌 자동 계산 (빈 공간 없음)
         val zoom = maxOf(size.width / world.width, size.height / world.height)
         val cam = CameraState(zoom = zoom)
             .followPlayer(player.positionX, player.positionY)
             .clampToWorld(world, size.width, size.height)
 
-        drawWorldBackground(cam, world, mapBitmap)
+        val currentMapBitmap = if (world.mapType == MapType.TOWN) townBitmap else mapBitmap
+        drawWorldBackground(cam, world, currentMapBitmap)
         groundItems.forEach { drawGroundItem(it, cam, scroll100Bitmap, scroll60Bitmap, scroll10Bitmap, gloveBitmap) }
+        portals.forEach { drawPortal(it, cam) }
         drawAttackRange(player, cam)
         monsters.forEach { drawMonster(it, cam, slimeBitmap) }
         drawPlayer(player, cam)
@@ -1138,6 +1144,34 @@ private fun DrawScope.drawGroundItem(
         setShadowLayer(3f, 0f, 1f, android.graphics.Color.BLACK)
     }
     drawContext.canvas.nativeCanvas.drawText(label, pos.x, pos.y + 18f * sp, labelPaint)
+}
+
+private fun DrawScope.drawPortal(portal: Portal, cam: CameraState) {
+    val pos = cam.toScreenOffset(portal.worldX, portal.worldY, size.width, size.height)
+    val sp  = size.height / 1080f
+    val r   = 24f * cam.zoom
+
+    // 다층 글로우
+    drawCircle(Color(0x2266BBFF), radius = r * 2.6f, center = pos)
+    drawCircle(Color(0x4466BBFF), radius = r * 1.8f, center = pos)
+    // 내부 채움
+    drawCircle(Color(0x884499DD), radius = r, center = pos)
+    // 외곽 링
+    drawCircle(Color(0xFFAADDFF), radius = r, center = pos,
+        style = Stroke(width = 2.5f * sp))
+    drawCircle(Color(0x8866AAFF), radius = r * 1.1f, center = pos,
+        style = Stroke(width = 1.5f * sp))
+
+    // 맵 이름 레이블
+    val paint = android.graphics.Paint().apply {
+        color       = android.graphics.Color.parseColor("#AADDFF")
+        textSize    = 15f * sp
+        textAlign   = android.graphics.Paint.Align.CENTER
+        isFakeBoldText = true
+        isAntiAlias = true
+        setShadowLayer(5f, 0f, 2f, android.graphics.Color.BLACK)
+    }
+    drawContext.canvas.nativeCanvas.drawText(portal.label, pos.x, pos.y - r - 8f * sp, paint)
 }
 
 private fun DrawScope.drawAttackRange(player: Player, cam: CameraState) {

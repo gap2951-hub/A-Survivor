@@ -1,8 +1,11 @@
 package com.a_survivor.app.model
 
+enum class MapType { BEGINNER_FIELD, TOWN }
+
 data class GameWorld(
     val width: Float = 1024f,
-    val height: Float = 572f
+    val height: Float = 572f,
+    val mapType: MapType = MapType.BEGINNER_FIELD
 ) {
     /** 주어진 좌표가 월드 범위 안에 있는지 확인 */
     fun contains(x: Float, y: Float): Boolean =
@@ -14,3 +17,4 @@ data class GameWorld(
 }
 
 val DefaultWorld = GameWorld()
+val TownWorld    = GameWorld(mapType = MapType.TOWN)

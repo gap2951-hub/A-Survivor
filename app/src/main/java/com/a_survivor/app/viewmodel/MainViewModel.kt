@@ -14,9 +14,12 @@ import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
 import com.a_survivor.app.model.GameWorld
 import com.a_survivor.app.model.GroundItem
+import com.a_survivor.app.model.MapType
 import com.a_survivor.app.model.Monster
 import com.a_survivor.app.model.MonsterState
 import com.a_survivor.app.model.Player
+import com.a_survivor.app.model.Portal
+import com.a_survivor.app.model.PortalRegistry
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
 import com.a_survivor.app.model.StatType
@@ -53,7 +56,9 @@ data class UiState(
     val monsters: List<Monster> = emptyList(),
     val groundItems: List<GroundItem> = emptyList(),
     val pendingRespawns: List<PendingRespawn> = emptyList(),
-    val damageNumbers: List<DamageNumber> = emptyList()
+    val damageNumbers: List<DamageNumber> = emptyList(),
+    val portals: List<Portal> = PortalRegistry.portalsFor(MapType.BEGINNER_FIELD),
+    val lastTeleportAt: Long = 0L
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -74,6 +79,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         BitmapFactory.decodeResource(application.resources, R.drawable.map_beginner, opts)
     }
+    private val townCollisionBitmap: Bitmap? by lazy {
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize       = 4
+            inPreferredConfig  = Bitmap.Config.ARGB_8888
+        }
+        BitmapFactory.decodeResource(application.resources, R.drawable.map_town, opts)
+    }
 
     companion object {
         private const val MOVE_SPEED             = 2f
@@ -86,6 +98,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val PICKUP_DELAY            = 1500L  // 드랍 후 1.5초 뒤부터 픽업 가능
         private const val COLLISION_RADIUS       = 10f
         private const val LUMINANCE_THRESHOLD    = 80f
+        private const val PORTAL_RANGE           = 30f
+        private const val PORTAL_COOLDOWN        = 2000L
     }
 
     init {
@@ -121,6 +135,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             count      = 5,
             isBlocked  = { x, y -> isBlocked(x, y, DefaultWorld) }
         ),
+        portals = PortalRegistry.portalsFor(MapType.BEGINNER_FIELD),
         weapon = DefaultWeapon,
         equipment = Equipment(
             name = "노가다 목장갑",
@@ -161,7 +176,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun isPixelBlocked(worldX: Float, worldY: Float, world: GameWorld): Boolean {
-        val bmp = collisionBitmap ?: return false
+        val bmp = when (world.mapType) {
+            MapType.TOWN -> townCollisionBitmap
+            else         -> collisionBitmap
+        } ?: return false
         val px = ((worldX / world.width)  * bmp.width ).toInt().coerceIn(0, bmp.width  - 1)
         val py = ((worldY / world.height) * bmp.height).toInt().coerceIn(0, bmp.height - 1)
         val pixel = bmp.getPixel(px, py)
@@ -188,8 +206,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val newY = if (!isBlocked(newX,     clampedY,    world)) clampedY else p.positionY
 
             val moved = state.copy(player = p.copy(positionX = newX, positionY = newY))
-            checkPickup(moved)
+            val afterPickup = checkPickup(moved)
+
+            val now = System.currentTimeMillis()
+            if (now - afterPickup.lastTeleportAt < PORTAL_COOLDOWN) return@update afterPickup
+
+            val nearPortal = afterPickup.portals.firstOrNull { portal ->
+                val dx = newX - portal.worldX
+                val dy = newY - portal.worldY
+                sqrt(dx * dx + dy * dy) <= PORTAL_RANGE
+            }
+            if (nearPortal != null) teleportState(afterPickup, nearPortal, now) else afterPickup
         }
+    }
+
+    private fun teleportState(state: UiState, portal: Portal, now: Long): UiState {
+        val targetWorld = GameWorld(mapType = portal.targetMap)
+        val newMonsters = if (portal.targetMap == MapType.BEGINNER_FIELD)
+            MonsterSpawner().spawnSlimes(
+                world     = targetWorld,
+                count     = 5,
+                isBlocked = { x, y -> isBlocked(x, y, targetWorld) }
+            )
+        else emptyList()
+
+        return state.copy(
+            player          = state.player.copy(positionX = portal.targetX, positionY = portal.targetY),
+            world           = targetWorld,
+            monsters        = newMonsters,
+            groundItems     = emptyList(),
+            pendingRespawns = emptyList(),
+            portals         = PortalRegistry.portalsFor(portal.targetMap),
+            lastTeleportAt  = now
+        )
     }
 
     // ── 자동 공격 틱 ───────────────────────────────────────────────────────────
