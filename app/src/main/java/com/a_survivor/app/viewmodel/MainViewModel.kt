@@ -76,7 +76,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     companion object {
-        private const val MOVE_SPEED             = 3f
+        private const val MOVE_SPEED             = 2f
         private const val AUTO_ATTACK_INTERVAL   = 1000L
         private const val AI_TICK_INTERVAL       = 16L
         private const val RESPAWN_DELAY            = 5000L
@@ -84,7 +84,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val DAMAGE_NUMBER_DURATION  = 800L
         private const val PICKUP_RANGE            = 50f
         private const val PICKUP_DELAY            = 1500L  // 드랍 후 1.5초 뒤부터 픽업 가능
-        private const val COLLISION_RADIUS       = 22f
+        private const val COLLISION_RADIUS       = 10f
         private const val LUMINANCE_THRESHOLD    = 130f
     }
 

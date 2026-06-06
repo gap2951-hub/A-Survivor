@@ -276,6 +276,7 @@ fun MainScreen(
                             onEnhance()
                         }
                     }
+
                 )
             }
         }
@@ -1099,7 +1100,8 @@ private fun DrawScope.drawGroundItem(
     glove: ImageBitmap
 ) {
     val pos      = cam.toScreenOffset(item.positionX, item.positionY, size.width, size.height)
-    val iconSize = (52f * cam.zoom).toInt().coerceAtLeast(12)
+    val iconSize = (size.height * 0.048f).toInt().coerceAtLeast(12)
+    val sp       = size.height / 1080f
 
     // 바닥 글로우
     drawCircle(Color(0x44FFEE44), radius = iconSize * 0.75f, center = pos)
@@ -1130,12 +1132,12 @@ private fun DrawScope.drawGroundItem(
     }
     val labelPaint = android.graphics.Paint().apply {
         color       = android.graphics.Color.parseColor("#FFEE66")
-        textSize    = 14f * cam.zoom
+        textSize    = 14f * sp
         textAlign   = android.graphics.Paint.Align.CENTER
         isAntiAlias = true
         setShadowLayer(3f, 0f, 1f, android.graphics.Color.BLACK)
     }
-    drawContext.canvas.nativeCanvas.drawText(label, pos.x, pos.y + 18f * cam.zoom, labelPaint)
+    drawContext.canvas.nativeCanvas.drawText(label, pos.x, pos.y + 18f * sp, labelPaint)
 }
 
 private fun DrawScope.drawAttackRange(player: Player, cam: CameraState) {
@@ -1148,7 +1150,7 @@ private fun DrawScope.drawAttackRange(player: Player, cam: CameraState) {
 
 private fun DrawScope.drawPlayer(player: Player, cam: CameraState) {
     val c = cam.toScreenOffset(player.positionX, player.positionY, size.width, size.height)
-    val r = 25f * cam.zoom
+    val r = size.height * 0.026f
 
     // 그림자
     drawCircle(Color.Black.copy(alpha = 0.35f), radius = r * 1.15f,
@@ -1164,7 +1166,8 @@ private fun DrawScope.drawPlayer(player: Player, cam: CameraState) {
 
 private fun DrawScope.drawMonster(monster: Monster, cam: CameraState, slimeBitmap: ImageBitmap) {
     val c       = cam.toScreenOffset(monster.positionX, monster.positionY, size.width, size.height)
-    val imgSize = (96f * cam.zoom).toInt().coerceAtLeast(20)
+    val imgSize = (size.height * 0.088f).toInt().coerceAtLeast(20)
+    val sp      = size.height / 1080f
 
     // 그림자
     drawCircle(
@@ -1187,9 +1190,9 @@ private fun DrawScope.drawMonster(monster: Monster, cam: CameraState, slimeBitma
     // HP 바
     val isAggro = monster.state != MonsterState.IDLE
     val barW = imgSize * 1.2f
-    val barH = 4f * cam.zoom
+    val barH = 4f * sp
     val barX = c.x - barW / 2f
-    val barY = c.y - imgSize * 0.6f - 6f * cam.zoom
+    val barY = c.y - imgSize * 0.6f - 6f * sp
     val frac = (monster.hp.toFloat() / monster.maxHp).coerceIn(0f, 1f)
     drawRect(Color(0xFF661111), topLeft = Offset(barX, barY), size = Size(barW, barH))
     if (frac > 0f) drawRect(
@@ -1201,7 +1204,7 @@ private fun DrawScope.drawMonster(monster: Monster, cam: CameraState, slimeBitma
     if (isAggro) {
         val aggroPaint = android.graphics.Paint().apply {
             color       = android.graphics.Color.RED
-            textSize    = 16f * cam.zoom
+            textSize    = 16f * sp
             textAlign   = android.graphics.Paint.Align.CENTER
             isFakeBoldText = true
             isAntiAlias = true
@@ -1210,7 +1213,7 @@ private fun DrawScope.drawMonster(monster: Monster, cam: CameraState, slimeBitma
         drawContext.canvas.nativeCanvas.drawText(
             "!",
             c.x,
-            barY - 4f * cam.zoom,
+            barY - 4f * sp,
             aggroPaint
         )
     }
@@ -1230,7 +1233,7 @@ private fun DrawScope.drawDamageNumber(num: DamageNumber, cam: CameraState) {
                              android.graphics.Color.parseColor("#FF4444")
                          else
                              android.graphics.Color.parseColor("#FFEE00")
-        textSize       = (if (num.isPlayerDamage) 20f else 17f) * cam.zoom
+        textSize       = (if (num.isPlayerDamage) 20f else 17f) * (size.height / 1080f)
         textAlign      = android.graphics.Paint.Align.CENTER
         isFakeBoldText = true
         isAntiAlias    = true
