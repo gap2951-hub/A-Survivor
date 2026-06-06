@@ -27,7 +27,8 @@ com.a_survivor.app/
 │   ├── GameWorld.kt              (1600×1200)
 │   ├── Monster.kt                (+ slime() + distanceTo())
 │   ├── CameraState.kt            (좌표 변환 / 추적)
-│   └── DropTable.kt              (DropItem + SlimeDropTable)
+│   ├── DropTable.kt              (DropItem + SlimeDropTable)
+│   └── GroundItem.kt             (바닥 드랍 아이템)
 ├── service/
 │   ├── EnhancementService.kt
 │   ├── CombatStatCalculator.kt
@@ -39,7 +40,10 @@ com.a_survivor.app/
 │   └── MainViewModel.kt
 └── res/drawable/
     ├── nogada_glove.png
-    └── nogada_sword.png
+    ├── nogada_sword.png
+    ├── scroll_100.png
+    ├── scroll_60.png
+    └── scroll_10.png
 ```
 
 ---
@@ -68,17 +72,19 @@ Box (게임 화면)
 | 레이어 | 내용 |
 |--------|------|
 | 1 | `drawWorldBackground` — 배경(`#080E08`) + 100u 격자 + 월드 경계 |
-| 2 | `drawAttackRange` — 공격 범위 원 (반투명 흰색, r=120) |
-| 3 | `drawMonster` × N — 그림자 → 몸통 → 눈 → HP바 |
-| 4 | `drawPlayer` — 그림자 → 몸통 → 테두리 → 하이라이트 |
+| 2 | `drawGroundItem` × N — 바닥 드랍 아이템 (글로우 → 이미지 → 이름 텍스트) |
+| 3 | `drawAttackRange` — 공격 범위 원 (반투명 흰색, r=120) |
+| 4 | `drawMonster` × N — 그림자 → 몸통 → 눈 → HP바 |
+| 5 | `drawPlayer` — 그림자 → 몸통 → 테두리 → 하이라이트 |
 
 ### 시각 사양
 
 | 대상 | 색 | 반지름 |
 |------|-----|--------|
-| 플레이어 | 주황 `#FFAA33` | 15f × zoom |
+| 플레이어 | 주황 `#FFAA33` | 25f × zoom |
 | 슬라임 | 초록 `#44BB44` | 12f × zoom |
 | HP 바 | 빨강/초록 | 몬스터 위 자동 위치 |
+| 바닥 아이템 | PNG 이미지 | 52f × zoom |
 
 ### 카메라
 
@@ -91,6 +97,11 @@ CameraState()
 - 플레이어 항상 화면 중앙 추적
 - 월드 경계에서 clamp
 
+### 비트맵 로딩
+
+- `loadBitmap(context, resId, maxSize=256)` — `inSampleSize`로 다운샘플링 후 `ARGB_8888` 로드
+- `drawImage(filterQuality = FilterQuality.High)` — 고품질 축소 렌더링
+
 ---
 
 ## 플레이어 시스템
@@ -102,7 +113,7 @@ CameraState()
 | job | WARRIOR |
 | availableStatPoint | 0 |
 | weapon | DefaultWeapon |
-| positionX / positionY | 0f |
+| positionX / positionY | 800f / 600f (월드 중앙) |
 
 ### 직업 및 초기 스탯
 
@@ -146,7 +157,9 @@ CameraState()
 
 ---
 
-## 드랍 시스템 (SlimeDropTable)
+## 드랍 시스템
+
+### SlimeDropTable
 
 | 아이템 | 확률 |
 |--------|------|
@@ -156,7 +169,25 @@ CameraState()
 | 장갑 공격력 10% | 3% |
 | 백의 주문서 1% | 1% |
 
-독립 확률 판정 / ScrollDrop → 인벤 +1 / EquipmentDrop → 빈 슬롯 장착
+### GroundItem (바닥 드랍)
+
+```kotlin
+data class GroundItem(
+    val id: Int,
+    val positionX: Float,
+    val positionY: Float,
+    val dropItem: DropItem
+)
+```
+
+- 몬스터 사망 위치에 스폰, 복수 드랍 시 20f 간격 배치
+- 캔버스에 아이템 이미지(PNG) + 이름 텍스트 렌더링
+- 플레이어가 **PICKUP_RANGE = 50f** 이내 접근 시 자동 습득
+- 픽업 체크: `movePlayer()` + `autoAttackTick()` 양쪽에서 실행
+
+### 인벤토리 초기 수량
+
+주문서 수량 초기값 **0** (사냥으로만 획득)
 
 ---
 
@@ -192,8 +223,8 @@ CameraState()
 
 ```kotlin
 UiState(equipment, weapon, inventory, selectedScrollType, lastResult,
-        player, world, monsters)
-MOVE_SPEED = 3f / AUTO_ATTACK_INTERVAL = 1000ms
+        player, world, monsters, groundItems)
+MOVE_SPEED = 3f / AUTO_ATTACK_INTERVAL = 1000ms / PICKUP_RANGE = 50f
 init → 자동 공격 루프 + 슬라임 5마리 초기 스폰
 ```
 
@@ -221,6 +252,12 @@ init → 자동 공격 루프 + 슬라임 5마리 초기 스폰
 | 16 | DropService + DropTable | ✅ |
 | 17 | StatType + StatWindow + allocateStat | ✅ |
 | 18 | Canvas 렌더링 (플레이어 / 몬스터 / 배경 / 공격 범위) | ✅ |
+| 19 | GroundItem — 바닥 드랍 아이템 스폰 + Canvas 렌더링 | ✅ |
+| 20 | 자동 픽업 시스템 (PICKUP_RANGE = 50f) | ✅ |
+| 21 | 아이템 PNG 이미지 적용 (scroll_100/60/10, nogada_glove) | ✅ |
+| 22 | 플레이어 시작 위치 월드 중앙(800, 600) 설정 | ✅ |
+| 23 | 플레이어(25f) / 아이템(52f) 크기 확대 | ✅ |
+| 24 | 비트맵 다운샘플링 + FilterQuality.High 적용 | ✅ |
 
 ---
 
@@ -234,9 +271,9 @@ init → 자동 공격 루프 + 슬라임 5마리 초기 스폰
 
 - [ ] 몬스터 AI — 플레이어 추적 이동
 - [ ] 전투 피격 시스템 (몬스터 → 플레이어 HP 감소)
+- [ ] 몬스터 리스폰 시스템
 - [ ] 직업 선택 화면
 - [ ] 장비 창고 (슬롯 점유 시 드랍 보관)
 - [ ] 강화 내역 로그
 - [ ] 무기 강화 시스템
 - [ ] 애니메이션 (공격 이펙트, 레벨업 연출)
-- [ ] 몬스터 리스폰 시스템

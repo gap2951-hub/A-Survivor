@@ -8,6 +8,7 @@ import com.a_survivor.app.model.DropItem
 import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
 import com.a_survivor.app.model.GameWorld
+import com.a_survivor.app.model.GroundItem
 import com.a_survivor.app.model.Monster
 import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.ScrollCatalog
@@ -26,6 +27,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 data class InventoryItem(val scrollType: ScrollType, val quantity: Int)
 
@@ -37,7 +41,8 @@ data class UiState(
     val lastResult: EnhancementResult? = null,
     val player: Player = Player(),
     val world: GameWorld = DefaultWorld,
-    val monsters: List<Monster> = emptyList()
+    val monsters: List<Monster> = emptyList(),
+    val groundItems: List<GroundItem> = emptyList()
 )
 
 class MainViewModel : ViewModel() {
@@ -47,9 +52,12 @@ class MainViewModel : ViewModel() {
     private val levelService      = LevelService()
     private val dropService       = DropService()
 
+    private var nextGroundItemId = 0
+
     companion object {
-        private const val MOVE_SPEED          = 3f
+        private const val MOVE_SPEED           = 3f
         private const val AUTO_ATTACK_INTERVAL = 1000L  // ms
+        private const val PICKUP_RANGE         = 50f    // 월드 단위
     }
 
     init {
@@ -77,11 +85,11 @@ class MainViewModel : ViewModel() {
             description = "노동을 위해 만들어진 낡은 장갑이다.\n강화하면 공격력이 오를 것 같다."
         ),
         inventory = listOf(
-            InventoryItem(ScrollType.GLOVE_ATK_100, 10),
-            InventoryItem(ScrollType.GLOVE_ATK_60, 10),
-            InventoryItem(ScrollType.GLOVE_ATK_10, 10),
-            InventoryItem(ScrollType.WHITE_SCROLL_1, 10),
-            InventoryItem(ScrollType.WHITE_SCROLL_3, 10)
+            InventoryItem(ScrollType.GLOVE_ATK_100, 0),
+            InventoryItem(ScrollType.GLOVE_ATK_60, 0),
+            InventoryItem(ScrollType.GLOVE_ATK_10, 0),
+            InventoryItem(ScrollType.WHITE_SCROLL_1, 0),
+            InventoryItem(ScrollType.WHITE_SCROLL_3, 0)
         )
     )
 
@@ -155,18 +163,45 @@ class MainViewModel : ViewModel() {
             else
                 state.player
 
-            // 드랍 처리
-            val drops = result.killedMonsters.flatMap {
-                dropService.roll(SlimeDropTable.entries)
+            // 처치된 몬스터마다 드랍 판정 후 바닥 아이템 생성
+            val newGroundItems = mutableListOf<GroundItem>()
+            result.killedMonsters.forEach { monster ->
+                val drops = dropService.roll(SlimeDropTable.entries)
+                drops.forEachIndexed { index, drop ->
+                    val angle  = index * (Math.PI * 2.0 / drops.size.coerceAtLeast(1)).toFloat()
+                    val spread = if (drops.size > 1) 20f else 0f
+                    newGroundItems.add(
+                        GroundItem(
+                            id        = nextGroundItemId++,
+                            positionX = monster.positionX + cos(angle) * spread,
+                            positionY = monster.positionY + sin(angle) * spread,
+                            dropItem  = drop
+                        )
+                    )
+                }
             }
 
             var newState = state.copy(
-                monsters = result.updatedMonsters,
-                player   = updatedPlayer
+                monsters    = result.updatedMonsters,
+                player      = updatedPlayer,
+                groundItems = state.groundItems + newGroundItems
             )
-            newState = applyDrops(newState, drops)
+            newState = checkPickup(newState)
             newState
         }
+    }
+
+    /** 플레이어가 PICKUP_RANGE 이내의 바닥 아이템을 자동 습득 */
+    private fun checkPickup(state: UiState): UiState {
+        val px = state.player.positionX
+        val py = state.player.positionY
+        val (toPickup, remaining) = state.groundItems.partition { item ->
+            val dx = item.positionX - px
+            val dy = item.positionY - py
+            sqrt(dx * dx + dy * dy) <= PICKUP_RANGE
+        }
+        if (toPickup.isEmpty()) return state
+        return applyDrops(state.copy(groundItems = remaining), toPickup.map { it.dropItem })
     }
 
     private fun applyDrops(state: UiState, drops: List<DropItem>): UiState {
@@ -181,7 +216,6 @@ class MainViewModel : ViewModel() {
                     }
                 )
                 is DropItem.EquipmentDrop -> {
-                    // 장비 슬롯이 비어 있을 때만 장착
                     if (s.equipment == null) s.copy(equipment = drop.equipment) else s
                 }
             }
@@ -214,7 +248,8 @@ class MainViewModel : ViewModel() {
             val rawX = p.positionX + dirX * MOVE_SPEED
             val rawY = p.positionY + dirY * MOVE_SPEED
             val (clampedX, clampedY) = state.world.clampPosition(rawX, rawY)
-            state.copy(player = p.copy(positionX = clampedX, positionY = clampedY))
+            val moved = state.copy(player = p.copy(positionX = clampedX, positionY = clampedY))
+            checkPickup(moved)
         }
     }
 

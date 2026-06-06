@@ -67,10 +67,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntSize
+import com.a_survivor.app.model.CameraState
+import com.a_survivor.app.model.DropItem
 import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
-import com.a_survivor.app.model.CameraState
 import com.a_survivor.app.model.GameWorld
+import com.a_survivor.app.model.GroundItem
 import com.a_survivor.app.model.Monster
 import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.PlayerJob
@@ -188,9 +196,10 @@ fun MainScreen(
     ) {
         // ① 게임 캔버스 렌더링
         GameCanvas(
-            player   = state.player,
-            monsters = state.monsters,
-            world    = state.world
+            player      = state.player,
+            monsters    = state.monsters,
+            world       = state.world,
+            groundItems = state.groundItems
         )
 
         // ② 상단 HUD
@@ -208,6 +217,7 @@ fun MainScreen(
                     .padding(top = 72.dp, start = 16.dp, end = 16.dp)
             )
         }
+
 
         // ④ 장비창 오버레이
         if (isEquipmentOpen) {
@@ -999,20 +1009,41 @@ fun ResultPanel(result: EnhancementResult, modifier: Modifier = Modifier) {
     }
 }
 
+// ── 비트맵 로더 ──────────────────────────────────────────────────────────────
+private fun loadBitmap(context: android.content.Context, resId: Int, maxSize: Int): ImageBitmap {
+    val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeResource(context.resources, resId, opts)
+    val rawMax = maxOf(opts.outWidth, opts.outHeight)
+    opts.inJustDecodeBounds = false
+    opts.inSampleSize = (rawMax / maxSize).coerceAtLeast(1).let { s ->
+        var p = 1; while (p * 2 <= s) p *= 2; p
+    }
+    opts.inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
+    return BitmapFactory.decodeResource(context.resources, resId, opts).asImageBitmap()
+}
+
 // ── 게임 캔버스 ───────────────────────────────────────────────────────────────
 @Composable
 private fun GameCanvas(
     player: Player,
     monsters: List<Monster>,
     world: GameWorld,
+    groundItems: List<GroundItem>,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val scroll100Bitmap = remember { loadBitmap(context, R.drawable.scroll_100, 256) }
+    val scroll60Bitmap  = remember { loadBitmap(context, R.drawable.scroll_60,  256) }
+    val scroll10Bitmap  = remember { loadBitmap(context, R.drawable.scroll_10,  256) }
+    val gloveBitmap     = remember { loadBitmap(context, R.drawable.nogada_glove, 256) }
+
     Canvas(modifier = modifier.fillMaxSize()) {
         val cam = CameraState()
             .followPlayer(player.positionX, player.positionY)
             .clampToWorld(world, size.width, size.height)
 
         drawWorldBackground(cam, world)
+        groundItems.forEach { drawGroundItem(it, cam, scroll100Bitmap, scroll60Bitmap, scroll10Bitmap, gloveBitmap) }
         drawAttackRange(player, cam)
         monsters.forEach { drawMonster(it, cam) }
         drawPlayer(player, cam)
@@ -1054,6 +1085,54 @@ private fun DrawScope.drawWorldBackground(cam: CameraState, world: GameWorld) {
     )
 }
 
+private fun DrawScope.drawGroundItem(
+    item: GroundItem,
+    cam: CameraState,
+    scroll100: ImageBitmap,
+    scroll60: ImageBitmap,
+    scroll10: ImageBitmap,
+    glove: ImageBitmap
+) {
+    val pos      = cam.toScreenOffset(item.positionX, item.positionY, size.width, size.height)
+    val iconSize = (52f * cam.zoom).toInt().coerceAtLeast(12)
+
+    // 바닥 글로우
+    drawCircle(Color(0x44FFEE44), radius = iconSize * 0.75f, center = pos)
+
+    // 아이템 이미지
+    val bitmap = when (val drop = item.dropItem) {
+        is DropItem.ScrollDrop -> when (drop.scrollType) {
+            ScrollType.GLOVE_ATK_100 -> scroll100
+            ScrollType.GLOVE_ATK_60  -> scroll60
+            else                     -> scroll10
+        }
+        is DropItem.EquipmentDrop -> glove
+    }
+    drawImage(
+        image         = bitmap,
+        dstOffset     = androidx.compose.ui.unit.IntOffset(
+            (pos.x - iconSize / 2).toInt(),
+            (pos.y - iconSize).toInt()
+        ),
+        dstSize       = IntSize(iconSize, iconSize),
+        filterQuality = androidx.compose.ui.graphics.FilterQuality.High
+    )
+
+    // 아이템 이름 텍스트
+    val label = when (val drop = item.dropItem) {
+        is DropItem.ScrollDrop    -> ScrollCatalog.get(drop.scrollType).name
+        is DropItem.EquipmentDrop -> drop.equipment.name
+    }
+    val labelPaint = android.graphics.Paint().apply {
+        color       = android.graphics.Color.parseColor("#FFEE66")
+        textSize    = 14f * cam.zoom
+        textAlign   = android.graphics.Paint.Align.CENTER
+        isAntiAlias = true
+        setShadowLayer(3f, 0f, 1f, android.graphics.Color.BLACK)
+    }
+    drawContext.canvas.nativeCanvas.drawText(label, pos.x, pos.y + 18f * cam.zoom, labelPaint)
+}
+
 private fun DrawScope.drawAttackRange(player: Player, cam: CameraState) {
     val center = cam.toScreenOffset(player.positionX, player.positionY, size.width, size.height)
     val r = AutoAttackService.ATTACK_RANGE * cam.zoom
@@ -1064,7 +1143,7 @@ private fun DrawScope.drawAttackRange(player: Player, cam: CameraState) {
 
 private fun DrawScope.drawPlayer(player: Player, cam: CameraState) {
     val c = cam.toScreenOffset(player.positionX, player.positionY, size.width, size.height)
-    val r = 15f * cam.zoom
+    val r = 25f * cam.zoom
 
     // 그림자
     drawCircle(Color.Black.copy(alpha = 0.35f), radius = r * 1.15f,
