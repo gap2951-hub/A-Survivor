@@ -5,7 +5,7 @@ data class Npc(
     val name: String,
     val worldX: Float,
     val worldY: Float,
-    val interactRange: Float = 60f
+    val interactRange: Float = 14f
 )
 
 object NpcRegistry {

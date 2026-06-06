@@ -2541,26 +2541,27 @@ private fun JobAdvancementDialog(onAdvance: (PlayerJob) -> Unit) {
 // ── NPC 렌더링 ────────────────────────────────────────────────────────────────
 private fun DrawScope.drawNpc(npc: Npc, cam: CameraState, bitmap: ImageBitmap?) {
     val c = cam.toScreenOffset(npc.worldX, npc.worldY, size.width, size.height)
-    val imgSize = (size.height * 0.10f).toInt().coerceAtLeast(32)
+    val imgH = (size.height * 0.20f).toInt().coerceAtLeast(64)
+    val imgW = (imgH * 1.6f).toInt()
     // 이미지
     if (bitmap != null) {
         drawImage(
             image = bitmap,
-            dstOffset = IntOffset((c.x - imgSize / 2).toInt(), (c.y - imgSize).toInt()),
-            dstSize = IntSize(imgSize, imgSize),
+            dstOffset = IntOffset((c.x - imgW / 2).toInt(), (c.y - imgH).toInt()),
+            dstSize = IntSize(imgW, imgH),
             filterQuality = androidx.compose.ui.graphics.FilterQuality.High
         )
     } else {
-        drawCircle(Color(0xFFFFCC44), radius = imgSize / 2f, center = Offset(c.x, c.y - imgSize / 2f))
+        drawCircle(Color(0xFFFFCC44), radius = imgH / 2f, center = Offset(c.x, c.y - imgH / 2f))
     }
     // 이름 텍스트
     drawContext.canvas.nativeCanvas.drawText(
         npc.name,
         c.x,
-        c.y - imgSize - 4f,
+        c.y - imgH * 0.15f,
         android.graphics.Paint().apply {
             color = android.graphics.Color.WHITE
-            textSize = size.height * 0.018f
+            textSize = size.height * 0.032f
             textAlign = android.graphics.Paint.Align.CENTER
             setShadowLayer(3f, 0f, 1f, android.graphics.Color.BLACK)
         }

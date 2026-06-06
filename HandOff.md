@@ -3,7 +3,7 @@
 ## 프로젝트 개요
 
 메이플스토리 스타일의 픽셀아트 사냥터를 배경으로 한 안드로이드 생존형 게임.
-주문서 강화 시스템, 몬스터 AI, 픽셀 충돌, 마을/포탈 시스템 구현 완료.
+주문서 강화 시스템, 몬스터 AI, 픽셀 충돌, 마을/포탈 시스템, NPC/퀘스트 시스템 구현 완료.
 
 - **패키지명:** `com.a_survivor.app`
 - **언어:** Kotlin + Jetpack Compose
@@ -35,7 +35,10 @@ com.a_survivor.app/
 │   ├── Portal.kt                 (Portal 모델 + PortalRegistry)
 │   ├── AttackType.kt             (MELEE / PROJECTILE)
 │   ├── ProjectileType.kt         (ENERGY_BOLT / ARROW / THROWING_STAR / BULLET)
-│   └── Projectile.kt             (투사체 모델 + traveledDistance / maxTravelDistance)
+│   ├── Projectile.kt             (투사체 모델 + traveledDistance / maxTravelDistance)
+│   ├── Npc.kt                    (Npc 데이터 클래스 + NpcRegistry)
+│   ├── QuestState.kt             (QuestStatus enum + QuestState)
+│   └── DialogueState.kt          (DialoguePage + DialogueSession)
 ├── service/
 │   ├── EnhancementService.kt
 │   ├── CombatStatCalculator.kt   (레거시, 미사용)
@@ -59,7 +62,8 @@ com.a_survivor.app/
     ├── nogada_sword.png
     ├── scroll_100.png
     ├── scroll_60.png
-    └── scroll_10.png
+    ├── scroll_10.png
+    └── npc_chuchu.png             ← 마을 NPC 츄츄 이미지
 ```
 
 ---
@@ -70,6 +74,7 @@ com.a_survivor.app/
 Box (게임 화면)
  ├── GameCanvas              ← Canvas 기반 게임 렌더링 (fillMaxSize)
  ├── GameHud (좌상단)         ← Lv. 직업명 + HP 바 + EXP 바
+ ├── QuestTrackerPanel (좌상단 HUD 아래) ← 퀘스트 진행 중/완료 가능 시만 표시
  ├── ResultPanel (상단 중앙)  ← 강화 결과 (있을 때만)
  ├── Column + zIndex(10) > EquipmentWindow  ← 플로팅 드래그 창
  ├── Column + zIndex(10) > StatWindow       ← 플로팅 드래그 창
@@ -77,7 +82,9 @@ Box (게임 화면)
  ├── HudButton ×3 (우하단)   ← 스탯 / 장비 / 인벤
  ├── JoystickControl (좌하단)
  ├── DragGhost
- └── JobAdvancementDialog  ← jobAdvancementPending=true 일 때만 표시 (전직 팝업 오버레이)
+ ├── JobAdvancementDialog  ← jobAdvancementPending=true 일 때만 표시 (전직 팝업 오버레이)
+ ├── [대화하기] Button (하단 중앙) ← NPC 근접 시만 표시 (activeDialogue==null)
+ └── DialogueWindow (zIndex 20, 하단 전체폭) ← activeDialogue != null 시 표시
 ```
 
 ---
@@ -99,11 +106,12 @@ Box (게임 화면)
 | 1 | `drawWorldBackground` — 현재 맵 이미지를 월드 전체에 렌더링 |
 | 2 | `drawGroundItem` × N — 바닥 드랍 아이템 (글로우 → 이미지 → 이름 텍스트) |
 | 3 | `drawPortal` × N — 포탈 (다층 파란 글로우 + 맵 이름 레이블) |
-| 4 | `drawAttackRange` — 공격 범위 원 (반투명 흰색, 직업별 반경) |
-| 5 | `drawMonster` × N — 그림자 → 슬라임 이미지 → HP 바 → 어그로 "!" |
-| 6 | `drawProjectile` × N — 직업별 투사체 (임시 도형) |
-| 7 | `drawPlayer` — 그림자 → 몸통 → 테두리 → 하이라이트 |
-| 8 | `drawDamageNumber` × N — 데미지 숫자 (노랑: 플→몬, 빨강: 몬→플) |
+| 4 | `drawNpc` × N — NPC 이미지 (size.height×0.20f 높이, 너비=높이×1.6) + 이름 텍스트 |
+| 5 | `drawAttackRange` — 공격 범위 원 (반투명 흰색, 직업별 반경) |
+| 6 | `drawMonster` × N — 그림자 → 슬라임 이미지 → HP 바 → 어그로 "!" |
+| 7 | `drawProjectile` × N — 직업별 투사체 (임시 도형) |
+| 8 | `drawPlayer` — 그림자 → 몸통 → 테두리 → 하이라이트 |
+| 9 | `drawDamageNumber` × N — 데미지 숫자 (노랑: 플→몬, 빨강: 몬→플) |
 
 ### 시각 사양 (화면 비례 크기)
 
@@ -112,6 +120,7 @@ Box (게임 화면)
 | 플레이어 | 주황 원 `#FFAA33` | `size.height * 0.026f` |
 | 슬라임 (IDLE) | PNG 이미지 + 초록 HP 바 | `size.height * 0.088f` |
 | 슬라임 (AGGRO/ATTACKING) | PNG 이미지 + 주황 HP 바 + 빨간 "!" | `size.height * 0.088f` |
+| NPC 츄츄 | PNG 이미지 + 이름 텍스트 | 높이 `size.height * 0.20f`, 너비 `높이 * 1.6` |
 | 바닥 아이템 | PNG 이미지 + 이름 텍스트 | `size.height * 0.048f` |
 | 포탈 | 다층 파란 글로우 링 + 레이블 | `24f * cam.zoom` |
 | 데미지 숫자 | 노랑 (플→몬) / 빨강 (몬→플) | `20f or 17f * (size.height/1080f)` |
@@ -196,6 +205,124 @@ data class Portal(
 - 쿨다운: `PORTAL_COOLDOWN = 2000ms` (역방향 즉시 이동 방지)
 - 맵 전환 시: 몬스터·드랍·리스폰 전부 초기화
 - BEGINNER_FIELD 복귀 시: 슬라임 5마리 새로 스폰
+
+---
+
+## NPC 시스템
+
+### 모델
+
+```kotlin
+data class Npc(
+    val id: Int,
+    val name: String,
+    val worldX: Float,
+    val worldY: Float,
+    val interactRange: Float = 14f   // 대화하기 버튼 표시 범위 (월드 유닛)
+)
+
+object NpcRegistry {
+    fun npcsFor(mapType: MapType): List<Npc> = when (mapType) {
+        MapType.TOWN -> listOf(Npc(id = 1, name = "츄츄", worldX = 450f, worldY = 260f))
+        else -> emptyList()
+    }
+}
+```
+
+### 등록 NPC
+
+| ID | 이름 | 맵 | 위치 | 역할 |
+|----|------|----|------|------|
+| 1 | 츄츄 | TOWN | (450, 260) | 슬라임 소탕 퀘스트 의뢰 |
+
+### 대화 시스템
+
+```kotlin
+data class DialoguePage(
+    val speaker: String,
+    val text: String,
+    val choices: List<String> = emptyList()  // 비어있으면 [다음/닫기] 버튼
+)
+
+data class DialogueSession(
+    val pages: List<DialoguePage>,
+    val currentIndex: Int = 0
+) {
+    val currentPage get() = pages[currentIndex]
+    val isLastPage get() = currentIndex >= pages.size - 1
+}
+```
+
+### UiState 추가 필드
+
+```kotlin
+val npcs: List<Npc> = emptyList(),
+val questState: QuestState = QuestState(),
+val activeDialogue: DialogueSession? = null,
+```
+
+- `npcs` — 맵 전환 시 `NpcRegistry.npcsFor(portal.targetMap)`으로 갱신 (questState는 유지)
+
+### ViewModel 함수
+
+| 함수 | 동작 |
+|------|------|
+| `startDialogue(npcId)` | 현재 questState에 따라 대화 페이지 빌드 후 activeDialogue 설정 |
+| `nextDialoguePage()` | 다음 페이지 이동 / 마지막 페이지면 닫기 / 선택지 페이지면 무시 |
+| `chooseDialogueOption(index)` | 선택지 처리 (수락/거절/보상받기) |
+| `closeDialogue()` | activeDialogue = null |
+
+---
+
+## 퀘스트 시스템
+
+### 모델
+
+```kotlin
+enum class QuestStatus { NOT_STARTED, IN_PROGRESS, READY_TO_COMPLETE, COMPLETED }
+
+data class QuestState(
+    val status: QuestStatus = QuestStatus.NOT_STARTED,
+    val slimeKillCount: Int = 0,
+    val slimeKillGoal: Int = 5
+)
+```
+
+### 퀘스트: 슬라임 소탕 작전
+
+| 단계 | 조건 | 동작 |
+|------|------|------|
+| NOT_STARTED | 츄츄에게 대화 | 4페이지 + 수락/거절 선택지 |
+| IN_PROGRESS | 슬라임 처치마다 | slimeKillCount++ (autoAttackTick + projectileTick 양쪽) |
+| READY_TO_COMPLETE | slimeKillCount >= 5 | 자동 전환 |
+| COMPLETED | 츄츄에게 대화 후 보상 수령 | EXP +50, 장갑 공격력 100% 주문서 +1 |
+
+### 대화 시나리오
+
+**NOT_STARTED (4페이지 + 선택지):**
+1. "안녕하세요! 혹시 모험가이신가요?"
+2. "요즘 마을 주변이 이상해졌어요..."
+3. "주민들이 밭을 관리하러 나가지도 못하고 있어요..."
+4. "혹시 저를 도와주실 수 있나요?" → [도와준다] / [거절한다]
+   - 수락: "정말 감사합니다!..." / "슬라임 5마리를 처치하면..." → 닫기
+   - 거절: "그렇군요... 마음이 바뀌면..." → 닫기
+
+**IN_PROGRESS (1페이지):** "슬라임들이 아직 남아있어요. (N/5)" → 닫기
+
+**READY_TO_COMPLETE (4페이지 + 선택지):**
+1. "정말 해내셨군요!"
+2. "주민들이 다시 밭으로 나갈 수 있게 되었어요."
+3. "모두가 모험가님 덕분이라며 감사하고 있어요."
+4. "이건 작은 감사의 표시예요." → [보상 받기] → EXP +50 + 주문서 지급 + COMPLETED
+
+**COMPLETED (1페이지):** "덕분에 평화로워졌어요. 정말 감사합니다!" → 닫기
+
+### 퀘스트 트래커 UI (QuestTrackerPanel)
+
+- **위치:** 좌상단 HUD 아래 (padding start=12dp, top=80dp)
+- **표시 조건:** IN_PROGRESS 또는 READY_TO_COMPLETE
+- **내용:** 상태 레이블 + 퀘스트명 + 진행 프로그레스 바 + 처치 수 텍스트
+- **색상:** 진행 중 주황 / 완료 가능 금색 (테두리도 변경)
 
 ---
 
@@ -603,6 +730,20 @@ PORTAL_COOLDOWN        = 2000ms
 | 71 | 슬라임 HP 1 (빠른 테스트용) | ✅ |
 | 72 | 투사체 중복 타겟 방지 — 비행 중 투사체의 타겟 몬스터는 다음 공격에서 제외 (lockedMonsterIds) | ✅ |
 | 73 | GameHud EXP 바 추가 — HP 바 아래 노란색 경험치 바 (현재/필요량, level*20) | ✅ |
+| 74 | NPC 모델 추가 — Npc 데이터 클래스 + NpcRegistry (TOWN: 츄츄 450,260) | ✅ |
+| 75 | QuestState 모델 추가 — QuestStatus enum (NOT_STARTED/IN_PROGRESS/READY_TO_COMPLETE/COMPLETED) | ✅ |
+| 76 | DialogueState 모델 추가 — DialoguePage + DialogueSession | ✅ |
+| 77 | UiState NPC/퀘스트/대화 필드 추가 (npcs, questState, activeDialogue) | ✅ |
+| 78 | teleportState에서 NpcRegistry 연동 — 맵 전환 시 NPC 목록 갱신 | ✅ |
+| 79 | startDialogue / nextDialoguePage / chooseDialogueOption / closeDialogue VM 함수 추가 | ✅ |
+| 80 | 퀘스트 킬 카운팅 — autoAttackTick + projectileTick 양쪽에서 슬라임 처치 수 누적 | ✅ |
+| 81 | 보상 지급 — EXP +50 + GLOVE_ATK_100 주문서 +1 (chooseDialogueOption READY_TO_COMPLETE) | ✅ |
+| 82 | NPC Canvas 렌더링 — PNG 이미지(높이 0.20f × 너비 1.6배) + 이름 텍스트 (drawNpc) | ✅ |
+| 83 | [대화하기] 버튼 — NPC interactRange(14f) 이내 접근 시 하단 중앙에 표시 | ✅ |
+| 84 | DialogueWindow 컴포저블 — 하단 대화창 (화자명 + 텍스트 + 다음/닫기/선택지 버튼, zIndex 20) | ✅ |
+| 85 | DialogueWindow 터치 차단 — pointerInput detectTapGestures 로 대화 중 배경 터치 방지 | ✅ |
+| 86 | QuestTrackerPanel 컴포저블 — 좌상단 퀘스트 진행 상황 패널 (프로그레스 바 포함) | ✅ |
+| 87 | npc_chuchu.png 리소스 추가 | ✅ |
 
 ---
 
@@ -694,8 +835,7 @@ private fun WindowTitleBar(
 ## 다음 작업 후보 (우선순위 순)
 
 - [ ] 투사체 PNG 리소스 교체 (에너지볼트/화살/표창/총알 이미지)
-- [ ] NPC 시스템 (전직 NPC → AppScreen.JobSelect 연동)
-- [ ] 퀘스트 시스템 (슬라임 N마리 처치 등)
+- [ ] NPC 퀘스트 2차 — 다양한 퀘스트 / 퀘스트 목록 UI
 - [ ] 무기 강화 시스템
 - [ ] 장비 창고
 - [ ] 애니메이션 (공격 이펙트, 레벨업 연출)
