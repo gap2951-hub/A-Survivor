@@ -18,30 +18,32 @@
 com.a_survivor.app/
 ├── MainActivity.kt
 ├── model/
-│   ├── Equipment.kt
+│   ├── Equipment.kt              (+ 스탯 보정 필드 + 전투 능력치 보정 필드)
 │   ├── Scroll.kt / EnhancementResult.kt
 │   ├── Player.kt
 │   ├── PlayerJob.kt
 │   ├── PlayerStats.kt            (+ StatType enum)
 │   ├── Weapon.kt                 (+ DefaultWeapon)
 │   ├── GameWorld.kt              (1024×572 + MapType enum)
-│   ├── Monster.kt                (+ slime() + distanceTo() + MonsterState)
+│   ├── Monster.kt                (+ slime() + distanceTo() + MonsterState + avoidability/accuracy)
 │   ├── MonsterState.kt           (IDLE / AGGRO / ATTACKING)
 │   ├── CameraState.kt            (좌표 변환 / 추적)
 │   ├── DropTable.kt              (DropItem + SlimeDropTable)
 │   ├── GroundItem.kt             (바닥 드랍 아이템 + droppedAt 타임스탬프)
-│   ├── DamageNumber.kt           (데미지 숫자 floating 표시)
+│   ├── DamageNumber.kt           (데미지 숫자 floating 표시 + isMiss 필드)
+│   ├── DerivedStats.kt           (전투 파생 능력치 모델)
 │   └── Portal.kt                 (Portal 모델 + PortalRegistry)
 ├── service/
 │   ├── EnhancementService.kt
-│   ├── CombatStatCalculator.kt
+│   ├── CombatStatCalculator.kt   (레거시, 미사용)
+│   ├── DerivedStatsCalculator.kt (직업별 스탯→전투 능력치 계산)
 │   ├── MonsterSpawner.kt         (isBlocked 람다 파라미터)
-│   ├── AutoAttackService.kt      (ATTACK_RANGE = 60f)
-│   ├── MonsterAiService.kt       (추적 / 공격 / 어그로 해제)
+│   ├── AutoAttackService.kt      (ATTACK_RANGE = 60f + 명중 판정)
+│   ├── MonsterAiService.kt       (추적 / 공격 / 어그로 해제 + 회피 판정)
 │   ├── LevelService.kt
 │   └── DropService.kt
 ├── viewmodel/
-│   └── MainViewModel.kt          (AndroidViewModel — 충돌 비트맵 + AI 틱 루프)
+│   └── MainViewModel.kt          (AndroidViewModel — 충돌 비트맵 + AI 틱 루프 + DerivedStats)
 └── res/drawable/
     ├── map_beginner.jpg           ← 초보자 사냥터 맵 (1024×572)
     ├── map_town.jpg               ← 마을 맵 (1024×572)
@@ -195,12 +197,14 @@ data class DamageNumber(
     val id: Int, val value: Int,
     val worldX: Float, val worldY: Float,
     val createdAt: Long,
-    val isPlayerDamage: Boolean
+    val isPlayerDamage: Boolean,
+    val isMiss: Boolean = false
 )
 ```
 
 - 800ms 동안 위로 55 월드 유닛 float + 페이드아웃
 - `false` (노랑): 플레이어→몬스터 / `true` (빨강): 몬스터→플레이어
+- `isMiss=true` (하늘색 `"MISS"`): 명중 실패 / 회피 성공
 
 ---
 
@@ -234,7 +238,9 @@ data class DamageNumber(
 | 공격 범위 | 60f (전사 근접 기준) |
 | 공격 주기 | 1초 |
 | 타겟 | 범위 내 최근접 몬스터 |
-| 데미지 | CombatStatCalculator (최소 1) |
+| 데미지 | DerivedStats.attackPower (최소 1) |
+| 명중 판정 | `accuracy / (accuracy + monster.avoidability)` 확률로 HIT |
+| MISS 처리 | 명중 실패 시 damage=0, isMiss=true 반환 |
 
 ---
 
@@ -254,6 +260,8 @@ data class DamageNumber(
 | 공격 범위 | 35f |
 | 공격 주기 | 1000ms |
 | 공격 데미지 | 5 |
+| 회피 판정 | `playerAvoidability / (playerAvoidability + monster.accuracy)` 확률로 DODGE |
+| MISS 처리 | 회피 성공 시 playerDodged=true, 하늘색 MISS 표시 |
 
 ---
 
@@ -283,14 +291,65 @@ data class DamageNumber(
 
 ---
 
-## 전투 스탯 계산
+## 전투 스탯 계산 (DerivedStatsCalculator)
 
-| 직업 | 계산식 |
-|------|--------|
-| 전사 / 초보자 | 무기공격력 + 장갑공격력 + STR × 0.5 |
-| 궁수 / 해적   | 무기공격력 + 장갑공격력 + DEX × 0.5 |
-| 도적          | 무기공격력 + 장갑공격력 + LUK × 0.5 |
-| 마법사        | 무기마력 + 장갑마력 + INT × 0.5 |
+### 계산 순서
+
+1. 플레이어 기본 스탯 + 장비 STR/DEX/INT/LUK 보정 → 최종 스탯
+2. 직업별 공식으로 attackPower/magicPower/accuracy/avoidability 계산
+3. 장비 전용 능력치(physicalDefense/magicDefense/criticalRate/moveSpeed/attackSpeed) 합산
+
+### 직업별 공식
+
+| 직업 | 공격력/마력 | 명중률 | 회피율 |
+|------|------------|--------|--------|
+| 전사 | 장비공격력 + STR×0.5 + DEX×0.1 | 10 + DEX×2 | LUK×0.5 |
+| 마법사 | 장비마력 + INT×0.5 + LUK×0.1 | 10 + LUK×2 + DEX | LUK + DEX×0.2 |
+| 궁수/해적 | 장비공격력 + DEX×0.5 + STR×0.1 | 10 + DEX×2 | LUK×0.5 |
+| 도적 | 장비공격력 + LUK×0.5 + DEX×0.1 | 10 + DEX×2 | LUK |
+| 초보자 | 장비공격력 + STR×0.5 | 10 + DEX + LUK | LUK×0.3 |
+
+> 장비 공격력 = weapon.attackPower + equipment.attackPower (강화 포함)
+
+### DerivedStats 모델
+
+```kotlin
+data class DerivedStats(
+    val attackPower: Int = 0,    // 스탯 성장
+    val magicPower: Int = 0,     // 스탯 성장
+    val accuracy: Int = 0,       // 스탯 성장
+    val avoidability: Int = 0,   // 스탯 성장
+    val physicalDefense: Int = 0, // 장비 전용
+    val magicDefense: Int = 0,   // 장비 전용
+    val criticalRate: Float = 0f, // 장비 전용
+    val moveSpeed: Float = 0f,   // 장비 전용
+    val attackSpeed: Float = 0f  // 장비 전용
+)
+```
+
+### Equipment 확장 필드 (모두 기본값 0)
+
+```kotlin
+// 기본 스탯 보정
+strBonus, dexBonus, intBonus, lukBonus: Int
+
+// 전투 능력치 보정 (장비 전용)
+magicPower, accuracy, avoidability,
+physicalDefense, magicDefense: Int
+criticalRate, moveSpeed, attackSpeed: Float
+```
+
+### UiState 변경
+
+- `derivedStats: DerivedStats` 추가
+- `computeDerived(state)` — 스탯 투자·장비 변경·강화·레벨업 시 자동 재계산
+
+### Monster 속성 추가
+
+| 속성 | 슬라임 기본값 |
+|------|--------------|
+| avoidability | 5 |
+| accuracy | 15 |
 
 ---
 
@@ -368,6 +427,13 @@ PORTAL_COOLDOWN        = 2000ms
 | 38 | 마을 포탈 위치 픽셀 분석 후 안전 지점 확정 (x=250, lum=146) | ✅ |
 | 39 | 장비창/스탯창/인벤토리창 — 타이틀바 드래그로 창 이동 기능 추가 | ✅ |
 | 40 | SlotSize 48.dp → 40.dp 축소 (창 크기 최적화) | ✅ |
+| 41 | DerivedStats 모델 + DerivedStatsCalculator 구현 | ✅ |
+| 42 | Equipment 스탯 보정 필드 추가 (strBonus/dexBonus/physicalDefense 등) | ✅ |
+| 43 | 명중 판정 — accuracy/(accuracy+몬스터회피율) 확률 MISS | ✅ |
+| 44 | 회피 판정 — avoidability/(avoidability+몬스터명중) 확률 DODGE | ✅ |
+| 45 | MISS 하늘색 floating 텍스트 렌더링 | ✅ |
+| 46 | 스탯창 전투 능력치 섹션 추가 (공격력/마력/명중률/회피율/방어력 등) | ✅ |
+| 47 | UiState derivedStats 추가, 스탯·장비 변경 시 자동 재계산 | ✅ |
 
 ---
 
