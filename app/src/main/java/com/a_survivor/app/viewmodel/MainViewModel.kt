@@ -85,7 +85,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val PICKUP_RANGE            = 50f
         private const val PICKUP_DELAY            = 1500L  // 드랍 후 1.5초 뒤부터 픽업 가능
         private const val COLLISION_RADIUS       = 10f
-        private const val LUMINANCE_THRESHOLD    = 130f
+        private const val LUMINANCE_THRESHOLD    = 80f
     }
 
     init {
