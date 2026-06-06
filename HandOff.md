@@ -69,7 +69,7 @@ com.a_survivor.app/
 ```
 Box (게임 화면)
  ├── GameCanvas              ← Canvas 기반 게임 렌더링 (fillMaxSize)
- ├── GameHud (좌상단)         ← Lv. 직업명 + HP 바
+ ├── GameHud (좌상단)         ← Lv. 직업명 + HP 바 + EXP 바
  ├── ResultPanel (상단 중앙)  ← 강화 결과 (있을 때만)
  ├── Column + zIndex(10) > EquipmentWindow  ← 플로팅 드래그 창
  ├── Column + zIndex(10) > StatWindow       ← 플로팅 드래그 창
@@ -602,6 +602,7 @@ PORTAL_COOLDOWN        = 2000ms
 | 70 | PC 방향키/WASD 이동 지원 — dispatchKeyEvent ACTION_DOWN마다 movePlayer 직접 호출 | ✅ |
 | 71 | 슬라임 HP 1 (빠른 테스트용) | ✅ |
 | 72 | 투사체 중복 타겟 방지 — 비행 중 투사체의 타겟 몬스터는 다음 공격에서 제외 (lockedMonsterIds) | ✅ |
+| 73 | GameHud EXP 바 추가 — HP 바 아래 노란색 경험치 바 (현재/필요량, level*20) | ✅ |
 
 ---
 

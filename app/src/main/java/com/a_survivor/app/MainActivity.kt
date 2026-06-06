@@ -1466,9 +1466,10 @@ private fun DrawScope.drawDamageNumber(num: DamageNumber, cam: CameraState) {
 // ── 상단 HUD ─────────────────────────────────────────────────────────────────
 @Composable
 private fun GameHud(player: Player, modifier: Modifier = Modifier) {
+    val requiredExp = player.level * 20
     Column(
         modifier = modifier.padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Text(
             text = "Lv.${player.level}  ${player.job.koreanName()}",
@@ -1477,6 +1478,32 @@ private fun GameHud(player: Player, modifier: Modifier = Modifier) {
             fontWeight = FontWeight.Bold
         )
         HpBar(current = player.hp, max = player.maxHp)
+        ExpBar(current = player.exp, max = requiredExp)
+    }
+}
+
+@Composable
+private fun ExpBar(current: Int, max: Int) {
+    val fraction = if (max > 0) (current.toFloat() / max).coerceIn(0f, 1f) else 0f
+    Box(
+        modifier = Modifier
+            .width(150.dp)
+            .height(10.dp)
+            .clip(RoundedCornerShape(5.dp))
+            .background(Color(0xFF1A1A00))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(fraction)
+                .background(Color(0xFFCCCC00))
+        )
+        Text(
+            text = "$current / $max",
+            color = Color.White,
+            fontSize = 7.sp,
+            modifier = Modifier.align(Alignment.Center)
+        )
     }
 }
 
