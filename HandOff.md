@@ -69,7 +69,8 @@ Box (게임 화면)
  ├── Column + zIndex(10) > InventoryWindow  ← 플로팅 드래그 창
  ├── HudButton ×3 (우하단)   ← 스탯 / 장비 / 인벤
  ├── JoystickControl (좌하단)
- └── DragGhost
+ ├── DragGhost
+ └── JobAdvancementDialog  ← jobAdvancementPending=true 일 때만 표시 (전직 팝업 오버레이)
 ```
 
 ---
@@ -208,13 +209,60 @@ data class DamageNumber(
 
 ---
 
+## 화면 흐름 (AppScreen)
+
+```
+AppScreen.Title   → "게임 시작" 클릭
+AppScreen.Game    → 초보자로 시작, 레벨 3 도달 시 JobAdvancementDialog 자동 표시
+AppScreen.JobSelect → NPC 전직 연동용으로 코드 유지 (현재 미사용)
+```
+
+---
+
+## 전직 시스템
+
+### 흐름
+
+| 조건 | 동작 |
+|------|------|
+| 시작 | 항상 BEGINNER(초보자)로 시작 |
+| 레벨 3 도달 | `jobAdvancementPending = true` → 전직 팝업 표시 |
+| 전직 선택 | `advanceJob(job)` — 직업 변경, 기존 스탯 유지, DerivedStats 재계산 |
+
+### JobAdvancementDialog
+
+- 게임 화면 위에 오버레이 (반투명 검정 배경 78%)
+- 왼쪽: 5개 직업 카드 2행 그리드 (WARRIOR/MAGE/ARCHER / THIEF/PIRATE)
+- 오른쪽: 선택 직업 상세 (이름·태그라인·초기 스탯·성장 방향)
+- 하단: `전직하기` 확인 버튼 (선택 직업 색상)
+- 팝업 닫기 버튼 없음 — 직업 선택 필수
+
+### UiState 추가 필드
+
+```kotlin
+val jobAdvancementPending: Boolean = false
+```
+
+### 트리거 로직 (autoAttackTick)
+
+```kotlin
+val advancePending = state.jobAdvancementPending || (
+    gainedExp > 0 &&
+    updatedPlayer.job == PlayerJob.BEGINNER &&
+    updatedPlayer.level >= 3 &&
+    state.player.level < 3
+)
+```
+
+---
+
 ## 플레이어 시스템
 
 | 필드 | 초기값 |
 |------|--------|
 | level / exp | 1 / 0 |
 | hp / maxHp | 100 / 100 |
-| job | WARRIOR |
+| job | BEGINNER (초보자) |
 | availableStatPoint | 0 |
 | positionX / positionY | 512f / 286f |
 
@@ -434,6 +482,14 @@ PORTAL_COOLDOWN        = 2000ms
 | 45 | MISS 하늘색 floating 텍스트 렌더링 | ✅ |
 | 46 | 스탯창 전투 능력치 섹션 추가 (공격력/마력/명중률/회피율/방어력 등) | ✅ |
 | 47 | UiState derivedStats 추가, 스탯·장비 변경 시 자동 재계산 | ✅ |
+| 48 | AppScreen sealed class + 화면 라우팅 (Title / JobSelect / Game) | ✅ |
+| 49 | TitleScreen — 타이틀 화면 (게임 시작 버튼) | ✅ |
+| 50 | JobSelectScreen — 직업 선택 화면 (2×3 카드 그리드 + 상세 패널) | ✅ |
+| 51 | 직업 extension 함수 (themeColor/accentColor/tagline/jobDescription 등) | ✅ |
+| 52 | 게임 시작 시 항상 BEGINNER(초보자)로 고정 | ✅ |
+| 53 | 레벨 3 전직 트리거 — autoAttackTick에서 레벨 크로싱 감지 | ✅ |
+| 54 | JobAdvancementDialog — 인게임 전직 팝업 오버레이 | ✅ |
+| 55 | advanceJob() — 직업 변경 + 기존 스탯 유지 + DerivedStats 재계산 | ✅ |
 
 ---
 
@@ -501,9 +557,9 @@ private fun WindowTitleBar(
 
 ## 다음 작업 후보 (우선순위 순)
 
-- [ ] NPC 시스템
-- [ ] 직업 선택 화면
+- [ ] NPC 시스템 (전직 NPC → AppScreen.JobSelect 연동)
 - [ ] 퀘스트 시스템 (슬라임 N마리 처치 등)
 - [ ] 무기 강화 시스템
 - [ ] 장비 창고
 - [ ] 애니메이션 (공격 이펙트, 레벨업 연출)
+- [ ] 직업별 스킬 시스템
