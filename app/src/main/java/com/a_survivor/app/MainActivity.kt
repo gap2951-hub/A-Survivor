@@ -78,6 +78,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
+import androidx.activity.compose.BackHandler
 import com.a_survivor.app.model.CameraState
 import com.a_survivor.app.model.DamageNumber
 import com.a_survivor.app.model.DerivedStats
@@ -138,6 +139,13 @@ class DragDropState {
     val isDragging get() = scrollType != null
 }
 
+// ── 화면 상태 ─────────────────────────────────────────────────────────────────
+sealed class AppScreen {
+    object Title    : AppScreen()
+    object JobSelect : AppScreen()
+    object Game     : AppScreen()
+}
+
 // ── Activity ──────────────────────────────────────────────────────────────────
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -152,17 +160,31 @@ class MainActivity : ComponentActivity() {
         setContent {
             val vm: MainViewModel = viewModel()
             val state by vm.uiState.collectAsState()
-            MainScreen(
-                state,
-                vm::selectScroll,
-                vm::useSelectedScroll,
-                vm::unequipEquipment,
-                vm::resetEquipment,
-                vm::unequipWeapon,
-                vm::resetWeapon,
-                vm::movePlayer,
-                vm::allocateStat
-            )
+            var currentScreen by remember { mutableStateOf<AppScreen>(AppScreen.Title) }
+
+            when (currentScreen) {
+                AppScreen.Title -> TitleScreen(
+                    onStart = { currentScreen = AppScreen.JobSelect }
+                )
+                AppScreen.JobSelect -> JobSelectScreen(
+                    onConfirm = { job ->
+                        vm.startGame(job)
+                        currentScreen = AppScreen.Game
+                    },
+                    onBack = { currentScreen = AppScreen.Title }
+                )
+                AppScreen.Game -> MainScreen(
+                    state,
+                    vm::selectScroll,
+                    vm::useSelectedScroll,
+                    vm::unequipEquipment,
+                    vm::resetEquipment,
+                    vm::unequipWeapon,
+                    vm::resetWeapon,
+                    vm::movePlayer,
+                    vm::allocateStat
+                )
+            }
         }
     }
 }
@@ -1382,6 +1404,51 @@ private fun PlayerJob.koreanName() = when (this) {
     PlayerJob.PIRATE   -> "해적"
 }
 
+private fun PlayerJob.themeColor() = when (this) {
+    PlayerJob.WARRIOR  -> Color(0xFF5C1010)
+    PlayerJob.MAGE     -> Color(0xFF1A1055)
+    PlayerJob.ARCHER   -> Color(0xFF104020)
+    PlayerJob.THIEF    -> Color(0xFF251040)
+    PlayerJob.PIRATE   -> Color(0xFF10305C)
+    PlayerJob.BEGINNER -> Color(0xFF3A3010)
+}
+
+private fun PlayerJob.accentColor() = when (this) {
+    PlayerJob.WARRIOR  -> Color(0xFFE53935)
+    PlayerJob.MAGE     -> Color(0xFF9575CD)
+    PlayerJob.ARCHER   -> Color(0xFF66BB6A)
+    PlayerJob.THIEF    -> Color(0xFFAB47BC)
+    PlayerJob.PIRATE   -> Color(0xFF42A5F5)
+    PlayerJob.BEGINNER -> Color(0xFFFFD54F)
+}
+
+private fun PlayerJob.tagline() = when (this) {
+    PlayerJob.WARRIOR  -> "강인한 근접 전투사"
+    PlayerJob.MAGE     -> "강력한 마법 사용자"
+    PlayerJob.ARCHER   -> "날렵한 원거리 궁수"
+    PlayerJob.THIEF    -> "민첩한 암습 전문가"
+    PlayerJob.PIRATE   -> "바다를 누비는 해적"
+    PlayerJob.BEGINNER -> "모험을 시작하는 초보자"
+}
+
+private fun PlayerJob.jobDescription() = when (this) {
+    PlayerJob.WARRIOR  -> "STR을 올리면 공격력이 크게 증가합니다.\nDEX를 올리면 명중률이 높아집니다."
+    PlayerJob.MAGE     -> "INT를 올리면 마력이 크게 증가합니다.\nLUK를 올리면 명중률과 회피율이 높아집니다."
+    PlayerJob.ARCHER   -> "DEX를 올리면 공격력과 명중률이 함께 증가합니다.\nSTR로 추가 공격력을 확보하세요."
+    PlayerJob.THIEF    -> "LUK를 올리면 공격력과 회피율이 크게 증가합니다.\nDEX로 명중률을 보완하세요."
+    PlayerJob.PIRATE   -> "DEX를 올리면 공격력과 명중률이 높아집니다.\nSTR로 추가 공격력을 확보하세요."
+    PlayerJob.BEGINNER -> "모든 스탯이 균형 잡혀 있습니다.\n어떤 방향으로든 자유롭게 성장할 수 있습니다."
+}
+
+private fun PlayerJob.startLabel() = when (this) {
+    PlayerJob.WARRIOR  -> "전사로 시작"
+    PlayerJob.MAGE     -> "마법사로 시작"
+    PlayerJob.ARCHER   -> "궁수로 시작"
+    PlayerJob.THIEF    -> "도적으로 시작"
+    PlayerJob.PIRATE   -> "해적으로 시작"
+    PlayerJob.BEGINNER -> "초보자로 시작"
+}
+
 // ── HUD 버튼 ─────────────────────────────────────────────────────────────────
 @Composable
 private fun HudButton(
@@ -1833,5 +1900,316 @@ private fun DragGhost(
                 fontSize = 9.sp
             )
         }
+    }
+}
+
+// ── 타이틀 화면 ───────────────────────────────────────────────────────────────
+@Composable
+fun TitleScreen(onStart: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BgDark),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "A-Survivor",
+                color = TextGold,
+                fontSize = 52.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 3.sp
+            )
+            Text(
+                text = "메이플스토리 스타일 생존 RPG",
+                color = TextMuted,
+                fontSize = 13.sp,
+                letterSpacing = 1.sp
+            )
+            HorizontalDivider(
+                color = BorderGold.copy(alpha = 0.5f),
+                modifier = Modifier
+                    .width(220.dp)
+                    .padding(vertical = 8.dp)
+            )
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF241500))
+                    .border(1.dp, BorderGold, RoundedCornerShape(6.dp))
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onStart() }
+                    .padding(horizontal = 52.dp, vertical = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "게임 시작",
+                    color = TextGold,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+// ── 직업 선택 화면 ────────────────────────────────────────────────────────────
+@Composable
+fun JobSelectScreen(
+    onConfirm: (PlayerJob) -> Unit,
+    onBack: () -> Unit
+) {
+    BackHandler { onBack() }
+
+    var selected by remember { mutableStateOf(PlayerJob.WARRIOR) }
+
+    val row1 = listOf(PlayerJob.WARRIOR, PlayerJob.MAGE,  PlayerJob.ARCHER)
+    val row2 = listOf(PlayerJob.THIEF,   PlayerJob.PIRATE, PlayerJob.BEGINNER)
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BgDark)
+    ) {
+        // 상단 바
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(PanelHeader)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .border(1.dp, SlotBorder, RoundedCornerShape(4.dp))
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onBack() }
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text("<  뒤로", color = TextMuted, fontSize = 12.sp)
+            }
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "직업을 선택하세요",
+                color = TextGold,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(60.dp))
+        }
+
+        // 본문
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // 왼쪽: 직업 카드 그리드
+            Column(
+                modifier = Modifier
+                    .weight(0.44f)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    row1.forEach { job ->
+                        JobCard(
+                            job        = job,
+                            isSelected = job == selected,
+                            modifier   = Modifier.weight(1f).fillMaxHeight()
+                        ) { selected = job }
+                    }
+                }
+                Row(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    row2.forEach { job ->
+                        JobCard(
+                            job        = job,
+                            isSelected = job == selected,
+                            modifier   = Modifier.weight(1f).fillMaxHeight()
+                        ) { selected = job }
+                    }
+                }
+            }
+
+            // 오른쪽: 선택 직업 상세
+            JobDetailPanel(
+                job      = selected,
+                modifier = Modifier.weight(0.56f).fillMaxHeight()
+            )
+        }
+
+        // 하단 확인 버튼
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(PanelHeader)
+                .padding(12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(selected.themeColor())
+                    .border(1.dp, selected.accentColor(), RoundedCornerShape(6.dp))
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onConfirm(selected) }
+                    .padding(horizontal = 60.dp, vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = selected.startLabel(),
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun JobCard(
+    job: PlayerJob,
+    isSelected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val borderColor = if (isSelected) job.accentColor() else SlotBorder
+    val bgColor     = if (isSelected) job.themeColor()  else Color(0xFF1A1008)
+    val textColor   = if (isSelected) job.accentColor() else TextMuted
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(bgColor)
+            .border(
+                width = if (isSelected) 2.dp else 1.dp,
+                color = borderColor,
+                shape = RoundedCornerShape(8.dp)
+            )
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text       = job.koreanName().first().toString(),
+                color      = textColor,
+                fontSize   = 24.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text     = job.koreanName(),
+                color    = if (isSelected) Color.White else TextMuted,
+                fontSize = 11.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun JobDetailPanel(job: PlayerJob, modifier: Modifier = Modifier) {
+    val stats = job.initialStats()
+
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(PanelBg)
+            .border(1.dp, BorderGold.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // 직업명 + 태그라인
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text       = job.koreanName(),
+                color      = job.accentColor(),
+                fontSize   = 22.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text     = job.tagline(),
+                color    = TextMuted,
+                fontSize = 12.sp
+            )
+        }
+
+        HorizontalDivider(color = BorderGold.copy(alpha = 0.3f))
+
+        // 초기 스탯
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text       = "초기 스탯",
+                color      = TextGold,
+                fontSize   = 11.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Row(
+                modifier                = Modifier.fillMaxWidth(),
+                horizontalArrangement   = Arrangement.SpaceEvenly
+            ) {
+                JobStatChip("STR", stats.str,      job)
+                JobStatChip("DEX", stats.dex,      job)
+                JobStatChip("INT", stats.`int`,    job)
+                JobStatChip("LUK", stats.luk,      job)
+            }
+        }
+
+        HorizontalDivider(color = BorderGold.copy(alpha = 0.3f))
+
+        // 성장 방향
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text       = "성장 방향",
+                color      = TextGold,
+                fontSize   = 11.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text       = job.jobDescription(),
+                color      = TextMuted,
+                fontSize   = 12.sp,
+                lineHeight = 19.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun JobStatChip(label: String, value: Int, job: PlayerJob) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(label, color = TextMuted, fontSize = 10.sp)
+        Text(
+            text       = value.toString(),
+            color      = TextGold,
+            fontSize   = 16.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }

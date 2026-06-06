@@ -19,6 +19,7 @@ import com.a_survivor.app.model.MapType
 import com.a_survivor.app.model.Monster
 import com.a_survivor.app.model.MonsterState
 import com.a_survivor.app.model.Player
+import com.a_survivor.app.model.PlayerJob
 import com.a_survivor.app.model.Portal
 import com.a_survivor.app.model.PortalRegistry
 import com.a_survivor.app.model.ScrollCatalog
@@ -133,13 +134,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var nextMonsterId      = (_uiState.value.monsters.maxOfOrNull { it.id } ?: 0) + 1
     private var nextDamageNumberId = 0
 
+    fun startGame(job: PlayerJob) {
+        _uiState.value = createInitialState(job)
+    }
+
     private fun computeDerived(state: UiState): UiState =
         state.copy(
             derivedStats = derivedStatsCalculator.calculate(state.player, state.equipment)
         )
 
-    private fun createInitialState(): UiState {
-        val initialPlayer = Player()
+    private fun createInitialState(job: PlayerJob = PlayerJob.WARRIOR): UiState {
+        val initialPlayer = Player(job = job, stats = job.initialStats())
         val initialEquip  = Equipment(
             name = "노가다 목장갑",
             attackPower = 0,
