@@ -1032,6 +1032,7 @@ private fun GameCanvas(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val mapBitmap       = remember { loadBitmap(context, R.drawable.map_beginner, 2048) }
     val scroll100Bitmap = remember { loadBitmap(context, R.drawable.scroll_100, 256) }
     val scroll60Bitmap  = remember { loadBitmap(context, R.drawable.scroll_60,  256) }
     val scroll10Bitmap  = remember { loadBitmap(context, R.drawable.scroll_10,  256) }
@@ -1042,7 +1043,7 @@ private fun GameCanvas(
             .followPlayer(player.positionX, player.positionY)
             .clampToWorld(world, size.width, size.height)
 
-        drawWorldBackground(cam, world)
+        drawWorldBackground(cam, world, mapBitmap)
         groundItems.forEach { drawGroundItem(it, cam, scroll100Bitmap, scroll60Bitmap, scroll10Bitmap, gloveBitmap) }
         drawAttackRange(player, cam)
         monsters.forEach { drawMonster(it, cam) }
@@ -1050,38 +1051,24 @@ private fun GameCanvas(
     }
 }
 
-private fun DrawScope.drawWorldBackground(cam: CameraState, world: GameWorld) {
-    drawRect(color = Color(0xFF080E08), size = size)
+private fun DrawScope.drawWorldBackground(cam: CameraState, world: GameWorld, mapBitmap: ImageBitmap) {
+    // 화면 전체를 어두운 색으로 먼저 채움 (월드 바깥 영역)
+    drawRect(color = Color(0xFF040A04), size = size)
 
-    // 격자선
-    val gridUnit = 100f
-    val lineColor = Color(0xFF1A2A1A)
-    val leftW   = cam.toWorldX(0f, size.width)
-    val rightW  = cam.toWorldX(size.width, size.width)
-    val topW    = cam.toWorldY(0f, size.height)
-    val bottomW = cam.toWorldY(size.height, size.height)
-
-    var wx = (leftW / gridUnit).toInt() * gridUnit
-    while (wx <= rightW) {
-        val sx = cam.toScreenX(wx, size.width)
-        drawLine(lineColor, Offset(sx, 0f), Offset(sx, size.height), strokeWidth = 1f)
-        wx += gridUnit
-    }
-    var wy = (topW / gridUnit).toInt() * gridUnit
-    while (wy <= bottomW) {
-        val sy = cam.toScreenY(wy, size.height)
-        drawLine(lineColor, Offset(0f, sy), Offset(size.width, sy), strokeWidth = 1f)
-        wy += gridUnit
-    }
-
-    // 월드 경계
+    // 월드 영역의 화면 좌표 계산
     val tl = cam.toScreenOffset(0f, 0f, size.width, size.height)
     val br = cam.toScreenOffset(world.width, world.height, size.width, size.height)
-    drawRect(
-        color   = Color(0xFF335533),
-        topLeft = tl,
-        size    = Size(br.x - tl.x, br.y - tl.y),
-        style   = Stroke(width = 2f)
+    val dstX = tl.x.toInt()
+    val dstY = tl.y.toInt()
+    val dstW = (br.x - tl.x).toInt().coerceAtLeast(1)
+    val dstH = (br.y - tl.y).toInt().coerceAtLeast(1)
+
+    // 맵 이미지를 월드 영역에 맞게 그리기
+    drawImage(
+        image         = mapBitmap,
+        dstOffset     = androidx.compose.ui.unit.IntOffset(dstX, dstY),
+        dstSize       = IntSize(dstW, dstH),
+        filterQuality = androidx.compose.ui.graphics.FilterQuality.High
     )
 }
 

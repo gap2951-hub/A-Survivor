@@ -1,7 +1,11 @@
 package com.a_survivor.app.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.a_survivor.app.R
 import com.a_survivor.app.model.DefaultWeapon
 import com.a_survivor.app.model.DefaultWorld
 import com.a_survivor.app.model.DropItem
@@ -45,7 +49,7 @@ data class UiState(
     val groundItems: List<GroundItem> = emptyList()
 )
 
-class MainViewModel : ViewModel() {
+class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val service           = EnhancementService()
     private val autoAttackService = AutoAttackService()
@@ -54,10 +58,21 @@ class MainViewModel : ViewModel() {
 
     private var nextGroundItemId = 0
 
+    // 충돌 판정용 저해상도 비트맵 (원본 1/4 크기)
+    private val collisionBitmap: Bitmap? by lazy {
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize       = 4
+            inPreferredConfig  = Bitmap.Config.ARGB_8888
+        }
+        BitmapFactory.decodeResource(application.resources, R.drawable.map_beginner, opts)
+    }
+
     companion object {
         private const val MOVE_SPEED           = 3f
-        private const val AUTO_ATTACK_INTERVAL = 1000L  // ms
-        private const val PICKUP_RANGE         = 50f    // 월드 단위
+        private const val AUTO_ATTACK_INTERVAL = 1000L
+        private const val PICKUP_RANGE         = 50f
+        private const val COLLISION_RADIUS     = 22f
+        private const val LUMINANCE_THRESHOLD  = 130f  // 이 값 미만 = 나무/풀숲
     }
 
     init {
@@ -73,7 +88,11 @@ class MainViewModel : ViewModel() {
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     private fun createInitialState() = UiState(
-        monsters = MonsterSpawner().spawnSlimes(world = DefaultWorld, count = 5),
+        monsters = MonsterSpawner().spawnSlimes(
+            world      = DefaultWorld,
+            count      = 5,
+            isBlocked  = { x, y -> isBlocked(x, y, DefaultWorld) }
+        ),
         weapon = DefaultWeapon,
         equipment = Equipment(
             name = "노가다 목장갑",
@@ -93,60 +112,59 @@ class MainViewModel : ViewModel() {
         )
     )
 
-    fun selectScroll(scrollType: ScrollType) {
-        _uiState.update { it.copy(selectedScrollType = scrollType, lastResult = null) }
-    }
+    // ── 충돌 판정 ──────────────────────────────────────────────────────────────
 
-    fun useSelectedScroll() {
-        val state = _uiState.value
-        val equipment = state.equipment ?: run {
-            _uiState.update { it.copy(lastResult = EnhancementResult.Error("장비가 장착되어 있지 않습니다.")) }
-            return
-        }
-        val scrollType = state.selectedScrollType ?: return
-        val scroll = ScrollCatalog.get(scrollType)
-
-        val item = state.inventory.find { it.scrollType == scrollType }
-        if (item == null || item.quantity <= 0) {
-            _uiState.update { it.copy(lastResult = EnhancementResult.Error("주문서 수량이 부족합니다.")) }
-            return
-        }
-
-        val (newEquipment, result) = service.applyScroll(equipment, scroll)
-        val newInventory = state.inventory.map {
-            if (it.scrollType == scrollType) it.copy(quantity = it.quantity - 1) else it
-        }
-
-        _uiState.update {
-            it.copy(
-                equipment = newEquipment,
-                inventory = newInventory,
-                lastResult = result
+    /** 플레이어 반경 내 5개 지점 중 하나라도 막혀 있으면 true */
+    private fun isBlocked(worldX: Float, worldY: Float, world: GameWorld): Boolean {
+        val r = COLLISION_RADIUS
+        return listOf(
+            worldX        to worldY,
+            worldX - r    to worldY,
+            worldX + r    to worldY,
+            worldX        to worldY - r,
+            worldX        to worldY + r
+        ).any { (x, y) ->
+            isPixelBlocked(
+                x.coerceIn(0f, world.width),
+                y.coerceIn(0f, world.height),
+                world
             )
         }
     }
 
-    fun unequipEquipment() {
-        _uiState.update { it.copy(equipment = null, selectedScrollType = null, lastResult = null) }
+    private fun isPixelBlocked(worldX: Float, worldY: Float, world: GameWorld): Boolean {
+        val bmp = collisionBitmap ?: return false
+        val px = ((worldX / world.width)  * bmp.width ).toInt().coerceIn(0, bmp.width  - 1)
+        val py = ((worldY / world.height) * bmp.height).toInt().coerceIn(0, bmp.height - 1)
+        val pixel = bmp.getPixel(px, py)
+        val r = android.graphics.Color.red(pixel)
+        val g = android.graphics.Color.green(pixel)
+        val b = android.graphics.Color.blue(pixel)
+        val luminance = 0.299f * r + 0.587f * g + 0.114f * b
+        return luminance < LUMINANCE_THRESHOLD
     }
 
-    fun resetEquipment() {
-        _uiState.update {
-            it.copy(
-                equipment = Equipment(
-                    name = "노가다 목장갑",
-                    attackPower = 0,
-                    maxUpgradeCount = 5,
-                    remainingUpgradeCount = 5,
-                    failedUpgradeCount = 0,
-                    destroyed = false,
-                    description = "노동을 위해 만들어진 낡은 장갑이다.\n강화하면 공격력이 오를 것 같다."
-                ),
-                selectedScrollType = null,
-                lastResult = null
-            )
+    // ── 이동 (충돌 + 벽 슬라이딩) ──────────────────────────────────────────────
+
+    fun movePlayer(dirX: Float, dirY: Float) {
+        _uiState.update { state ->
+            val p     = state.player
+            val world = state.world
+
+            val rawX = p.positionX + dirX * MOVE_SPEED
+            val rawY = p.positionY + dirY * MOVE_SPEED
+            val (clampedX, clampedY) = world.clampPosition(rawX, rawY)
+
+            // 벽 슬라이딩: X / Y 축 독립 판정
+            val newX = if (!isBlocked(clampedX, p.positionY, world)) clampedX else p.positionX
+            val newY = if (!isBlocked(newX,     clampedY,    world)) clampedY else p.positionY
+
+            val moved = state.copy(player = p.copy(positionX = newX, positionY = newY))
+            checkPickup(moved)
         }
     }
+
+    // ── 자동 공격 틱 ───────────────────────────────────────────────────────────
 
     private fun autoAttackTick() {
         _uiState.update { state ->
@@ -156,14 +174,12 @@ class MainViewModel : ViewModel() {
                 monsters  = state.monsters
             )
 
-            // 경험치 적용
-            val gainedExp = result.killedMonsters.sumOf { it.expReward }
+            val gainedExp    = result.killedMonsters.sumOf { it.expReward }
             val updatedPlayer = if (gainedExp > 0)
                 levelService.applyExp(state.player, gainedExp)
             else
                 state.player
 
-            // 처치된 몬스터마다 드랍 판정 후 바닥 아이템 생성
             val newGroundItems = mutableListOf<GroundItem>()
             result.killedMonsters.forEach { monster ->
                 val drops = dropService.roll(SlimeDropTable.entries)
@@ -191,7 +207,6 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    /** 플레이어가 PICKUP_RANGE 이내의 바닥 아이템을 자동 습득 */
     private fun checkPickup(state: UiState): UiState {
         val px = state.player.positionX
         val py = state.player.positionY
@@ -223,6 +238,56 @@ class MainViewModel : ViewModel() {
         return s
     }
 
+    // ── 강화 시스템 ────────────────────────────────────────────────────────────
+
+    fun selectScroll(scrollType: ScrollType) {
+        _uiState.update { it.copy(selectedScrollType = scrollType, lastResult = null) }
+    }
+
+    fun useSelectedScroll() {
+        val state     = _uiState.value
+        val equipment = state.equipment ?: run {
+            _uiState.update { it.copy(lastResult = EnhancementResult.Error("장비가 장착되어 있지 않습니다.")) }
+            return
+        }
+        val scrollType = state.selectedScrollType ?: return
+        val scroll     = ScrollCatalog.get(scrollType)
+
+        val item = state.inventory.find { it.scrollType == scrollType }
+        if (item == null || item.quantity <= 0) {
+            _uiState.update { it.copy(lastResult = EnhancementResult.Error("주문서 수량이 부족합니다.")) }
+            return
+        }
+
+        val (newEquipment, result) = service.applyScroll(equipment, scroll)
+        val newInventory = state.inventory.map {
+            if (it.scrollType == scrollType) it.copy(quantity = it.quantity - 1) else it
+        }
+        _uiState.update { it.copy(equipment = newEquipment, inventory = newInventory, lastResult = result) }
+    }
+
+    fun unequipEquipment() {
+        _uiState.update { it.copy(equipment = null, selectedScrollType = null, lastResult = null) }
+    }
+
+    fun resetEquipment() {
+        _uiState.update {
+            it.copy(
+                equipment = Equipment(
+                    name = "노가다 목장갑",
+                    attackPower = 0,
+                    maxUpgradeCount = 5,
+                    remainingUpgradeCount = 5,
+                    failedUpgradeCount = 0,
+                    destroyed = false,
+                    description = "노동을 위해 만들어진 낡은 장갑이다.\n강화하면 공격력이 오를 것 같다."
+                ),
+                selectedScrollType = null,
+                lastResult = null
+            )
+        }
+    }
+
     fun allocateStat(type: StatType) {
         _uiState.update { state ->
             val player = state.player
@@ -242,22 +307,6 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun movePlayer(dirX: Float, dirY: Float) {
-        _uiState.update { state ->
-            val p = state.player
-            val rawX = p.positionX + dirX * MOVE_SPEED
-            val rawY = p.positionY + dirY * MOVE_SPEED
-            val (clampedX, clampedY) = state.world.clampPosition(rawX, rawY)
-            val moved = state.copy(player = p.copy(positionX = clampedX, positionY = clampedY))
-            checkPickup(moved)
-        }
-    }
-
-    fun unequipWeapon() {
-        _uiState.update { it.copy(weapon = null) }
-    }
-
-    fun resetWeapon() {
-        _uiState.update { it.copy(weapon = DefaultWeapon) }
-    }
+    fun unequipWeapon() { _uiState.update { it.copy(weapon = null) } }
+    fun resetWeapon()   { _uiState.update { it.copy(weapon = DefaultWeapon) } }
 }
