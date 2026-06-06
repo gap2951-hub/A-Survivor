@@ -9,7 +9,7 @@ class AutoAttackService(
     private val calculator: CombatStatCalculator = CombatStatCalculator()
 ) {
     companion object {
-        const val ATTACK_RANGE = 120f
+        const val ATTACK_RANGE = 60f
     }
 
     /**

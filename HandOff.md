@@ -35,7 +35,7 @@ com.a_survivor.app/
 │   ├── EnhancementService.kt
 │   ├── CombatStatCalculator.kt
 │   ├── MonsterSpawner.kt         (isBlocked 람다 파라미터)
-│   ├── AutoAttackService.kt      (ATTACK_RANGE = 120f)
+│   ├── AutoAttackService.kt      (ATTACK_RANGE = 60f)
 │   ├── MonsterAiService.kt       (추적 / 공격 / 어그로 해제)
 │   ├── LevelService.kt
 │   └── DropService.kt
@@ -86,7 +86,7 @@ Box (게임 화면)
 |--------|------|
 | 1 | `drawWorldBackground` — `map_beginner.jpg` 이미지를 월드 전체에 렌더링 |
 | 2 | `drawGroundItem` × N — 바닥 드랍 아이템 (글로우 → 이미지 → 이름 텍스트) |
-| 3 | `drawAttackRange` — 공격 범위 원 (반투명 흰색, r=120) |
+| 3 | `drawAttackRange` — 공격 범위 원 (반투명 흰색, r=60) |
 | 4 | `drawMonster` × N — 그림자 → 슬라임 이미지 → HP 바 → 어그로 "!" |
 | 5 | `drawPlayer` — 그림자 → 몸통 → 테두리 → 하이라이트 |
 | 6 | `drawDamageNumber` × N — 데미지 숫자 (노랑: 플→몬, 빨강: 몬→플) |
@@ -215,7 +215,7 @@ private val collisionBitmap: Bitmap? by lazy {
 
 | 항목 | 값 |
 |------|-----|
-| 공격 범위 | 120f |
+| 공격 범위 | 60f (전사 근접 기준) |
 | 공격 주기 | 1초 |
 | 타겟 | 범위 내 최근접 몬스터 |
 | 데미지 | CombatStatCalculator (최소 1) |
@@ -395,6 +395,7 @@ init → 자동 공격 루프(1s) + 몬스터 AI 루프(16ms) + 리스폰 체크
 | 37 | 데미지 숫자 표시 — 노랑(플→몬) / 빨강(몬→플) + fade-out | ✅ |
 | 38 | 가로 화면 + 전체화면 몰입 모드 (sensorLandscape) | ✅ |
 | 39 | 동적 줌 계산 — maxOf(screenW/worldW, screenH/worldH) | ✅ |
+| 40 | 전사 공격 범위 조정 — ATTACK_RANGE 120f → 60f (근접 전투감) | ✅ |
 
 ---
 
