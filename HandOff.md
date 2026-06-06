@@ -9,7 +9,6 @@
 - **언어:** Kotlin + Jetpack Compose
 - **minSdk:** 24 / **targetSdk:** 36
 - **GitHub:** https://github.com/gap2951-hub/A-Survivor
-- **GameWorld:** 1484×691 (맵 이미지 비율과 동일)
 
 ---
 
@@ -44,8 +43,7 @@ com.a_survivor.app/
     ├── nogada_sword.png
     ├── scroll_100.png
     ├── scroll_60.png
-    ├── scroll_10.png
-    └── map_field1.png
+    └── scroll_10.png
 ```
 
 ---
@@ -73,7 +71,7 @@ Box (게임 화면)
 
 | 레이어 | 내용 |
 |--------|------|
-| 1 | `drawWorldBackground` — 맵 이미지(`map_field1.png`) 월드 전체에 렌더링, 외부는 검정 |
+| 1 | `drawWorldBackground` — 배경(`#080E08`) + 100u 격자 + 월드 경계 |
 | 2 | `drawGroundItem` × N — 바닥 드랍 아이템 (글로우 → 이미지 → 이름 텍스트) |
 | 3 | `drawAttackRange` — 공격 범위 원 (반투명 흰색, r=120) |
 | 4 | `drawMonster` × N — 그림자 → 몸통 → 눈 → HP바 |
@@ -115,7 +113,7 @@ CameraState()
 | job | WARRIOR |
 | availableStatPoint | 0 |
 | weapon | DefaultWeapon |
-| positionX / positionY | 742f / 346f (월드 중앙) |
+| positionX / positionY | 800f / 600f (월드 중앙) |
 
 ### 직업 및 초기 스탯
 
@@ -260,8 +258,6 @@ init → 자동 공격 루프 + 슬라임 5마리 초기 스폰
 | 22 | 플레이어 시작 위치 월드 중앙(800, 600) 설정 | ✅ |
 | 23 | 플레이어(25f) / 아이템(52f) 크기 확대 | ✅ |
 | 24 | 비트맵 다운샘플링 + FilterQuality.High 적용 | ✅ |
-| 25 | 메이플스토리 스타일 사냥터 맵 배경 (map_field1.png) | ✅ |
-| 26 | GameWorld 크기를 맵 비율(1484×691)에 맞게 변경 | ✅ |
 
 ---
 
