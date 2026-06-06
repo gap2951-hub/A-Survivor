@@ -16,7 +16,7 @@
 
 ```
 com.a_survivor.app/
-├── MainActivity.kt
+├── MainActivity.kt               (+ dispatchKeyEvent PC 방향키/WASD 지원)
 ├── model/
 │   ├── Equipment.kt              (+ 스탯 보정 필드 + 전투 능력치 보정 필드)
 │   ├── Scroll.kt / EnhancementResult.kt
@@ -51,6 +51,9 @@ com.a_survivor.app/
 └── res/drawable/
     ├── map_beginner.jpg           ← 초보자 사냥터 맵 (1024×572)
     ├── map_town.jpg               ← 마을 맵 (1024×572)
+    ├── energy_bolt_1.png          ← 에너지볼트 프레임 1
+    ├── energy_bolt_2.png          ← 에너지볼트 프레임 2
+    ├── energy_bolt_3.png          ← 에너지볼트 프레임 3
     ├── slime.png
     ├── nogada_glove.png
     ├── nogada_sword.png
@@ -309,16 +312,35 @@ val advancePending = state.jobAdvancementPending || (
 | 해적 | PROJECTILE | BULLET | 190f | attackPower |
 | 궁수 | PROJECTILE | ARROW | 220f | attackPower |
 
-### ProjectileType 렌더링 (임시 도형)
+### ProjectileType 렌더링
 
 | 타입 | 표현 |
 |------|------|
-| ENERGY_BOLT | 파란 원 (안쪽 5px + 외곽 글로우 10px) |
+| ENERGY_BOLT | PNG 3프레임 애니메이션 (energy_bolt_1~3, 100ms 순환, `size.height * 0.10f` 크기, 몬스터 방향 회전) |
 | ARROW | 갈색 선 (길이 14px, 방향 기반) |
 | THROWING_STAR | 회색 원 (5px) + 외곽 링 |
 | BULLET | 검은 원 (4px) + 회색 중심 (2px) |
 
-> 추후 PNG 리소스로 교체 예정
+#### 에너지볼트 이미지 애니메이션
+
+```kotlin
+// GameCanvas 내부
+val energyBoltFrames = remember { listOf(
+    loadBitmap(context, R.drawable.energy_bolt_1, 128),
+    loadBitmap(context, R.drawable.energy_bolt_2, 128),
+    loadBitmap(context, R.drawable.energy_bolt_3, 128)
+) }
+
+// drawProjectile 내부 (ENERGY_BOLT)
+val frameIndex = ((System.currentTimeMillis() / 100L) % 3).toInt()
+val imgSize = (size.height * 0.10f).toInt().coerceAtLeast(24)
+val angleDeg = atan2(dy, dx).toDegrees() + 180f  // +180f: 이미지 앞면 보정
+withTransform({ rotate(angleDeg, pivot = c) }) {
+    drawImage(bitmap, dstOffset, dstSize, filterQuality = High)
+}
+```
+
+> ARROW / THROWING_STAR / BULLET은 추후 PNG 리소스로 교체 예정
 
 ### Projectile 모델
 
@@ -560,6 +582,34 @@ PORTAL_COOLDOWN        = 2000ms
 | 64 | drawAttackRange 직업별 공격 범위 반영 | ✅ |
 | 65 | 게임 시작 흐름 복구 — 타이틀 → 초보자 진입 → 레벨 3 전직 팝업 | ✅ |
 | 66 | 강화 결과 메시지 2초 후 자동 소멸 (LaunchedEffect + clearLastResult) | ✅ |
+| 67 | 에너지볼트 PNG 3프레임 애니메이션 (energy_bolt_1~3, 100ms 순환) | ✅ |
+| 68 | 에너지볼트 몬스터 방향 회전 (atan2 + withTransform) + 크기 증가 (0.10f) | ✅ |
+| 69 | 에너지볼트 방향 반전 수정 (angleDeg + 180f) | ✅ |
+| 70 | PC 방향키/WASD 이동 지원 — dispatchKeyEvent ACTION_DOWN마다 movePlayer 직접 호출 | ✅ |
+| 71 | 슬라임 HP 1 (빠른 테스트용) | ✅ |
+
+---
+
+## PC 키보드 입력 (에뮬레이터 테스트용)
+
+`MainActivity.dispatchKeyEvent` 오버라이드로 처리. ACTION_DOWN마다 `moveVm.movePlayer()` 즉시 호출 (키 리피트 포함).
+
+```kotlin
+private val moveVm: MainViewModel by lazy {
+    ViewModelProvider(this)[MainViewModel::class.java]
+}
+
+override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+    if (event.action != ACTION_DOWN) return super.dispatchKeyEvent(event)
+    val dx = when (keyCode) { DPAD_LEFT/A -> -1f; DPAD_RIGHT/D -> 1f; else -> 0f }
+    val dy = when (keyCode) { DPAD_UP/W   -> -1f; DPAD_DOWN/S  -> 1f; else -> 0f }
+    if (dx != 0f || dy != 0f) { moveVm.movePlayer(dx, dy); return true }
+    return super.dispatchKeyEvent(event)
+}
+```
+
+- 지원 키: ←↑↓→ (DPAD) + W/A/S/D
+- 키 홀드 시 Android 키 리피트(~20fps)로 연속 호출
 
 ---
 

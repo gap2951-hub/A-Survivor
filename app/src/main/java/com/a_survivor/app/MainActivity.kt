@@ -57,6 +57,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
@@ -148,6 +149,30 @@ sealed class AppScreen {
 
 // ── Activity ──────────────────────────────────────────────────────────────────
 class MainActivity : ComponentActivity() {
+
+    private val moveVm: MainViewModel by lazy {
+        androidx.lifecycle.ViewModelProvider(this)[MainViewModel::class.java]
+    }
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action != android.view.KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
+        val dx = when (event.keyCode) {
+            android.view.KeyEvent.KEYCODE_DPAD_LEFT,  android.view.KeyEvent.KEYCODE_A -> -1f
+            android.view.KeyEvent.KEYCODE_DPAD_RIGHT, android.view.KeyEvent.KEYCODE_D ->  1f
+            else -> 0f
+        }
+        val dy = when (event.keyCode) {
+            android.view.KeyEvent.KEYCODE_DPAD_UP,   android.view.KeyEvent.KEYCODE_W -> -1f
+            android.view.KeyEvent.KEYCODE_DPAD_DOWN, android.view.KeyEvent.KEYCODE_S ->  1f
+            else -> 0f
+        }
+        if (dx != 0f || dy != 0f) {
+            moveVm.movePlayer(dx, dy)
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // 풀스크린 몰입 모드 (상태바·내비게이션바 숨김)
@@ -219,6 +244,7 @@ fun MainScreen(
     var joystickDirX by remember { mutableStateOf(0f) }
     var joystickDirY by remember { mutableStateOf(0f) }
 
+
     // 플로팅 창 위치 및 경계 계산
     val density       = LocalDensity.current
     val configuration = LocalConfiguration.current
@@ -274,6 +300,7 @@ fun MainScreen(
             player = state.player,
             modifier = Modifier.align(Alignment.TopStart)
         )
+
 
         // ③ 강화 결과 메시지 (2초 후 자동 소멸)
         LaunchedEffect(state.lastResult) {
@@ -354,6 +381,7 @@ fun MainScreen(
                             onEnhance()
                         }
                     },
+
                     onDrag = { delta -> inventOffset = clampWin(inventOffset + delta) }
                 )
             }
@@ -1293,14 +1321,21 @@ private fun DrawScope.drawProjectile(
         com.a_survivor.app.model.ProjectileType.ENERGY_BOLT -> {
             if (energyBoltFrames.isNotEmpty()) {
                 val frameIndex = ((System.currentTimeMillis() / 100L) % energyBoltFrames.size).toInt()
-                val bitmap = energyBoltFrames[frameIndex]
-                val imgSize = (size.height * 0.06f).toInt().coerceAtLeast(16)
-                drawImage(
-                    image         = bitmap,
-                    dstOffset     = IntOffset((c.x - imgSize / 2).toInt(), (c.y - imgSize / 2).toInt()),
-                    dstSize       = IntSize(imgSize, imgSize),
-                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High
-                )
+                val bitmap  = energyBoltFrames[frameIndex]
+                val imgSize = (size.height * 0.10f).toInt().coerceAtLeast(24)
+                val dx = proj.targetX - proj.positionX
+                val dy = proj.targetY - proj.positionY
+                val angleDeg = (kotlin.math.atan2(dy.toDouble(), dx.toDouble()) * (180.0 / kotlin.math.PI)).toFloat() + 180f
+                withTransform({
+                    rotate(angleDeg, pivot = c)
+                }) {
+                    drawImage(
+                        image         = bitmap,
+                        dstOffset     = IntOffset((c.x - imgSize / 2).toInt(), (c.y - imgSize / 2).toInt()),
+                        dstSize       = IntSize(imgSize, imgSize),
+                        filterQuality = androidx.compose.ui.graphics.FilterQuality.High
+                    )
+                }
             } else {
                 drawCircle(Color(0xFF4488FF).copy(alpha = 0.5f), radius = 10f * sp, center = c)
                 drawCircle(Color(0xFF88CCFF), radius = 5f * sp, center = c)

@@ -30,8 +30,8 @@ fun Monster.distanceTo(x: Float, y: Float): Float {
 fun slime(id: Int, positionX: Float = 0f, positionY: Float = 0f) = Monster(
     id = id,
     name = "슬라임",
-    hp = 20,
-    maxHp = 20,
+    hp = 1,
+    maxHp = 1,
     positionX = positionX,
     positionY = positionY,
     speed = 1f,
