@@ -83,6 +83,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val RESPAWN_CHECK_INTERVAL  = 1000L
         private const val DAMAGE_NUMBER_DURATION  = 800L
         private const val PICKUP_RANGE            = 50f
+        private const val PICKUP_DELAY            = 1500L  // 드랍 후 1.5초 뒤부터 픽업 가능
         private const val COLLISION_RADIUS       = 22f
         private const val LUMINANCE_THRESHOLD    = 130f
     }
@@ -215,6 +216,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             else
                 state.player
 
+            val now           = System.currentTimeMillis()
             val newGroundItems = mutableListOf<GroundItem>()
             result.killedMonsters.forEach { monster ->
                 val drops = dropService.roll(SlimeDropTable.entries)
@@ -226,13 +228,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             id        = nextGroundItemId++,
                             positionX = monster.positionX + cos(angle) * spread,
                             positionY = monster.positionY + sin(angle) * spread,
-                            dropItem  = drop
+                            dropItem  = drop,
+                            droppedAt = now
                         )
                     )
                 }
             }
 
-            val now        = System.currentTimeMillis()
             val newPending = result.killedMonsters.map { PendingRespawn(it.id, now) }
 
             // 공격 데미지 숫자
@@ -309,12 +311,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun checkPickup(state: UiState): UiState {
-        val px = state.player.positionX
-        val py = state.player.positionY
+        val now = System.currentTimeMillis()
+        val px  = state.player.positionX
+        val py  = state.player.positionY
         val (toPickup, remaining) = state.groundItems.partition { item ->
             val dx = item.positionX - px
             val dy = item.positionY - py
-            sqrt(dx * dx + dy * dy) <= PICKUP_RANGE
+            sqrt(dx * dx + dy * dy) <= PICKUP_RANGE && now - item.droppedAt >= PICKUP_DELAY
         }
         if (toPickup.isEmpty()) return state
         return applyDrops(state.copy(groundItems = remaining), toPickup.map { it.dropItem })
