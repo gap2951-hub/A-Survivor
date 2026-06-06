@@ -62,7 +62,8 @@ data class UiState(
     val damageNumbers: List<DamageNumber> = emptyList(),
     val portals: List<Portal> = PortalRegistry.portalsFor(MapType.BEGINNER_FIELD),
     val lastTeleportAt: Long = 0L,
-    val derivedStats: DerivedStats = DerivedStats()
+    val derivedStats: DerivedStats = DerivedStats(),
+    val jobAdvancementPending: Boolean = false
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -134,8 +135,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var nextMonsterId      = (_uiState.value.monsters.maxOfOrNull { it.id } ?: 0) + 1
     private var nextDamageNumberId = 0
 
-    fun startGame(job: PlayerJob) {
-        _uiState.value = createInitialState(job)
+    fun startGame() {
+        _uiState.value = createInitialState()
+    }
+
+    fun advanceJob(job: PlayerJob) {
+        _uiState.update { state ->
+            computeDerived(
+                state.copy(
+                    player = state.player.copy(job = job),
+                    jobAdvancementPending = false
+                )
+            )
+        }
     }
 
     private fun computeDerived(state: UiState): UiState =
@@ -143,7 +155,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             derivedStats = derivedStatsCalculator.calculate(state.player, state.equipment)
         )
 
-    private fun createInitialState(job: PlayerJob = PlayerJob.WARRIOR): UiState {
+    private fun createInitialState(job: PlayerJob = PlayerJob.BEGINNER): UiState {
         val initialPlayer = Player(job = job, stats = job.initialStats())
         val initialEquip  = Equipment(
             name = "노가다 목장갑",
@@ -325,13 +337,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } else null
 
-            // 레벨업 시 derivedStats 재계산 (스탯 포인트 변경 가능)
+            // 레벨 3 도달 시 전직 팝업 트리거
+            val advancePending = state.jobAdvancementPending || (
+                gainedExp > 0 &&
+                updatedPlayer.job == PlayerJob.BEGINNER &&
+                updatedPlayer.level >= 3 &&
+                state.player.level < 3
+            )
+
             val finalState = state.copy(
-                monsters        = monstersWithAggro,
-                player          = updatedPlayer,
-                groundItems     = state.groundItems + newGroundItems,
-                pendingRespawns = state.pendingRespawns + newPending,
-                damageNumbers   = state.damageNumbers + listOfNotNull(attackDmgNum)
+                monsters              = monstersWithAggro,
+                player                = updatedPlayer,
+                groundItems           = state.groundItems + newGroundItems,
+                pendingRespawns       = state.pendingRespawns + newPending,
+                damageNumbers         = state.damageNumbers + listOfNotNull(attackDmgNum),
+                jobAdvancementPending = advancePending
             )
             if (gainedExp > 0) computeDerived(finalState) else finalState
         }

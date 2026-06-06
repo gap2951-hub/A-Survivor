@@ -164,25 +164,29 @@ class MainActivity : ComponentActivity() {
 
             when (currentScreen) {
                 AppScreen.Title -> TitleScreen(
-                    onStart = { currentScreen = AppScreen.JobSelect }
+                    onStart = {
+                        vm.startGame()
+                        currentScreen = AppScreen.Game
+                    }
                 )
                 AppScreen.JobSelect -> JobSelectScreen(
                     onConfirm = { job ->
-                        vm.startGame(job)
+                        vm.startGame()
                         currentScreen = AppScreen.Game
                     },
                     onBack = { currentScreen = AppScreen.Title }
                 )
                 AppScreen.Game -> MainScreen(
-                    state,
-                    vm::selectScroll,
-                    vm::useSelectedScroll,
-                    vm::unequipEquipment,
-                    vm::resetEquipment,
-                    vm::unequipWeapon,
-                    vm::resetWeapon,
-                    vm::movePlayer,
-                    vm::allocateStat
+                    state             = state,
+                    onScrollSelected  = vm::selectScroll,
+                    onEnhance         = vm::useSelectedScroll,
+                    onUnequip         = vm::unequipEquipment,
+                    onReset           = vm::resetEquipment,
+                    onUnequipWeapon   = vm::unequipWeapon,
+                    onResetWeapon     = vm::resetWeapon,
+                    onMovePlayer      = vm::movePlayer,
+                    onAllocateStat    = vm::allocateStat,
+                    onAdvanceJob      = vm::advanceJob
                 )
             }
         }
@@ -200,7 +204,8 @@ fun MainScreen(
     onUnequipWeapon: () -> Unit,
     onResetWeapon: () -> Unit,
     onMovePlayer: (Float, Float) -> Unit,
-    onAllocateStat: (StatType) -> Unit
+    onAllocateStat: (StatType) -> Unit,
+    onAdvanceJob: (PlayerJob) -> Unit = {}
 ) {
     val dragState        = remember { DragDropState() }
     var isEquipmentOpen  by remember { mutableStateOf(false) }
@@ -376,6 +381,11 @@ fun MainScreen(
                 windowPosition = dragState.position,
                 rootOffset = rootWindowOffset
             )
+        }
+
+        // ⑨ 전직 팝업
+        if (state.jobAdvancementPending) {
+            JobAdvancementDialog(onAdvance = onAdvanceJob)
         }
     }
 }
@@ -1449,6 +1459,15 @@ private fun PlayerJob.startLabel() = when (this) {
     PlayerJob.BEGINNER -> "초보자로 시작"
 }
 
+private fun PlayerJob.advanceLabel() = when (this) {
+    PlayerJob.WARRIOR  -> "전사로 전직하기"
+    PlayerJob.MAGE     -> "마법사로 전직하기"
+    PlayerJob.ARCHER   -> "궁수로 전직하기"
+    PlayerJob.THIEF    -> "도적으로 전직하기"
+    PlayerJob.PIRATE   -> "해적으로 전직하기"
+    PlayerJob.BEGINNER -> "초보자로 전직하기"
+}
+
 // ── HUD 버튼 ─────────────────────────────────────────────────────────────────
 @Composable
 private fun HudButton(
@@ -2211,5 +2230,129 @@ private fun JobStatChip(label: String, value: Int, job: PlayerJob) {
             fontSize   = 16.sp,
             fontWeight = FontWeight.Bold
         )
+    }
+}
+
+// ── 전직 팝업 ─────────────────────────────────────────────────────────────────
+@Composable
+private fun JobAdvancementDialog(onAdvance: (PlayerJob) -> Unit) {
+    var selected by remember { mutableStateOf(PlayerJob.WARRIOR) }
+
+    val row1 = listOf(PlayerJob.WARRIOR, PlayerJob.MAGE,  PlayerJob.ARCHER)
+    val row2 = listOf(PlayerJob.THIEF,   PlayerJob.PIRATE)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.78f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.86f)
+                .fillMaxHeight(0.88f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(PanelBg)
+                .border(2.dp, BorderGold, RoundedCornerShape(12.dp))
+        ) {
+            // 헤더
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(PanelHeader)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text       = "전직",
+                    color      = TextGold,
+                    fontSize   = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text     = "레벨 3에 도달했습니다. 직업을 선택하세요.",
+                    color    = TextMuted,
+                    fontSize = 12.sp
+                )
+            }
+
+            // 본문
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // 왼쪽: 5개 직업 카드
+                Column(
+                    modifier = Modifier
+                        .weight(0.44f)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        row1.forEach { job ->
+                            JobCard(
+                                job        = job,
+                                isSelected = job == selected,
+                                modifier   = Modifier.weight(1f).fillMaxHeight()
+                            ) { selected = job }
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        row2.forEach { job ->
+                            JobCard(
+                                job        = job,
+                                isSelected = job == selected,
+                                modifier   = Modifier.weight(1f).fillMaxHeight()
+                            ) { selected = job }
+                        }
+                        Spacer(Modifier.weight(1f))
+                    }
+                }
+
+                // 오른쪽: 선택 직업 상세
+                JobDetailPanel(
+                    job      = selected,
+                    modifier = Modifier.weight(0.56f).fillMaxHeight()
+                )
+            }
+
+            // 하단 확인 버튼
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(PanelHeader)
+                    .padding(10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(selected.themeColor())
+                        .border(1.dp, selected.accentColor(), RoundedCornerShape(6.dp))
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { onAdvance(selected) }
+                        .padding(horizontal = 48.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text       = selected.advanceLabel(),
+                        color      = Color.White,
+                        fontSize   = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
     }
 }
