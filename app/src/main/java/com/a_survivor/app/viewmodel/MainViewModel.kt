@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.a_survivor.app.R
+import com.a_survivor.app.model.DamageNumber
 import com.a_survivor.app.model.DefaultWeapon
 import com.a_survivor.app.model.DefaultWorld
 import com.a_survivor.app.model.DropItem
@@ -51,7 +52,8 @@ data class UiState(
     val world: GameWorld = DefaultWorld,
     val monsters: List<Monster> = emptyList(),
     val groundItems: List<GroundItem> = emptyList(),
-    val pendingRespawns: List<PendingRespawn> = emptyList()
+    val pendingRespawns: List<PendingRespawn> = emptyList(),
+    val damageNumbers: List<DamageNumber> = emptyList()
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -77,9 +79,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val MOVE_SPEED             = 3f
         private const val AUTO_ATTACK_INTERVAL   = 1000L
         private const val AI_TICK_INTERVAL       = 16L
-        private const val RESPAWN_DELAY          = 5000L   // 처치 후 5초 뒤 리스폰
-        private const val RESPAWN_CHECK_INTERVAL = 1000L
-        private const val PICKUP_RANGE           = 50f
+        private const val RESPAWN_DELAY            = 5000L
+        private const val RESPAWN_CHECK_INTERVAL  = 1000L
+        private const val DAMAGE_NUMBER_DURATION  = 800L
+        private const val PICKUP_RANGE            = 50f
         private const val COLLISION_RADIUS       = 22f
         private const val LUMINANCE_THRESHOLD    = 130f
     }
@@ -108,8 +111,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
-    // 초기 스폰된 몬스터 ID 다음 값부터 시작
-    private var nextMonsterId = (_uiState.value.monsters.maxOfOrNull { it.id } ?: 0) + 1
+    private var nextMonsterId      = (_uiState.value.monsters.maxOfOrNull { it.id } ?: 0) + 1
+    private var nextDamageNumberId = 0
 
     private fun createInitialState() = UiState(
         monsters = MonsterSpawner().spawnSlimes(
@@ -229,18 +232,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            // 처치된 몬스터를 리스폰 대기열에 추가
-            val now = System.currentTimeMillis()
+            val now        = System.currentTimeMillis()
             val newPending = result.killedMonsters.map { PendingRespawn(it.id, now) }
 
-            var newState = state.copy(
+            // 공격 데미지 숫자
+            val targetMonster = state.monsters.find { it.id == result.targetId }
+            val attackDmgNum  = if (result.damage > 0 && targetMonster != null) {
+                DamageNumber(nextDamageNumberId++, result.damage,
+                    targetMonster.positionX, targetMonster.positionY, now, false)
+            } else null
+
+            state.copy(
                 monsters        = monstersWithAggro,
                 player          = updatedPlayer,
                 groundItems     = state.groundItems + newGroundItems,
-                pendingRespawns = state.pendingRespawns + newPending
+                pendingRespawns = state.pendingRespawns + newPending,
+                damageNumbers   = state.damageNumbers + listOfNotNull(attackDmgNum)
             )
-            newState = checkPickup(newState)
-            newState
         }
     }
 
@@ -271,18 +279,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun monsterAiTick() {
         _uiState.update { state ->
+            val now     = System.currentTimeMillis()
             val aiResult = monsterAiService.tick(
                 monsters    = state.monsters,
                 player      = state.player,
-                currentTime = System.currentTimeMillis(),
+                currentTime = now,
                 world       = state.world,
                 isBlocked   = { x, y -> isBlocked(x, y, state.world) }
             )
             val newHp = (state.player.hp - aiResult.playerDamage).coerceAtLeast(0)
-            state.copy(
-                monsters = aiResult.updatedMonsters,
-                player   = state.player.copy(hp = newHp)
+
+            // 플레이어 피격 데미지 숫자
+            val playerDmgNum = if (aiResult.playerDamage > 0) {
+                DamageNumber(nextDamageNumberId++, aiResult.playerDamage,
+                    state.player.positionX, state.player.positionY, now, true)
+            } else null
+
+            // 만료된 데미지 숫자 정리
+            val activeDmgNums = state.damageNumbers
+                .filter { now - it.createdAt < DAMAGE_NUMBER_DURATION }
+
+            val newState = state.copy(
+                monsters      = aiResult.updatedMonsters,
+                player        = state.player.copy(hp = newHp),
+                damageNumbers = activeDmgNums + listOfNotNull(playerDmgNum)
             )
+            checkPickup(newState)
         }
     }
 

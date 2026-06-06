@@ -74,6 +74,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
 import com.a_survivor.app.model.CameraState
+import com.a_survivor.app.model.DamageNumber
 import com.a_survivor.app.model.DropItem
 import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
@@ -197,10 +198,11 @@ fun MainScreen(
     ) {
         // ① 게임 캔버스 렌더링
         GameCanvas(
-            player      = state.player,
-            monsters    = state.monsters,
-            world       = state.world,
-            groundItems = state.groundItems
+            player        = state.player,
+            monsters      = state.monsters,
+            world         = state.world,
+            groundItems   = state.groundItems,
+            damageNumbers = state.damageNumbers
         )
 
         // ② 상단 HUD
@@ -1030,6 +1032,7 @@ private fun GameCanvas(
     monsters: List<Monster>,
     world: GameWorld,
     groundItems: List<GroundItem>,
+    damageNumbers: List<DamageNumber>,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1050,6 +1053,7 @@ private fun GameCanvas(
         drawAttackRange(player, cam)
         monsters.forEach { drawMonster(it, cam, slimeBitmap) }
         drawPlayer(player, cam)
+        damageNumbers.forEach { drawDamageNumber(it, cam) }
     }
 }
 
@@ -1198,6 +1202,30 @@ private fun DrawScope.drawMonster(monster: Monster, cam: CameraState, slimeBitma
             aggroPaint
         )
     }
+}
+
+private fun DrawScope.drawDamageNumber(num: DamageNumber, cam: CameraState) {
+    val elapsed  = System.currentTimeMillis() - num.createdAt
+    val progress = (elapsed / 800f).coerceIn(0f, 1f)
+    val alpha    = (1f - progress).coerceIn(0f, 1f)
+    if (alpha <= 0f) return
+
+    val floatY = num.worldY - 55f * progress
+    val pos    = cam.toScreenOffset(num.worldX, floatY, size.width, size.height)
+
+    val paint = android.graphics.Paint().apply {
+        color          = if (num.isPlayerDamage)
+                             android.graphics.Color.parseColor("#FF4444")
+                         else
+                             android.graphics.Color.parseColor("#FFEE00")
+        textSize       = (if (num.isPlayerDamage) 20f else 17f) * cam.zoom
+        textAlign      = android.graphics.Paint.Align.CENTER
+        isFakeBoldText = true
+        isAntiAlias    = true
+        this.alpha     = (alpha * 255).toInt()
+        setShadowLayer(4f, 0f, 2f, android.graphics.Color.BLACK)
+    }
+    drawContext.canvas.nativeCanvas.drawText(num.value.toString(), pos.x, pos.y, paint)
 }
 
 // ── 상단 HUD ─────────────────────────────────────────────────────────────────
