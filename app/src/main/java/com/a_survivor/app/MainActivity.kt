@@ -186,7 +186,8 @@ class MainActivity : ComponentActivity() {
                     onResetWeapon     = vm::resetWeapon,
                     onMovePlayer      = vm::movePlayer,
                     onAllocateStat    = vm::allocateStat,
-                    onAdvanceJob      = vm::advanceJob
+                    onAdvanceJob      = vm::advanceJob,
+                    onClearResult     = vm::clearLastResult
                 )
             }
         }
@@ -205,7 +206,8 @@ fun MainScreen(
     onResetWeapon: () -> Unit,
     onMovePlayer: (Float, Float) -> Unit,
     onAllocateStat: (StatType) -> Unit,
-    onAdvanceJob: (PlayerJob) -> Unit = {}
+    onAdvanceJob: (PlayerJob) -> Unit = {},
+    onClearResult: () -> Unit = {}
 ) {
     val dragState        = remember { DragDropState() }
     var isEquipmentOpen  by remember { mutableStateOf(false) }
@@ -273,7 +275,13 @@ fun MainScreen(
             modifier = Modifier.align(Alignment.TopStart)
         )
 
-        // ③ 강화 결과 메시지
+        // ③ 강화 결과 메시지 (2초 후 자동 소멸)
+        LaunchedEffect(state.lastResult) {
+            if (state.lastResult != null) {
+                delay(2000)
+                onClearResult()
+            }
+        }
         state.lastResult?.let {
             ResultPanel(
                 result = it,

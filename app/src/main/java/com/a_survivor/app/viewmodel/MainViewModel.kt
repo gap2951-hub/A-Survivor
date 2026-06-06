@@ -552,6 +552,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ── 강화 시스템 ────────────────────────────────────────────────────────────
 
+    fun clearLastResult() {
+        _uiState.update { it.copy(lastResult = null) }
+    }
+
     fun selectScroll(scrollType: ScrollType) {
         _uiState.update { it.copy(selectedScrollType = scrollType, lastResult = null) }
     }
