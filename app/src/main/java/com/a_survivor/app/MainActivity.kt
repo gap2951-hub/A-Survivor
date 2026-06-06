@@ -164,7 +164,10 @@ class MainActivity : ComponentActivity() {
 
             when (currentScreen) {
                 AppScreen.Title -> TitleScreen(
-                    onStart = { currentScreen = AppScreen.JobSelect }
+                    onStart = {
+                        vm.startGame()
+                        currentScreen = AppScreen.Game
+                    }
                 )
                 AppScreen.JobSelect -> JobSelectScreen(
                     onConfirm = { job ->
