@@ -2579,7 +2579,8 @@ private fun DialogueWindow(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(20f),
+            .zIndex(20f)
+            .pointerInput(Unit) { detectTapGestures { } },
         contentAlignment = Alignment.BottomCenter
     ) {
         Column(
