@@ -6,6 +6,7 @@ import com.a_survivor.app.model.MonsterState
 import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.distanceTo
 import kotlin.math.sqrt
+import kotlin.random.Random
 
 class MonsterAiService {
 
@@ -22,9 +23,11 @@ class MonsterAiService {
         player: Player,
         currentTime: Long,
         world: GameWorld,
-        isBlocked: (Float, Float) -> Boolean
+        isBlocked: (Float, Float) -> Boolean,
+        playerAvoidability: Int = 0
     ): MonsterAiResult {
         var totalPlayerDamage = 0
+        var playerDodged      = false
 
         val updated = monsters.map { m ->
             if (m.state == MonsterState.IDLE) return@map m
@@ -32,24 +35,30 @@ class MonsterAiService {
             val dist = m.distanceTo(player.positionX, player.positionY)
 
             when {
-                // 어그로 해제
                 dist > DEAGGRO_RANGE -> m.copy(state = MonsterState.IDLE)
 
-                // 공격 범위 내 → 공격 시도
                 dist <= ATTACK_RANGE -> {
                     val canAttack = currentTime - m.lastAttackTime >= ATTACK_INTERVAL
-                    if (canAttack) totalPlayerDamage += ATTACK_DAMAGE
+                    if (canAttack) {
+                        // 회피 판정: avoidability / (avoidability + monster.accuracy)
+                        val dodgeChance = playerAvoidability.toFloat() /
+                            (playerAvoidability + m.accuracy).coerceAtLeast(1)
+                        if (Random.nextFloat() < dodgeChance) {
+                            playerDodged = true
+                        } else {
+                            totalPlayerDamage += ATTACK_DAMAGE
+                        }
+                    }
                     m.copy(
                         state          = MonsterState.ATTACKING,
                         lastAttackTime = if (canAttack) currentTime else m.lastAttackTime
                     )
                 }
 
-                // 추적 이동 (벽 슬라이딩 적용)
                 else -> {
-                    val dx = player.positionX - m.positionX
-                    val dy = player.positionY - m.positionY
-                    val len = sqrt(dx * dx + dy * dy)
+                    val dx   = player.positionX - m.positionX
+                    val dy   = player.positionY - m.positionY
+                    val len  = sqrt(dx * dx + dy * dy)
                     val dirX = dx / len
                     val dirY = dy / len
 
@@ -64,11 +73,12 @@ class MonsterAiService {
             }
         }
 
-        return MonsterAiResult(updated, totalPlayerDamage)
+        return MonsterAiResult(updated, totalPlayerDamage, playerDodged)
     }
 }
 
 data class MonsterAiResult(
     val updatedMonsters: List<Monster>,
-    val playerDamage: Int
+    val playerDamage: Int,
+    val playerDodged: Boolean = false
 )

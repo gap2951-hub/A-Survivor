@@ -1,29 +1,41 @@
 package com.a_survivor.app.service
 
+import com.a_survivor.app.model.DerivedStats
 import com.a_survivor.app.model.Equipment
 import com.a_survivor.app.model.Monster
 import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.distanceTo
+import kotlin.random.Random
 
-class AutoAttackService(
-    private val calculator: CombatStatCalculator = CombatStatCalculator()
-) {
+class AutoAttackService {
     companion object {
         const val ATTACK_RANGE = 60f
     }
 
-    /**
-     * 1틱마다 호출. 범위 내 가장 가까운 몬스터를 공격하고 결과를 반환합니다.
-     */
     fun tick(
         player: Player,
         equipment: Equipment?,
-        monsters: List<Monster>
+        monsters: List<Monster>,
+        derivedStats: DerivedStats
     ): AutoAttackResult {
         val target = findTarget(player, monsters)
             ?: return AutoAttackResult(monsters, targetId = null, damage = 0)
 
-        val damage = calculateDamage(player, equipment)
+        // 명중 판정: accuracy / (accuracy + monster.avoidability)
+        val acc      = derivedStats.accuracy
+        val hitChance = acc.toFloat() / (acc + target.avoidability).coerceAtLeast(1)
+        val hit       = Random.nextFloat() < hitChance
+
+        if (!hit) {
+            return AutoAttackResult(
+                updatedMonsters = monsters,
+                targetId        = target.id,
+                damage          = 0,
+                isMiss          = true
+            )
+        }
+
+        val damage = maxOf(derivedStats.attackPower.coerceAtLeast(derivedStats.magicPower), 1)
 
         val killed = mutableListOf<Monster>()
         val updatedMonsters = monsters.mapNotNull { monster ->
@@ -46,22 +58,12 @@ class AutoAttackService(
         monsters
             .filter { it.distanceTo(player.positionX, player.positionY) <= ATTACK_RANGE }
             .minByOrNull { it.distanceTo(player.positionX, player.positionY) }
-
-    private fun calculateDamage(player: Player, equipment: Equipment?): Int {
-        val provider = object : EquipmentStatProvider {
-            override val weaponAttackPower = player.weapon.attackPower
-            override val gloveAttackPower  = equipment?.attackPower ?: 0
-            override val weaponMagicPower  = player.weapon.magicPower
-            override val gloveMagicPower   = 0
-        }
-        val stats = calculator.calculate(player.job, player.stats, provider)
-        return maxOf(stats.attackPower, stats.magicPower, 1)
-    }
 }
 
 data class AutoAttackResult(
     val updatedMonsters: List<Monster>,
     val targetId: Int?,
     val damage: Int,
-    val killedMonsters: List<Monster> = emptyList()
+    val killedMonsters: List<Monster> = emptyList(),
+    val isMiss: Boolean = false
 )

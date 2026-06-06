@@ -80,6 +80,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
 import com.a_survivor.app.model.CameraState
 import com.a_survivor.app.model.DamageNumber
+import com.a_survivor.app.model.DerivedStats
 import com.a_survivor.app.model.DropItem
 import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
@@ -287,10 +288,11 @@ fun MainScreen(
                     .width(280.dp)
             ) {
                 StatWindow(
-                    player     = state.player,
-                    onAllocate = onAllocateStat,
-                    onClose    = { isStatOpen = false },
-                    onDrag     = { delta -> statOffset = clampWin(statOffset + delta) }
+                    player       = state.player,
+                    derivedStats = state.derivedStats,
+                    onAllocate   = onAllocateStat,
+                    onClose      = { isStatOpen = false },
+                    onDrag       = { delta -> statOffset = clampWin(statOffset + delta) }
                 )
             }
         }
@@ -1313,18 +1315,20 @@ private fun DrawScope.drawDamageNumber(num: DamageNumber, cam: CameraState) {
     val pos    = cam.toScreenOffset(num.worldX, floatY, size.width, size.height)
 
     val paint = android.graphics.Paint().apply {
-        color          = if (num.isPlayerDamage)
-                             android.graphics.Color.parseColor("#FF4444")
-                         else
-                             android.graphics.Color.parseColor("#FFEE00")
-        textSize       = (if (num.isPlayerDamage) 20f else 17f) * (size.height / 1080f)
+        color = when {
+            num.isMiss         -> android.graphics.Color.parseColor("#AADDFF")
+            num.isPlayerDamage -> android.graphics.Color.parseColor("#FF4444")
+            else               -> android.graphics.Color.parseColor("#FFEE00")
+        }
+        textSize       = (if (num.isPlayerDamage || num.isMiss) 20f else 17f) * (size.height / 1080f)
         textAlign      = android.graphics.Paint.Align.CENTER
         isFakeBoldText = true
         isAntiAlias    = true
         this.alpha     = (alpha * 255).toInt()
         setShadowLayer(4f, 0f, 2f, android.graphics.Color.BLACK)
     }
-    drawContext.canvas.nativeCanvas.drawText(num.value.toString(), pos.x, pos.y, paint)
+    val text = if (num.isMiss) "MISS" else num.value.toString()
+    drawContext.canvas.nativeCanvas.drawText(text, pos.x, pos.y, paint)
 }
 
 // ── 상단 HUD ─────────────────────────────────────────────────────────────────
@@ -1414,6 +1418,7 @@ private fun HudButton(
 @Composable
 private fun StatWindow(
     player: Player,
+    derivedStats: DerivedStats,
     onAllocate: (StatType) -> Unit,
     onClose: (() -> Unit)? = null,
     onDrag: ((Offset) -> Unit)? = null
@@ -1429,7 +1434,10 @@ private fun StatWindow(
     ) {
         WindowTitleBar("스탯창", onClose = onClose, onDrag = onDrag)
 
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Column(modifier = Modifier
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .verticalScroll(rememberScrollState())
+        ) {
 
             // 남은 SP
             Row(
@@ -1448,15 +1456,73 @@ private fun StatWindow(
 
             HorizontalDivider(
                 color = BorderGold.copy(alpha = 0.3f),
-                modifier = Modifier.padding(vertical = 10.dp)
+                modifier = Modifier.padding(vertical = 8.dp)
             )
 
-            // 스탯 행
+            // 기본 스탯 행
             StatAllocRow("STR", player.stats.str, hasPoints) { onAllocate(StatType.STR) }
             StatAllocRow("DEX", player.stats.dex, hasPoints) { onAllocate(StatType.DEX) }
             StatAllocRow("INT", player.stats.`int`, hasPoints) { onAllocate(StatType.INT) }
             StatAllocRow("LUK", player.stats.luk, hasPoints) { onAllocate(StatType.LUK) }
+
+            HorizontalDivider(
+                color = BorderGold.copy(alpha = 0.3f),
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+
+            // 전투 능력치 헤더
+            Text(
+                text = "전투 능력치",
+                color = TextGold,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+
+            DerivedStatRow("공격력",      derivedStats.attackPower.toString())
+            DerivedStatRow("마력",        derivedStats.magicPower.toString())
+            DerivedStatRow("명중률",      derivedStats.accuracy.toString())
+            DerivedStatRow("회피율",      derivedStats.avoidability.toString())
+
+            Spacer(Modifier.height(4.dp))
+
+            DerivedStatRow("물리방어력",  derivedStats.physicalDefense.toString(), note = "장비 효과")
+            DerivedStatRow("마법방어력",  derivedStats.magicDefense.toString(),    note = "장비 효과")
+            DerivedStatRow("치명타율",    "${(derivedStats.criticalRate * 100).toInt()}%", note = "장비 효과")
+            DerivedStatRow("이동속도",    if (derivedStats.moveSpeed == 0f) "기본" else "+${derivedStats.moveSpeed.toInt()}", note = "장비 효과")
+            DerivedStatRow("공격속도",    if (derivedStats.attackSpeed == 0f) "기본" else "+${derivedStats.attackSpeed.toInt()}", note = "장비 효과")
         }
+    }
+}
+
+@Composable
+private fun DerivedStatRow(label: String, value: String, note: String? = null) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = TextMuted,
+            fontSize = 12.sp,
+            modifier = Modifier.weight(1f)
+        )
+        if (note != null) {
+            Text(
+                text = note,
+                color = TextMuted.copy(alpha = 0.5f),
+                fontSize = 10.sp,
+                modifier = Modifier.padding(end = 6.dp)
+            )
+        }
+        Text(
+            text = value,
+            color = TextGold,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 

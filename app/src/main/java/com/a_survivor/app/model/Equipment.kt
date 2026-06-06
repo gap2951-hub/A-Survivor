@@ -8,5 +8,19 @@ data class Equipment(
     val failedUpgradeCount: Int,
     val destroyed: Boolean,
     val availableJobs: List<PlayerJob> = PlayerJob.values().toList(),
-    val description: String = ""
+    val description: String = "",
+    // 기본 스탯 보정
+    val strBonus: Int = 0,
+    val dexBonus: Int = 0,
+    val intBonus: Int = 0,
+    val lukBonus: Int = 0,
+    // 전투 능력치 보정 (장비 전용)
+    val magicPower: Int = 0,
+    val accuracy: Int = 0,
+    val avoidability: Int = 0,
+    val physicalDefense: Int = 0,
+    val magicDefense: Int = 0,
+    val criticalRate: Float = 0f,
+    val moveSpeed: Float = 0f,
+    val attackSpeed: Float = 0f
 )

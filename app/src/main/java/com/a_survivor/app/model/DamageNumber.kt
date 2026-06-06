@@ -6,5 +6,6 @@ data class DamageNumber(
     val worldX: Float,
     val worldY: Float,
     val createdAt: Long,
-    val isPlayerDamage: Boolean
+    val isPlayerDamage: Boolean,
+    val isMiss: Boolean = false
 )

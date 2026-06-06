@@ -14,6 +14,9 @@ data class Monster(
 
     val expReward: Int,
 
+    val avoidability: Int = 5,
+    val accuracy: Int = 15,
+
     val state: MonsterState = MonsterState.IDLE,
     val lastAttackTime: Long = 0L
 )
