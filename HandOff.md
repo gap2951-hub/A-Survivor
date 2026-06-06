@@ -217,9 +217,9 @@ data class DamageNumber(
 ## 화면 흐름 (AppScreen)
 
 ```
-AppScreen.Title    → "게임 시작" 클릭 → AppScreen.JobSelect
-AppScreen.JobSelect → 직업 선택 후 확인 → vm.startGame(job) → AppScreen.Game
-AppScreen.Game     → 초보자 선택 시 레벨 3 도달하면 JobAdvancementDialog 자동 표시
+AppScreen.Title    → "게임 시작" 클릭 → vm.startGame() → AppScreen.Game
+AppScreen.Game     → 초보자(BEGINNER)로 시작, 레벨 3 도달 시 JobAdvancementDialog 자동 표시
+AppScreen.JobSelect → NPC 전직 연동용으로 코드 유지 (현재 미사용)
 ```
 
 ---
@@ -230,8 +230,8 @@ AppScreen.Game     → 초보자 선택 시 레벨 3 도달하면 JobAdvancement
 
 | 조건 | 동작 |
 |------|------|
-| 시작 | JobSelectScreen에서 6개 직업 중 선택 (BEGINNER 포함) |
-| 초보자로 시작 후 레벨 3 도달 | `jobAdvancementPending = true` → 전직 팝업 표시 |
+| 시작 | 항상 BEGINNER(초보자)로 시작 |
+| 레벨 3 도달 | `jobAdvancementPending = true` → 전직 팝업 표시 |
 | 전직 선택 | `advanceJob(job)` — 직업 변경, 투자 포인트 반환, DerivedStats 재계산 |
 
 ### JobAdvancementDialog
@@ -558,6 +558,8 @@ PORTAL_COOLDOWN        = 2000ms
 | 62 | MainViewModel projectileTick 루프 추가 (exp/드랍/리스폰 처리 포함) | ✅ |
 | 63 | drawProjectile Canvas 렌더링 추가 (직업별 임시 도형) | ✅ |
 | 64 | drawAttackRange 직업별 공격 범위 반영 | ✅ |
+| 65 | 게임 시작 흐름 복구 — 타이틀 → 초보자 진입 → 레벨 3 전직 팝업 | ✅ |
+| 66 | 강화 결과 메시지 2초 후 자동 소멸 (LaunchedEffect + clearLastResult) | ✅ |
 
 ---
 
