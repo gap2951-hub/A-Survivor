@@ -3,7 +3,7 @@
 ## 프로젝트 개요
 
 메이플스토리 스타일의 픽셀아트 사냥터를 배경으로 한 안드로이드 생존형 게임.
-주문서 강화 시스템, 몬스터 AI, 픽셀 충돌, 마을/포탈 시스템, NPC/퀘스트 시스템, 스켈레톤 워리어 애니메이션 구현 완료.
+주문서 강화 시스템, 몬스터 AI, 픽셀 충돌, 마을/포탈 시스템, NPC/퀘스트 시스템, 스켈레톤 워리어 애니메이션, 전사 플레이어 스프라이트 애니메이션(히트 프레임 시스템 포함) 구현 완료.
 
 - **패키지명:** `com.a_survivor.app`
 - **언어:** Kotlin + Jetpack Compose
@@ -20,7 +20,7 @@ com.a_survivor.app/
 ├── model/
 │   ├── Equipment.kt              (+ 스탯 보정 필드 + 전투 능력치 보정 필드)
 │   ├── Scroll.kt / EnhancementResult.kt
-│   ├── Player.kt
+│   ├── Player.kt                 (+ facingLeft: Boolean)
 │   ├── PlayerJob.kt              (+ attackType/attackRange/projectileType/projectileSpeed 확장함수)
 │   ├── PlayerStats.kt            (+ StatType enum)
 │   ├── Weapon.kt                 (+ DefaultWeapon)
@@ -50,7 +50,7 @@ com.a_survivor.app/
 │   ├── LevelService.kt
 │   └── DropService.kt
 ├── viewmodel/
-│   └── MainViewModel.kt          (AndroidViewModel — 충돌 비트맵 + AI/투사체 틱 루프 + DerivedStats)
+│   └── MainViewModel.kt          (AndroidViewModel — 충돌 비트맵 + AI/투사체 틱 루프 + DerivedStats + PendingPlayerAttack + pendingAttackTick)
 └── res/drawable/
     ├── map_beginner.jpg           ← 초보자 사냥터 맵 (1024×572)
     ├── map_town.jpg               ← 마을 맵 (1024×572)
@@ -63,7 +63,12 @@ com.a_survivor.app/
     ├── nogada_glove.png
     ├── nogada_sword.png
     ├── scroll_100.png / scroll_60.png / scroll_10.png
-    └── npc_chuchu.png             ← 마을 NPC 츄츄 이미지
+    ├── npc_chuchu.png             ← 마을 NPC 츄츄 이미지
+    ├── warrior_idle_0~3.png       ← 전사 Idle 4프레임 (200ms/frame)
+    ├── warrior_walk_0~3.png       ← 전사 Walk 4프레임 (100ms/frame)
+    ├── warrior_attack_0~4.png     ← 전사 Attack 5프레임 (60ms/frame)
+    ├── warrior_hurt_0~2.png       ← 전사 Hurt 3프레임 (100ms/frame)
+    └── warrior_die_0~5.png        ← 전사 Die 6프레임 (200ms/frame)
 ```
 
 ---
@@ -110,14 +115,14 @@ Box (게임 화면)
 | 5 | `drawAttackRange` — 공격 범위 원 (반투명 흰색, 직업별 반경) |
 | 6 | `drawMonster` × N — 그림자 → 스켈레톤 애니메이션(variant별 프레임) → HP 바 → 어그로 "!" |
 | 7 | `drawProjectile` × N — 직업별 투사체 (임시 도형) |
-| 8 | `drawPlayer` — 그림자 → 몸통 → 테두리 → 하이라이트 |
+| 8 | `drawPlayer` — 그림자 → 전사 스프라이트 (IDLE/WALK/ATTACK/HURT/DIE 상태별 애니메이션, facingLeft 수평 반전) |
 | 9 | `drawDamageNumber` × N — 데미지 숫자 (노랑: 플→몬, 빨강: 몬→플) |
 
 ### 시각 사양 (화면 비례 크기)
 
 | 대상 | 표현 방식 | 크기 |
 |------|-----------|------|
-| 플레이어 | 주황 원 `#FFAA33` | `size.height * 0.026f` |
+| 플레이어 (전사) | 스프라이트 애니메이션 (IDLE 4f / WALK 4f / ATTACK 5f / HURT 3f / DIE 6f) | `size.height * 0.11f` (정사각형) |
 | 스켈레톤 (IDLE) | Idle 애니메이션 6프레임 + 초록 HP 바 | `size.height * 0.15f` |
 | 스켈레톤 (AGGRO) | Walk 애니메이션 8프레임 + 주황 HP 바 + "!" | `size.height * 0.15f` |
 | 스켈레톤 (ATTACKING) | Slash 애니메이션 6프레임 + 주황 HP 바 + "!" | `size.height * 0.15f` |
@@ -432,7 +437,7 @@ val advancePending = state.jobAdvancementPending || (
 | 타겟 | 범위 내 최근접 몬스터 |
 | 명중 판정 | `accuracy / (accuracy + monster.avoidability)` 확률로 HIT |
 | MISS 처리 | 명중 실패 시 MISS 텍스트, 투사체 미생성 |
-| 근접 히트 | 즉시 데미지 (attackPower 기준) |
+| 근접 히트 | 히트 프레임 시스템 — 공격 시작 시 `PendingPlayerAttack` 저장, `ATTACK_ANIM_DURATION(300ms)` 후 `pendingAttackTick`이 실제 데미지 적용 |
 | 원거리 히트 | 투사체 생성, 충돌 시 데미지 |
 
 ---
@@ -651,7 +656,72 @@ COLLISION_RADIUS       = 10f
 LUMINANCE_THRESHOLD    = 80f
 PORTAL_RANGE           = 30f
 PORTAL_COOLDOWN        = 2000ms
+ATTACK_ANIM_DURATION   = 300ms   // 5프레임 × 60ms (히트 프레임 딜레이)
 ```
+
+---
+
+## 플레이어 스프라이트 애니메이션 시스템
+
+### UiState 추가 필드
+
+```kotlin
+val playerAttackAnimStart: Long = 0L,   // 공격 애니메이션 시작 타임스탬프
+val playerHurtAnimStart: Long = 0L,     // 피격 애니메이션 시작 타임스탬프
+val playerDeathTime: Long = 0L,         // 사망 타임스탬프
+val pendingPlayerAttack: PendingPlayerAttack? = null,  // 히트 프레임 대기 공격
+```
+
+### PendingPlayerAttack
+
+```kotlin
+data class PendingPlayerAttack(
+    val targetId: Int,
+    val damage: Int,
+    val isMiss: Boolean,
+    val applyAt: Long   // now + ATTACK_ANIM_DURATION
+)
+```
+
+### 애니메이션 상태 우선순위
+
+```
+DEAD > HURT(400ms) > ATTACK(800ms 윈도우, 60ms/frame) > WALK(이동 중) > IDLE
+```
+
+| 상태 | 조건 | 프레임 수 | 속도 |
+|------|------|-----------|------|
+| DIE | player.hp <= 0 | 6 | 200ms/frame (마지막 프레임에서 정지) |
+| HURT | hp > 0 && now − playerHurtAnimStart < 400ms | 3 | 100ms/frame |
+| ATTACK | hp > 0 && !isHurt && now − playerAttackAnimStart < 800ms | 5 | 60ms/frame |
+| WALK | isMoving (조이스틱 X or Y ≠ 0) | 4 | 100ms/frame |
+| IDLE | 그 외 | 4 | 200ms/frame |
+
+### 스프라이트 플리핑
+
+```kotlin
+withTransform({ if (player.facingLeft) scale(-1f, 1f, pivot = c) }) {
+    drawImage(bitmap, dstOffset, dstSize, filterQuality = FilterQuality.High)
+}
+```
+
+- `movePlayer`에서 `dirX < 0f → facingLeft = true`, `dirX > 0f → facingLeft = false`
+
+### 히트 프레임 시스템 (pendingAttackTick)
+
+- 매 16ms 호출, `pendingPlayerAttack != null && now >= pending.applyAt` 조건 충족 시 데미지 적용
+- 애니메이션 도중 몬스터가 이미 사망한 경우에도 안전하게 처리 (이미 dead → 무시)
+- 피격 시 `playerHurtAnimStart`, 사망 시 `playerDeathTime` UiState 갱신
+
+### 스프라이트 파일 (수동 커팅, image/전사 폴더 원본 기반)
+
+| 파일 | 프레임 수 | 원본 |
+|------|-----------|------|
+| warrior_idle_0~3.png | 4 | IDLE_0~3.png |
+| warrior_walk_0~3.png | 4 | WALK_0~3.png |
+| warrior_attack_0~4.png | 5 | ATTACK_0~4.png |
+| warrior_hurt_0~2.png | 3 | HURT_0~2.png |
+| warrior_die_0~5.png | 6 | auto-cut |
 
 ---
 
@@ -768,6 +838,17 @@ PORTAL_COOLDOWN        = 2000ms
 | 96 | 포탈 체인 구성 — FIELD_3 ←→ FIELD_2 ←→ BEGINNER_FIELD ←→ TOWN | ✅ |
 | 97 | skeletonConfig(mapType) + spawnSkeletons() 헬퍼 — 맵별 스탯·variant 집중화 | ✅ |
 | 98 | 맵별 스켈레톤 배치 조정 — 초보자 Crusader_2(HP20) / 중급 Crusader_3(HP60) / 상급 Crusader_1(HP150) | ✅ |
+| 99 | Player.facingLeft 필드 추가 — 이동 방향에 따라 좌우 반전 여부 저장 | ✅ |
+| 100 | UiState 애니메이션 필드 추가 (playerAttackAnimStart / playerHurtAnimStart / playerDeathTime / pendingPlayerAttack) | ✅ |
+| 101 | 전사 스프라이트 프레임 수동 커팅 — image/전사 폴더 원본 → drawable 복사 (IDLE 4 / WALK 4 / ATTACK 5 / HURT 3 / DIE 6) | ✅ |
+| 102 | drawPlayer 교체 — 주황 원 → 전사 스프라이트 애니메이션 (IDLE/WALK/ATTACK/HURT/DIE 상태 분기) | ✅ |
+| 103 | facingLeft 기반 스프라이트 수평 반전 — withTransform { scale(-1f, 1f, pivot=c) } | ✅ |
+| 104 | 전사 캐릭터 크기 조정 — 0.18f → 0.15f → 0.11f (스켈레톤 대비 비율 맞춤) | ✅ |
+| 105 | ATTACK 애니메이션 오동작 수정 — 타겟 없을 때 playerAttackAnimStart 갱신하던 버그 제거 | ✅ |
+| 106 | 히트 프레임 시스템 구현 — PendingPlayerAttack 데이터 클래스 + pendingAttackTick 함수 | ✅ |
+| 107 | ATTACK_ANIM_DURATION = 300ms 상수 추가 — 5프레임 × 60ms 기준 | ✅ |
+| 108 | 공격 애니메이션 속도 조정 — 100ms/frame → 60ms/frame (빠른 타격감) | ✅ |
+| 109 | GameCanvas 파라미터 추가 — isMoving / playerAttackAnimStart / playerHurtAnimStart / playerDeathTime | ✅ |
 
 ---
 
