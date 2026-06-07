@@ -748,6 +748,50 @@ val equipmentBag: List<Equipment> = emptyList(),
 - 드랍된 장갑이 항상 `equipmentBag`에 추가됨 (이전에는 `equipment == null`일 때만 처리 → 무시 버그 수정)
 - `equipment` 슬롯이 비어있으면 추가로 자동 장착
 
+### 장비 해제 → 인벤토리 이동
+
+```kotlin
+fun unequipEquipment() {
+    _uiState.update { s ->
+        val newBag = if (s.equipment != null) s.equipmentBag + s.equipment else s.equipmentBag
+        computeDerived(s.copy(equipment = null, equipmentBag = newBag, ...))
+    }
+}
+```
+
+- 장갑 슬롯 꾹 누르기 → "장비 해제" 확인 다이얼로그 → "해제" 탭 → `unequipEquipment()` 호출
+- 해제된 장갑이 `equipment = null`로 청소되고 `equipmentBag`에 추가됨
+
+### 인벤토리 → 장착
+
+```kotlin
+fun equipFromBag(equipment: Equipment) {
+    _uiState.update { s ->
+        val bagWithoutTarget = s.equipmentBag - equipment
+        val newBag = if (s.equipment != null) bagWithoutTarget + s.equipment else bagWithoutTarget
+        computeDerived(s.copy(equipment = equipment, equipmentBag = newBag, ...))
+    }
+}
+```
+
+- 인벤토리 장갑 탭 → `ItemInfoDialog` 표시 (스크롤 내리면 "장착" 버튼 노출)
+- "장착" 탭 → `equipFromBag()` 호출 → 선택 장갑이 equipment 슬롯으로, 기존 장착 장갑은 bag으로 교환
+
+### ItemInfoDialog "장착" 버튼
+
+```kotlin
+private fun ItemInfoDialog(equipment: Equipment, onDismiss: () -> Unit, onEquip: (() -> Unit)? = null) {
+    // ...
+    // ⑥ 장착 버튼 — onEquip != null (인벤토리에서 열 때) && 파괴 안됨
+    if (onEquip != null && !isDestroyed) {
+        Button(onClick = { onEquip(); onDismiss() }) { Text("장착") }
+    }
+}
+```
+
+- 장비창의 `GlovesSlot`에서 여는 다이얼로그: `onEquip = null` (버튼 없음)
+- 인벤의 `EquipmentBagItem`에서 여는 다이얼로그: `onEquip = { onEquip(equipment) }` (버튼 표시)
+
 ### 주문서 슬롯 — DraggableScrollItem
 
 | ScrollType | 이미지 | 폴백 |
@@ -908,6 +952,9 @@ private fun scrollDrawableRes(scrollType: ScrollType): Int? = when (scrollType) 
 | 113 | EquipmentBagItem 추가 — 인벤토리 상단 장갑 이미지 슬롯, 탭 시 ItemInfoDialog | ✅ |
 | 114 | InventoryWindow 장비 아이템 섹션 추가 — equipmentBag 비어있지 않을 때 상단에 렌더링 | ✅ |
 | 115 | DragGhost 이미지화 — 드래그 중 고스트도 PNG 이미지로 표시 (백의는 텍스트 폴백) | ✅ |
+| 116 | unequipEquipment() 수정 — 해제된 장갑이 equipmentBag으로 이동 (기존: 버려짐) | ✅ |
+| 117 | equipFromBag() 추가 — 인벤토리 장갑을 장착 슬롯으로, 기존 장착 장갑은 bag으로 교환 | ✅ |
+| 118 | ItemInfoDialog onEquip 파라미터 추가 — 인벤토리에서 열 때만 "장착" 버튼 표시 (스크롤 하단) | ✅ |
 
 ---
 

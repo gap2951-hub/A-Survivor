@@ -689,7 +689,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun unequipEquipment() {
-        _uiState.update { s -> computeDerived(s.copy(equipment = null, selectedScrollType = null, lastResult = null)) }
+        _uiState.update { s ->
+            val newBag = if (s.equipment != null) s.equipmentBag + s.equipment else s.equipmentBag
+            computeDerived(s.copy(equipment = null, equipmentBag = newBag, selectedScrollType = null, lastResult = null))
+        }
+    }
+
+    fun equipFromBag(equipment: Equipment) {
+        _uiState.update { s ->
+            val bagWithoutTarget = s.equipmentBag - equipment
+            val newBag = if (s.equipment != null) bagWithoutTarget + s.equipment else bagWithoutTarget
+            computeDerived(s.copy(equipment = equipment, equipmentBag = newBag, selectedScrollType = null, lastResult = null))
+        }
     }
 
     fun resetEquipment() {

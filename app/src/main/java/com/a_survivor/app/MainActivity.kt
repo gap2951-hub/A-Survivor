@@ -217,6 +217,7 @@ class MainActivity : ComponentActivity() {
                     onAllocateStat      = vm::allocateStat,
                     onAdvanceJob        = vm::advanceJob,
                     onClearResult       = vm::clearLastResult,
+                    onEquipFromBag      = vm::equipFromBag,
                     onTalkToNpc         = vm::startDialogue,
                     onNextDialoguePage  = vm::nextDialoguePage,
                     onChooseOption      = vm::chooseDialogueOption,
@@ -241,6 +242,7 @@ fun MainScreen(
     onAllocateStat: (StatType) -> Unit,
     onAdvanceJob: (PlayerJob) -> Unit = {},
     onClearResult: () -> Unit = {},
+    onEquipFromBag: (Equipment) -> Unit = {},
     onTalkToNpc: (Int) -> Unit = {},
     onNextDialoguePage: () -> Unit = {},
     onChooseOption: (Int) -> Unit = {},
@@ -390,6 +392,7 @@ fun MainScreen(
                     equipmentBag     = state.equipmentBag,
                     dragState        = dragState,
                     rootWindowOffset = rootWindowOffset,
+                    onEquip          = onEquipFromBag,
                     onClose          = { isInventoryOpen = false },
                     onDragEnd        = { scrollType, dropPos ->
                         if (isEquipmentOpen &&
@@ -838,7 +841,7 @@ private fun WeaponSlot(
 
 // ── 아이템 정보 다이얼로그 ────────────────────────────────────────────────────
 @Composable
-private fun ItemInfoDialog(equipment: Equipment, onDismiss: () -> Unit) {
+private fun ItemInfoDialog(equipment: Equipment, onDismiss: () -> Unit, onEquip: (() -> Unit)? = null) {
     val isDestroyed = equipment.destroyed
     Dialog(
         onDismissRequest = onDismiss,
@@ -974,6 +977,20 @@ private fun ItemInfoDialog(equipment: Equipment, onDismiss: () -> Unit) {
                     lineHeight = 19.sp,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
                 )
+            }
+
+            // ⑥ 장착 버튼 (인벤토리에서 열 때만)
+            if (onEquip != null && !isDestroyed) {
+                HorizontalDivider(color = TipLine)
+                Button(
+                    onClick = { onEquip(); onDismiss() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7A4F1A))
+                ) {
+                    Text("장착", color = TextGold, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
             }
         }
     }
@@ -2146,7 +2163,11 @@ private fun ScrollInfoDialog(scrollType: ScrollType, quantity: Int, onDismiss: (
 }
 
 @Composable
-private fun EquipmentBagItem(equipment: Equipment, modifier: Modifier = Modifier) {
+private fun EquipmentBagItem(
+    equipment: Equipment,
+    onEquip: (Equipment) -> Unit,
+    modifier: Modifier = Modifier
+) {
     var showInfo by remember { mutableStateOf(false) }
     Box(
         modifier = modifier
@@ -2168,7 +2189,11 @@ private fun EquipmentBagItem(equipment: Equipment, modifier: Modifier = Modifier
         )
     }
     if (showInfo) {
-        ItemInfoDialog(equipment = equipment, onDismiss = { showInfo = false })
+        ItemInfoDialog(
+            equipment = equipment,
+            onDismiss = { showInfo = false },
+            onEquip   = { onEquip(equipment) }
+        )
     }
 }
 
@@ -2179,6 +2204,7 @@ fun InventoryWindow(
     dragState: DragDropState,
     rootWindowOffset: Offset,
     onDragEnd: (ScrollType, Offset) -> Unit,
+    onEquip: (Equipment) -> Unit = {},
     onClose: (() -> Unit)? = null,
     onDrag: ((Offset) -> Unit)? = null
 ) {
@@ -2201,7 +2227,7 @@ fun InventoryWindow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         rowItems.forEach { equip ->
-                            EquipmentBagItem(equip, Modifier.weight(1f))
+                            EquipmentBagItem(equip, onEquip = onEquip, modifier = Modifier.weight(1f))
                         }
                         repeat(4 - rowItems.size) { Spacer(Modifier.weight(1f)) }
                     }
