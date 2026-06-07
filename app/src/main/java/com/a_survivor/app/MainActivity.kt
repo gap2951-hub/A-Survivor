@@ -298,14 +298,18 @@ fun MainScreen(
     ) {
         // ① 게임 캔버스 렌더링
         GameCanvas(
-            player        = state.player,
-            monsters      = state.monsters,
-            world         = state.world,
-            groundItems   = state.groundItems,
-            damageNumbers = state.damageNumbers,
-            portals       = state.portals,
-            projectiles   = state.projectiles,
-            npcs          = state.npcs
+            player                = state.player,
+            monsters              = state.monsters,
+            world                 = state.world,
+            groundItems           = state.groundItems,
+            damageNumbers         = state.damageNumbers,
+            portals               = state.portals,
+            projectiles           = state.projectiles,
+            npcs                  = state.npcs,
+            isMoving              = joystickDirX != 0f || joystickDirY != 0f,
+            playerAttackAnimStart  = state.playerAttackAnimStart,
+            playerHurtAnimStart   = state.playerHurtAnimStart,
+            playerDeathTime       = state.playerDeathTime
         )
 
         // ② 상단 HUD
@@ -1222,6 +1226,10 @@ private fun GameCanvas(
     portals: List<Portal>,
     projectiles: List<com.a_survivor.app.model.Projectile> = emptyList(),
     npcs: List<Npc> = emptyList(),
+    isMoving: Boolean = false,
+    playerAttackAnimStart: Long = 0L,
+    playerHurtAnimStart: Long = 0L,
+    playerDeathTime: Long = 0L,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1323,6 +1331,48 @@ private fun GameCanvas(
     val energyBoltFrames  = remember { listOf(energyBolt1, energyBolt2, energyBolt3) }
     val npcChuchu         = remember { loadBitmap(context, R.drawable.npc_chuchu, 128) }
 
+    // 전사 플레이어 스프라이트 프레임
+    val warriorIdle   = remember { listOf(
+        loadBitmap(context, R.drawable.warrior_idle_0, 256),
+        loadBitmap(context, R.drawable.warrior_idle_1, 256),
+        loadBitmap(context, R.drawable.warrior_idle_2, 256),
+        loadBitmap(context, R.drawable.warrior_idle_3, 256)
+    ) }
+    val warriorWalk   = remember { listOf(
+        loadBitmap(context, R.drawable.warrior_walk_0, 256),
+        loadBitmap(context, R.drawable.warrior_walk_1, 256),
+        loadBitmap(context, R.drawable.warrior_walk_2, 256),
+        loadBitmap(context, R.drawable.warrior_walk_3, 256),
+        loadBitmap(context, R.drawable.warrior_walk_4, 256),
+        loadBitmap(context, R.drawable.warrior_walk_5, 256),
+        loadBitmap(context, R.drawable.warrior_walk_6, 256),
+        loadBitmap(context, R.drawable.warrior_walk_7, 256)
+    ) }
+    val warriorAttack = remember { listOf(
+        loadBitmap(context, R.drawable.warrior_attack_0, 256),
+        loadBitmap(context, R.drawable.warrior_attack_1, 256),
+        loadBitmap(context, R.drawable.warrior_attack_2, 256),
+        loadBitmap(context, R.drawable.warrior_attack_3, 256),
+        loadBitmap(context, R.drawable.warrior_attack_4, 256),
+        loadBitmap(context, R.drawable.warrior_attack_5, 256),
+        loadBitmap(context, R.drawable.warrior_attack_6, 256),
+        loadBitmap(context, R.drawable.warrior_attack_7, 256)
+    ) }
+    val warriorHurt   = remember { listOf(
+        loadBitmap(context, R.drawable.warrior_hurt_0, 256),
+        loadBitmap(context, R.drawable.warrior_hurt_1, 256),
+        loadBitmap(context, R.drawable.warrior_hurt_2, 256),
+        loadBitmap(context, R.drawable.warrior_hurt_3, 256)
+    ) }
+    val warriorDie    = remember { listOf(
+        loadBitmap(context, R.drawable.warrior_die_0, 256),
+        loadBitmap(context, R.drawable.warrior_die_1, 256),
+        loadBitmap(context, R.drawable.warrior_die_2, 256),
+        loadBitmap(context, R.drawable.warrior_die_3, 256),
+        loadBitmap(context, R.drawable.warrior_die_4, 256),
+        loadBitmap(context, R.drawable.warrior_die_5, 256)
+    ) }
+
     Canvas(modifier = modifier.fillMaxSize()) {
         val zoom = maxOf(size.width / world.width, size.height / world.height)
         val cam = CameraState(zoom = zoom)
@@ -1340,7 +1390,11 @@ private fun GameCanvas(
             drawMonster(m, cam, idle, walk, slash)
         }
         projectiles.forEach { drawProjectile(it, cam, energyBoltFrames) }
-        drawPlayer(player, cam)
+        drawPlayer(
+            player, cam,
+            warriorIdle, warriorWalk, warriorAttack, warriorHurt, warriorDie,
+            isMoving, playerAttackAnimStart, playerHurtAnimStart, playerDeathTime
+        )
         damageNumbers.forEach { drawDamageNumber(it, cam) }
     }
 }
@@ -1508,20 +1562,56 @@ private fun DrawScope.drawProjectile(
     }
 }
 
-private fun DrawScope.drawPlayer(player: Player, cam: CameraState) {
-    val c = cam.toScreenOffset(player.positionX, player.positionY, size.width, size.height)
-    val r = size.height * 0.026f
+private fun DrawScope.drawPlayer(
+    player: Player,
+    cam: CameraState,
+    idleFrames: List<ImageBitmap>,
+    walkFrames: List<ImageBitmap>,
+    attackFrames: List<ImageBitmap>,
+    hurtFrames: List<ImageBitmap>,
+    dieFrames: List<ImageBitmap>,
+    isMoving: Boolean,
+    playerAttackAnimStart: Long,
+    playerHurtAnimStart: Long,
+    playerDeathTime: Long
+) {
+    val c    = cam.toScreenOffset(player.positionX, player.positionY, size.width, size.height)
+    val imgH = (size.height * 0.18f).toInt().coerceAtLeast(40)
+    val imgW = imgH
+    val now  = System.currentTimeMillis()
+
+    val isDead      = player.hp <= 0
+    val isHurt      = !isDead && (now - playerHurtAnimStart < 400L)
+    val isAttacking = !isDead && !isHurt && (now - playerAttackAnimStart < 800L)
+
+    val bitmap = when {
+        isDead -> {
+            val idx = if (playerDeathTime > 0L) ((now - playerDeathTime) / 200L).toInt().coerceIn(0, dieFrames.size - 1) else dieFrames.size - 1
+            dieFrames[idx]
+        }
+        isHurt      -> hurtFrames[((now - playerHurtAnimStart) / 100L).toInt().coerceIn(0, hurtFrames.size - 1)]
+        isAttacking -> attackFrames[((now - playerAttackAnimStart) / 100L).toInt().coerceIn(0, attackFrames.size - 1)]
+        isMoving    -> walkFrames[((now / 100L) % walkFrames.size).toInt()]
+        else        -> idleFrames[((now / 200L) % idleFrames.size).toInt()]
+    }
 
     // 그림자
-    drawCircle(Color.Black.copy(alpha = 0.35f), radius = r * 1.15f,
-        center = Offset(c.x, c.y + r * 0.4f))
-    // 몸통
-    drawCircle(Color(0xFFFFAA33), radius = r, center = c)
-    // 테두리
-    drawCircle(Color(0xFFFFDD88), radius = r, center = c, style = Stroke(width = 2f))
-    // 중심 하이라이트
-    drawCircle(Color.White.copy(alpha = 0.5f), radius = r * 0.28f,
-        center = Offset(c.x - r * 0.2f, c.y - r * 0.2f))
+    drawCircle(
+        Color.Black.copy(alpha = 0.35f),
+        radius = imgH * 0.18f,
+        center = Offset(c.x, c.y + imgH * 0.38f)
+    )
+
+    // 스프라이트 (facingLeft 시 좌우 반전)
+    withTransform({
+        if (player.facingLeft) scale(-1f, 1f, pivot = c)
+    }) {
+        drawImage(
+            image     = bitmap,
+            dstOffset = IntOffset((c.x - imgW / 2f).toInt(), (c.y - imgH * 0.75f).toInt()),
+            dstSize   = IntSize(imgW, imgH)
+        )
+    }
 }
 
 private fun DrawScope.drawMonster(

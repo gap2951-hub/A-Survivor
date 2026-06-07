@@ -76,7 +76,10 @@ data class UiState(
     val projectiles: List<Projectile> = emptyList(),
     val npcs: List<Npc> = emptyList(),
     val questState: QuestState = QuestState(),
-    val activeDialogue: DialogueSession? = null
+    val activeDialogue: DialogueSession? = null,
+    val playerAttackAnimStart: Long = 0L,
+    val playerHurtAnimStart: Long = 0L,
+    val playerDeathTime: Long = 0L
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -258,7 +261,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val newX = if (!isBlocked(clampedX, p.positionY, world)) clampedX else p.positionX
             val newY = if (!isBlocked(newX,     clampedY,    world)) clampedY else p.positionY
 
-            val moved = state.copy(player = p.copy(positionX = newX, positionY = newY))
+            val newFacingLeft = if (dirX < 0f) true else if (dirX > 0f) false else p.facingLeft
+            val moved = state.copy(player = p.copy(positionX = newX, positionY = newY, facingLeft = newFacingLeft))
             val afterPickup = checkPickup(moved)
 
             val now = System.currentTimeMillis()
@@ -338,7 +342,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // 원거리 공격: 투사체 생성, 즉시 데미지 없음
                 nextProjectileId++
                 return@update state.copy(
-                    projectiles = state.projectiles + result.newProjectile
+                    projectiles          = state.projectiles + result.newProjectile,
+                    playerAttackAnimStart = now
                 )
             }
 
@@ -353,7 +358,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 return@update state.copy(
-                    damageNumbers = state.damageNumbers + listOfNotNull(missNum)
+                    damageNumbers        = state.damageNumbers + listOfNotNull(missNum),
+                    playerAttackAnimStart = now
                 )
             }
 
@@ -419,7 +425,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 pendingRespawns       = state.pendingRespawns + newPending,
                 damageNumbers         = state.damageNumbers + listOfNotNull(attackDmgNum),
                 jobAdvancementPending = advancePending,
-                questState            = newQuestState
+                questState            = newQuestState,
+                playerAttackAnimStart  = now
             )
             if (gainedExp > 0) computeDerived(finalState) else finalState
         }
@@ -556,10 +563,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val activeDmgNums = state.damageNumbers.filter { now - it.createdAt < DAMAGE_NUMBER_DURATION }
 
+            val wasAlive    = state.player.hp > 0
+            val justDied    = wasAlive && newHp == 0
+            val newDeathTime  = if (justDied) now else state.playerDeathTime
+            val newHurtStart  = if (aiResult.playerDamage > 0 && !justDied) now else state.playerHurtAnimStart
+
             val newState = state.copy(
-                monsters      = aiResult.updatedMonsters,
-                player        = state.player.copy(hp = newHp),
-                damageNumbers = activeDmgNums + listOfNotNull(playerDmgNum)
+                monsters            = aiResult.updatedMonsters,
+                player              = state.player.copy(hp = newHp),
+                damageNumbers       = activeDmgNums + listOfNotNull(playerDmgNum),
+                playerHurtAnimStart = newHurtStart,
+                playerDeathTime     = newDeathTime
             )
             checkPickup(newState)
         }

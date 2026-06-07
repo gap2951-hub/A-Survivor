@@ -13,5 +13,6 @@ data class Player(
     val weapon: Weapon = DefaultWeapon,
 
     val positionX: Float = 512f,
-    val positionY: Float = 286f
+    val positionY: Float = 286f,
+    val facingLeft: Boolean = false
 )
