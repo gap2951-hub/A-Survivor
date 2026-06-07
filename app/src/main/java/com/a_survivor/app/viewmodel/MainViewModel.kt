@@ -130,8 +130,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val RESPAWN_DELAY         = 5000L
         private const val RESPAWN_CHECK_INTERVAL = 1000L
         private const val DAMAGE_NUMBER_DURATION = 800L
-        private const val PICKUP_RANGE          = 50f
-        private const val PICKUP_DELAY          = 1500L
+        private const val PICKUP_RANGE          = 150f
+        private const val PICKUP_DELAY          = 2000L
         private const val COLLISION_RADIUS      = 10f
         private const val LUMINANCE_THRESHOLD   = 80f
         private const val PORTAL_RANGE          = 30f
@@ -423,14 +423,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updatedPlayer = if (gainedExp > 0) levelService.applyExp(state.player, gainedExp) else state.player
 
             val newGroundItems = mutableListOf<GroundItem>()
-            var moneyGained = 0
             killedList.forEach { monster ->
                 val drops = dropService.roll(dropEntriesFor(state.world.mapType))
-                val nonMoneyDrops = drops.filterNot { it is DropItem.MoneyDrop }
-                drops.filterIsInstance<DropItem.MoneyDrop>().forEach { moneyGained += it.amount }
-                nonMoneyDrops.forEachIndexed { index, drop ->
-                    val angle  = index * (Math.PI * 2.0 / nonMoneyDrops.size.coerceAtLeast(1)).toFloat()
-                    val spread = if (nonMoneyDrops.size > 1) 20f else 0f
+                drops.forEachIndexed { index, drop ->
+                    val angle  = index * (Math.PI * 2.0 / drops.size.coerceAtLeast(1)).toFloat()
+                    val spread = if (drops.size > 1) 20f else 0f
                     newGroundItems.add(GroundItem(
                         id = nextGroundItemId++,
                         positionX = monster.positionX + cos(angle) * spread,
@@ -463,7 +460,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val finalState = baseState.copy(
                 monsters              = updatedMonsters,
                 player                = updatedPlayer,
-                money                 = baseState.money + moneyGained,
                 groundItems           = baseState.groundItems + newGroundItems,
                 pendingRespawns       = baseState.pendingRespawns + killedList.map { PendingRespawn(it.id, now) },
                 damageNumbers         = baseState.damageNumbers + listOfNotNull(attackDmgNum),
@@ -513,14 +509,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updatedPlayer = if (gainedExp > 0) levelService.applyExp(state.player, gainedExp) else state.player
 
             val newGroundItems = mutableListOf<GroundItem>()
-            var moneyGainedProj = 0
             killed.forEach { monster ->
                 val drops = dropService.roll(dropEntriesFor(state.world.mapType))
-                val nonMoneyDrops = drops.filterNot { it is DropItem.MoneyDrop }
-                drops.filterIsInstance<DropItem.MoneyDrop>().forEach { moneyGainedProj += it.amount }
-                nonMoneyDrops.forEachIndexed { index, drop ->
-                    val angle  = index * (Math.PI * 2.0 / nonMoneyDrops.size.coerceAtLeast(1)).toFloat()
-                    val spread = if (nonMoneyDrops.size > 1) 20f else 0f
+                drops.forEachIndexed { index, drop ->
+                    val angle  = index * (Math.PI * 2.0 / drops.size.coerceAtLeast(1)).toFloat()
+                    val spread = if (drops.size > 1) 20f else 0f
                     newGroundItems.add(GroundItem(
                         id        = nextGroundItemId++,
                         positionX = monster.positionX + cos(angle) * spread,
@@ -554,7 +547,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 projectiles           = projResult.updatedProjectiles,
                 monsters              = updatedMonsters,
                 player                = updatedPlayer,
-                money                 = state.money + moneyGainedProj,
                 groundItems           = state.groundItems + newGroundItems,
                 pendingRespawns       = state.pendingRespawns + newPending,
                 damageNumbers         = state.damageNumbers + newDmgNums,
