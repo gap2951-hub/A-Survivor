@@ -68,6 +68,7 @@ data class UiState(
     val equipment: Equipment?,
     val weapon: Weapon?,
     val inventory: List<InventoryItem>,
+    val equipmentBag: List<Equipment> = emptyList(),
     val selectedScrollType: ScrollType? = null,
     val lastResult: EnhancementResult? = null,
     val player: Player = Player(),
@@ -645,7 +646,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 )
                 is DropItem.EquipmentDrop -> {
-                    if (s.equipment == null) s.copy(equipment = drop.equipment) else s
+                    val withBag = s.copy(equipmentBag = s.equipmentBag + drop.equipment)
+                    if (withBag.equipment == null) withBag.copy(equipment = drop.equipment) else withBag
                 }
             }
         }

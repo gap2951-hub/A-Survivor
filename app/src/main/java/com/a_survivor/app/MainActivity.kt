@@ -387,6 +387,7 @@ fun MainScreen(
             ) {
                 InventoryWindow(
                     inventory        = state.inventory,
+                    equipmentBag     = state.equipmentBag,
                     dragState        = dragState,
                     rootWindowOffset = rootWindowOffset,
                     onClose          = { isInventoryOpen = false },
@@ -2074,8 +2075,107 @@ private fun PanelOverlay(
 
 // ── 인벤토리창 ────────────────────────────────────────────────────────────────
 @Composable
+private fun scrollDrawableRes(scrollType: ScrollType): Int? = when (scrollType) {
+    ScrollType.GLOVE_ATK_100 -> R.drawable.scroll_100
+    ScrollType.GLOVE_ATK_60  -> R.drawable.scroll_60
+    ScrollType.GLOVE_ATK_10  -> R.drawable.scroll_10
+    else                     -> null
+}
+
+@Composable
+private fun ScrollInfoDialog(scrollType: ScrollType, quantity: Int, onDismiss: () -> Unit) {
+    val scroll      = ScrollCatalog.get(scrollType)
+    val drawableRes = scrollDrawableRes(scrollType)
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.80f)
+                .clip(RoundedCornerShape(10.dp))
+                .background(TipBg)
+                .border(1.dp, TipBorder, RoundedCornerShape(10.dp))
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(scroll.name, color = TipText, fontSize = 16.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                Text("수량 ${quantity}개", color = TextGold, fontSize = 12.sp)
+            }
+            HorizontalDivider(color = TipLine)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (scroll.isWhiteScroll) Color(0xFF002244) else Color(0xFF2A1A00))
+                        .border(1.dp, if (scroll.isWhiteScroll) DotWhite else DotNormal, RoundedCornerShape(6.dp))
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (drawableRes != null) {
+                        Image(
+                            painter = painterResource(id = drawableRes),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
+                        )
+                    } else {
+                        Text(
+                            text = if (scroll.isWhiteScroll) "백의" else "${scroll.successRate}%",
+                            color = if (scroll.isWhiteScroll) DotWhite else DotNormal,
+                            fontSize = 14.sp, fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    WeaponReqRow("성공률", "${scroll.successRate}%")
+                    if (scroll.isWhiteScroll) {
+                        WeaponReqRow("효과", "업그레이드 실패 횟수 복구")
+                    } else {
+                        WeaponReqRow("공격력 보너스", "+${scroll.attackBonus}")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EquipmentBagItem(equipment: Equipment, modifier: Modifier = Modifier) {
+    var showInfo by remember { mutableStateOf(false) }
+    Box(
+        modifier = modifier
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFF1A1222))
+            .border(1.dp, BorderGold.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+            .pointerInput(equipment) {
+                detectTapGestures(onTap = { showInfo = true })
+            }
+            .padding(6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.nogada_glove),
+            contentDescription = equipment.name,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit
+        )
+    }
+    if (showInfo) {
+        ItemInfoDialog(equipment = equipment, onDismiss = { showInfo = false })
+    }
+}
+
+@Composable
 fun InventoryWindow(
     inventory: List<InventoryItem>,
+    equipmentBag: List<Equipment>,
     dragState: DragDropState,
     rootWindowOffset: Offset,
     onDragEnd: (ScrollType, Offset) -> Unit,
@@ -2089,17 +2189,35 @@ fun InventoryWindow(
             .background(PanelBg)
             .border(1.dp, BorderGold, RoundedCornerShape(8.dp))
     ) {
-        WindowTitleBar("인벤토리 - 주문서", onClose = onClose, onDrag = onDrag)
+        WindowTitleBar("인벤토리", onClose = onClose, onDrag = onDrag)
 
         Column(modifier = Modifier.padding(12.dp)) {
+            if (equipmentBag.isNotEmpty()) {
+                Text("장비 아이템", color = TextMuted, fontSize = 11.sp)
+                Spacer(Modifier.height(6.dp))
+                equipmentBag.chunked(4).forEach { rowItems ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        rowItems.forEach { equip ->
+                            EquipmentBagItem(equip, Modifier.weight(1f))
+                        }
+                        repeat(4 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                HorizontalDivider(color = BorderGold.copy(alpha = 0.3f))
+                Spacer(Modifier.height(10.dp))
+            }
+
             Text(
-                "아이템을 꾹 눌러 장갑 슬롯으로 드래그하세요",
+                "주문서 — 꾹 눌러 장갑 슬롯으로 드래그",
                 color = TextMuted, fontSize = 11.sp
             )
             Spacer(Modifier.height(10.dp))
 
-            val rows = inventory.chunked(4)
-            rows.forEach { rowItems ->
+            inventory.chunked(4).forEach { rowItems ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -2129,11 +2247,13 @@ private fun DraggableScrollItem(
     onDragEnd: (ScrollType, Offset) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scroll   = ScrollCatalog.get(item.scrollType)
-    val isEmpty  = item.quantity <= 0
+    val scroll         = ScrollCatalog.get(item.scrollType)
+    val isEmpty        = item.quantity <= 0
     val isBeingDragged = dragState.isDragging && dragState.scrollType == item.scrollType
+    val drawableRes    = scrollDrawableRes(item.scrollType)
 
     var itemWindowPos by remember { mutableStateOf(Offset.Zero) }
+    var showInfo      by remember { mutableStateOf(false) }
 
     val bgColor     = if (scroll.isWhiteScroll) Color(0xFF002244) else Color(0xFF2A1A00)
     val borderColor = if (scroll.isWhiteScroll) DotWhite else DotNormal
@@ -2150,6 +2270,9 @@ private fun DraggableScrollItem(
             )
             .alpha(if (isBeingDragged) 0.25f else 1f)
             .onGloballyPositioned { itemWindowPos = it.positionInWindow() }
+            .pointerInput(item.scrollType) {
+                detectTapGestures(onTap = { showInfo = true })
+            }
             .pointerInput(item.scrollType, isEmpty) {
                 if (isEmpty) return@pointerInput
                 detectDragGesturesAfterLongPress(
@@ -2157,9 +2280,7 @@ private fun DraggableScrollItem(
                         dragState.scrollType = item.scrollType
                         dragState.position = itemWindowPos + localOffset
                     },
-                    onDrag = { _, delta ->
-                        dragState.position += delta
-                    },
+                    onDrag = { _, delta -> dragState.position += delta },
                     onDragEnd = {
                         val finalPos   = dragState.position
                         val scrollType = dragState.scrollType
@@ -2174,20 +2295,34 @@ private fun DraggableScrollItem(
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(3.dp)
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            Text(
-                text = if (scroll.isWhiteScroll) "백의" else "${scroll.successRate}%",
-                color = if (isEmpty) TextMuted.copy(0.3f)
-                        else if (scroll.isWhiteScroll) DotWhite else DotNormal,
-                fontSize = 15.sp, fontWeight = FontWeight.Bold
-            )
+            if (drawableRes != null) {
+                Image(
+                    painter = painterResource(id = drawableRes),
+                    contentDescription = scroll.name,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentScale = ContentScale.Fit,
+                    alpha = if (isEmpty) 0.25f else 1f
+                )
+            } else {
+                Text(
+                    text = if (scroll.isWhiteScroll) "백의" else "${scroll.successRate}%",
+                    color = if (isEmpty) TextMuted.copy(0.3f) else if (scroll.isWhiteScroll) DotWhite else DotNormal,
+                    fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+            }
             Text(
                 text = "×${item.quantity}",
                 color = if (isEmpty) ColorDisabled else TextGold,
-                fontSize = 11.sp
+                fontSize = 10.sp
             )
         }
+    }
+
+    if (showInfo) {
+        ScrollInfoDialog(scrollType = item.scrollType, quantity = item.quantity, onDismiss = { showInfo = false })
     }
 }
 
@@ -2250,9 +2385,10 @@ private fun DragGhost(
     windowPosition: Offset,
     rootOffset: Offset
 ) {
-    val scroll = ScrollCatalog.get(scrollType)
-    val localPos = windowPosition - rootOffset
-    val ghostSize = 72.dp
+    val scroll      = ScrollCatalog.get(scrollType)
+    val drawableRes = scrollDrawableRes(scrollType)
+    val localPos    = windowPosition - rootOffset
+    val ghostSize   = 72.dp
 
     Box(
         modifier = Modifier
@@ -2265,30 +2401,30 @@ private fun DragGhost(
             .size(ghostSize)
             .zIndex(100f)
             .clip(RoundedCornerShape(8.dp))
-            .background(
-                (if (scroll.isWhiteScroll) Color(0xDD003366) else Color(0xDD332200))
-            )
-            .border(
-                2.dp,
-                if (scroll.isWhiteScroll) DotWhite else DotNormal,
-                RoundedCornerShape(8.dp)
-            ),
+            .background(if (scroll.isWhiteScroll) Color(0xDD003366) else Color(0xDD332200))
+            .border(2.dp, if (scroll.isWhiteScroll) DotWhite else DotNormal, RoundedCornerShape(8.dp))
+            .padding(8.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = if (scroll.isWhiteScroll) "백의" else "${scroll.successRate}%",
-                color = if (scroll.isWhiteScroll) DotWhite else DotNormal,
-                fontSize = 20.sp, fontWeight = FontWeight.Bold
+        if (drawableRes != null) {
+            Image(
+                painter = painterResource(id = drawableRes),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit
             )
-            Text(
-                text = "주문서",
-                color = TextGold.copy(alpha = 0.7f),
-                fontSize = 9.sp
-            )
+        } else {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = if (scroll.isWhiteScroll) "백의" else "${scroll.successRate}%",
+                    color = if (scroll.isWhiteScroll) DotWhite else DotNormal,
+                    fontSize = 20.sp, fontWeight = FontWeight.Bold
+                )
+                Text("주문서", color = TextGold.copy(alpha = 0.7f), fontSize = 9.sp)
+            }
         }
     }
 }
