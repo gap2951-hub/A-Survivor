@@ -12,12 +12,18 @@ data class Portal(
 object PortalRegistry {
     fun portalsFor(mapType: MapType): List<Portal> = when (mapType) {
         MapType.BEGINNER_FIELD -> listOf(
-            // 오른쪽 포탈 → 마을 (도착: x=350, 포탈x=250에서 100f 거리)
-            Portal(850f, 286f, MapType.TOWN, 350f, 286f, "마을")
+            Portal(850f, 286f, MapType.TOWN,    350f, 286f, "마을"),
+            Portal(174f, 286f, MapType.FIELD_2, 800f, 286f, "중급 사냥터")
         )
         MapType.TOWN -> listOf(
-            // 포탈 x=250 (장애물 없는 개활지) → 사냥터 도착 x=750
             Portal(250f, 286f, MapType.BEGINNER_FIELD, 750f, 286f, "초보자 사냥터")
+        )
+        MapType.FIELD_2 -> listOf(
+            Portal(850f, 286f, MapType.BEGINNER_FIELD, 300f, 286f, "초보자 사냥터"),
+            Portal(174f, 286f, MapType.FIELD_3,        800f, 286f, "상급 사냥터")
+        )
+        MapType.FIELD_3 -> listOf(
+            Portal(850f, 286f, MapType.FIELD_2, 300f, 286f, "중급 사냥터")
         )
     }
 }

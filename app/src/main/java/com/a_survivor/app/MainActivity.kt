@@ -1227,7 +1227,92 @@ private fun GameCanvas(
     val context = LocalContext.current
     val mapBitmap       = remember { loadBitmap(context, R.drawable.map_beginner, 2048) }
     val townBitmap      = remember { loadBitmap(context, R.drawable.map_town, 2048) }
-    val slimeBitmap     = remember { loadBitmap(context, R.drawable.slime, 256) }
+    // variant 1
+    val skelIdle1  = remember { listOf(
+        loadBitmap(context, R.drawable.skeleton_idle_0, 256),
+        loadBitmap(context, R.drawable.skeleton_idle_1, 256),
+        loadBitmap(context, R.drawable.skeleton_idle_2, 256),
+        loadBitmap(context, R.drawable.skeleton_idle_3, 256),
+        loadBitmap(context, R.drawable.skeleton_idle_4, 256),
+        loadBitmap(context, R.drawable.skeleton_idle_5, 256)
+    ) }
+    val skelWalk1  = remember { listOf(
+        loadBitmap(context, R.drawable.skeleton_walk_0, 256),
+        loadBitmap(context, R.drawable.skeleton_walk_1, 256),
+        loadBitmap(context, R.drawable.skeleton_walk_2, 256),
+        loadBitmap(context, R.drawable.skeleton_walk_3, 256),
+        loadBitmap(context, R.drawable.skeleton_walk_4, 256),
+        loadBitmap(context, R.drawable.skeleton_walk_5, 256),
+        loadBitmap(context, R.drawable.skeleton_walk_6, 256),
+        loadBitmap(context, R.drawable.skeleton_walk_7, 256)
+    ) }
+    val skelSlash1 = remember { listOf(
+        loadBitmap(context, R.drawable.skeleton_slash_0, 256),
+        loadBitmap(context, R.drawable.skeleton_slash_1, 256),
+        loadBitmap(context, R.drawable.skeleton_slash_2, 256),
+        loadBitmap(context, R.drawable.skeleton_slash_3, 256),
+        loadBitmap(context, R.drawable.skeleton_slash_4, 256),
+        loadBitmap(context, R.drawable.skeleton_slash_5, 256)
+    ) }
+    // variant 2
+    val skelIdle2  = remember { listOf(
+        loadBitmap(context, R.drawable.skeleton2_idle_0, 256),
+        loadBitmap(context, R.drawable.skeleton2_idle_1, 256),
+        loadBitmap(context, R.drawable.skeleton2_idle_2, 256),
+        loadBitmap(context, R.drawable.skeleton2_idle_3, 256),
+        loadBitmap(context, R.drawable.skeleton2_idle_4, 256),
+        loadBitmap(context, R.drawable.skeleton2_idle_5, 256)
+    ) }
+    val skelWalk2  = remember { listOf(
+        loadBitmap(context, R.drawable.skeleton2_walk_0, 256),
+        loadBitmap(context, R.drawable.skeleton2_walk_1, 256),
+        loadBitmap(context, R.drawable.skeleton2_walk_2, 256),
+        loadBitmap(context, R.drawable.skeleton2_walk_3, 256),
+        loadBitmap(context, R.drawable.skeleton2_walk_4, 256),
+        loadBitmap(context, R.drawable.skeleton2_walk_5, 256),
+        loadBitmap(context, R.drawable.skeleton2_walk_6, 256),
+        loadBitmap(context, R.drawable.skeleton2_walk_7, 256)
+    ) }
+    val skelSlash2 = remember { listOf(
+        loadBitmap(context, R.drawable.skeleton2_slash_0, 256),
+        loadBitmap(context, R.drawable.skeleton2_slash_1, 256),
+        loadBitmap(context, R.drawable.skeleton2_slash_2, 256),
+        loadBitmap(context, R.drawable.skeleton2_slash_3, 256),
+        loadBitmap(context, R.drawable.skeleton2_slash_4, 256),
+        loadBitmap(context, R.drawable.skeleton2_slash_5, 256)
+    ) }
+    // variant 3
+    val skelIdle3  = remember { listOf(
+        loadBitmap(context, R.drawable.skeleton3_idle_0, 256),
+        loadBitmap(context, R.drawable.skeleton3_idle_1, 256),
+        loadBitmap(context, R.drawable.skeleton3_idle_2, 256),
+        loadBitmap(context, R.drawable.skeleton3_idle_3, 256),
+        loadBitmap(context, R.drawable.skeleton3_idle_4, 256),
+        loadBitmap(context, R.drawable.skeleton3_idle_5, 256)
+    ) }
+    val skelWalk3  = remember { listOf(
+        loadBitmap(context, R.drawable.skeleton3_walk_0, 256),
+        loadBitmap(context, R.drawable.skeleton3_walk_1, 256),
+        loadBitmap(context, R.drawable.skeleton3_walk_2, 256),
+        loadBitmap(context, R.drawable.skeleton3_walk_3, 256),
+        loadBitmap(context, R.drawable.skeleton3_walk_4, 256),
+        loadBitmap(context, R.drawable.skeleton3_walk_5, 256),
+        loadBitmap(context, R.drawable.skeleton3_walk_6, 256),
+        loadBitmap(context, R.drawable.skeleton3_walk_7, 256)
+    ) }
+    val skelSlash3 = remember { listOf(
+        loadBitmap(context, R.drawable.skeleton3_slash_0, 256),
+        loadBitmap(context, R.drawable.skeleton3_slash_1, 256),
+        loadBitmap(context, R.drawable.skeleton3_slash_2, 256),
+        loadBitmap(context, R.drawable.skeleton3_slash_3, 256),
+        loadBitmap(context, R.drawable.skeleton3_slash_4, 256),
+        loadBitmap(context, R.drawable.skeleton3_slash_5, 256)
+    ) }
+    val skelFrames = remember { listOf(
+        Triple(skelIdle1, skelWalk1, skelSlash1),
+        Triple(skelIdle2, skelWalk2, skelSlash2),
+        Triple(skelIdle3, skelWalk3, skelSlash3)
+    ) }
     val scroll100Bitmap = remember { loadBitmap(context, R.drawable.scroll_100, 256) }
     val scroll60Bitmap  = remember { loadBitmap(context, R.drawable.scroll_60,  256) }
     val scroll10Bitmap  = remember { loadBitmap(context, R.drawable.scroll_10,  256) }
@@ -1250,7 +1335,10 @@ private fun GameCanvas(
         portals.forEach { drawPortal(it, cam) }
         npcs.forEach { drawNpc(it, cam, npcChuchu) }
         drawAttackRange(player, cam)
-        monsters.forEach { drawMonster(it, cam, slimeBitmap) }
+        monsters.forEach { m ->
+            val (idle, walk, slash) = skelFrames[(m.variant - 1).coerceIn(0, 2)]
+            drawMonster(m, cam, idle, walk, slash)
+        }
         projectiles.forEach { drawProjectile(it, cam, energyBoltFrames) }
         drawPlayer(player, cam)
         damageNumbers.forEach { drawDamageNumber(it, cam) }
@@ -1436,35 +1524,55 @@ private fun DrawScope.drawPlayer(player: Player, cam: CameraState) {
         center = Offset(c.x - r * 0.2f, c.y - r * 0.2f))
 }
 
-private fun DrawScope.drawMonster(monster: Monster, cam: CameraState, slimeBitmap: ImageBitmap) {
+private fun DrawScope.drawMonster(
+    monster: Monster,
+    cam: CameraState,
+    idleFrames: List<ImageBitmap>,
+    walkFrames: List<ImageBitmap>,
+    slashFrames: List<ImageBitmap>
+) {
     val c       = cam.toScreenOffset(monster.positionX, monster.positionY, size.width, size.height)
-    val imgSize = (size.height * 0.088f).toInt().coerceAtLeast(20)
+    val imgSize = (size.height * 0.15f).toInt().coerceAtLeast(30)
     val sp      = size.height / 1080f
+
+    // 애니메이션 프레임 선택
+    val now = System.currentTimeMillis()
+    val (frames, intervalMs) = when (monster.state) {
+        MonsterState.ATTACKING -> Pair(slashFrames, 80L)
+        MonsterState.AGGRO     -> Pair(walkFrames,  80L)
+        else                   -> Pair(idleFrames, 120L)
+    }
+    val frameIndex = ((now / intervalMs) % frames.size).toInt()
+    val bitmap     = frames[frameIndex]
 
     // 그림자
     drawCircle(
         Color.Black.copy(alpha = 0.3f),
-        radius = imgSize * 0.35f,
-        center = Offset(c.x, c.y + imgSize * 0.3f)
+        radius = imgSize * 0.25f,
+        center = Offset(c.x, c.y + imgSize * 0.42f)
     )
 
-    // 슬라임 이미지
-    drawImage(
-        image         = slimeBitmap,
-        dstOffset     = androidx.compose.ui.unit.IntOffset(
-            (c.x - imgSize / 2).toInt(),
-            (c.y - imgSize / 2).toInt()
-        ),
-        dstSize       = IntSize(imgSize, imgSize),
-        filterQuality = androidx.compose.ui.graphics.FilterQuality.High
-    )
+    // 스켈레톤 이미지 (facingLeft 시 좌우 반전)
+    withTransform({
+        if (monster.facingLeft) scale(-1f, 1f, pivot = c)
+    }) {
+        drawImage(
+            image         = bitmap,
+            dstOffset     = androidx.compose.ui.unit.IntOffset(
+                (c.x - imgSize / 2).toInt(),
+                (c.y - imgSize / 2).toInt()
+            ),
+            dstSize       = IntSize(imgSize, imgSize),
+            filterQuality = androidx.compose.ui.graphics.FilterQuality.High
+        )
+    }
 
     // HP 바
     val isAggro = monster.state != MonsterState.IDLE
     val barW = imgSize * 1.2f
     val barH = 4f * sp
     val barX = c.x - barW / 2f
-    val barY = c.y - imgSize * 0.6f - 6f * sp
+    val barY = c.y - imgSize * 0.55f - 6f * sp
     val frac = (monster.hp.toFloat() / monster.maxHp).coerceIn(0f, 1f)
     drawRect(Color(0xFF661111), topLeft = Offset(barX, barY), size = Size(barW, barH))
     if (frac > 0f) drawRect(
@@ -1475,11 +1583,11 @@ private fun DrawScope.drawMonster(monster: Monster, cam: CameraState, slimeBitma
     // 어그로 상태 "!" 표시
     if (isAggro) {
         val aggroPaint = android.graphics.Paint().apply {
-            color       = android.graphics.Color.RED
-            textSize    = 16f * sp
-            textAlign   = android.graphics.Paint.Align.CENTER
+            color          = android.graphics.Color.RED
+            textSize       = 16f * sp
+            textAlign      = android.graphics.Paint.Align.CENTER
             isFakeBoldText = true
-            isAntiAlias = true
+            isAntiAlias    = true
             setShadowLayer(3f, 0f, 1f, android.graphics.Color.BLACK)
         }
         drawContext.canvas.nativeCanvas.drawText(
@@ -2664,12 +2772,12 @@ private fun QuestTrackerPanel(questState: QuestState, modifier: Modifier = Modif
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = "슬라임 소탕 작전",
+            text = "스켈레톤 소탕 작전",
             color = Color.White,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold
         )
-        val fraction = (questState.slimeKillCount.toFloat() / questState.slimeKillGoal).coerceIn(0f, 1f)
+        val fraction = (questState.killCount.toFloat() / questState.killGoal).coerceIn(0f, 1f)
         Box(
             modifier = Modifier
                 .width(120.dp)
@@ -2685,7 +2793,7 @@ private fun QuestTrackerPanel(questState: QuestState, modifier: Modifier = Modif
             )
         }
         Text(
-            text = "슬라임 처치  ${questState.slimeKillCount} / ${questState.slimeKillGoal}",
+            text = "스켈레톤 처치  ${questState.killCount} / ${questState.killGoal}",
             color = Color(0xFF9A7D52),
             fontSize = 10.sp
         )

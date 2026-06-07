@@ -3,19 +3,20 @@ package com.a_survivor.app.service
 import com.a_survivor.app.model.GameWorld
 import com.a_survivor.app.model.Monster
 import com.a_survivor.app.model.distanceTo
-import com.a_survivor.app.model.slime
+import com.a_survivor.app.model.skeletonWarrior
 import kotlin.random.Random
 
 class MonsterSpawner {
 
-    /**
-     * 월드 안에 슬라임을 랜덤 위치에 스폰합니다.
-     * 각 몬스터는 이미 배치된 몬스터로부터 minDistance 이상 떨어진 위치에 놓입니다.
-     * maxAttempts 안에 조건을 만족하는 위치를 못 찾으면 해당 몬스터는 건너뜁니다.
-     */
-    fun spawnSlimes(
+    fun spawnMonsters(
         world: GameWorld,
         count: Int,
+        variant: Int = 1,
+        hp: Int = 30,
+        expReward: Int = 10,
+        avoidability: Int = 8,
+        accuracy: Int = 18,
+        speed: Float = 1.2f,
         isBlocked: ((Float, Float) -> Boolean)? = null,
         minDistance: Float = 100f,
         margin: Float = 200f,
@@ -25,7 +26,10 @@ class MonsterSpawner {
         var nextId = 1
 
         repeat(count) {
-            val monster = tryPlace(world, placed, isBlocked, minDistance, margin, nextId, random)
+            val monster = tryPlace(
+                world, placed, isBlocked, minDistance, margin, nextId,
+                variant, hp, expReward, avoidability, accuracy, speed, random
+            )
             if (monster != null) {
                 placed.add(monster)
                 nextId++
@@ -41,6 +45,12 @@ class MonsterSpawner {
         minDistance: Float,
         margin: Float,
         id: Int,
+        variant: Int,
+        hp: Int,
+        expReward: Int,
+        avoidability: Int,
+        accuracy: Int,
+        speed: Float,
         random: Random,
         maxAttempts: Int = 100
     ): Monster? {
@@ -53,7 +63,9 @@ class MonsterSpawner {
 
             val tooClose = placed.any { it.distanceTo(x, y) < minDistance }
             val blocked  = isBlocked?.invoke(x, y) == true
-            if (!tooClose && !blocked) return slime(id, x, y)
+            if (!tooClose && !blocked) return skeletonWarrior(
+                id, x, y, variant, hp, expReward, avoidability, accuracy, speed
+            )
         }
         return null
     }

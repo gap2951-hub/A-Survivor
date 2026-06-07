@@ -68,7 +68,7 @@ class MonsterAiService {
                     val newX = if (!isBlocked(rawX, m.positionY)) rawX else m.positionX
                     val newY = if (!isBlocked(newX, rawY))        rawY else m.positionY
 
-                    m.copy(positionX = newX, positionY = newY, state = MonsterState.AGGRO)
+                    m.copy(positionX = newX, positionY = newY, state = MonsterState.AGGRO, facingLeft = dx < 0)
                 }
             }
         }

@@ -1,6 +1,6 @@
 package com.a_survivor.app.model
 
-enum class MapType { BEGINNER_FIELD, TOWN }
+enum class MapType { BEGINNER_FIELD, TOWN, FIELD_2, FIELD_3 }
 
 data class GameWorld(
     val width: Float = 1024f,
@@ -18,3 +18,5 @@ data class GameWorld(
 
 val DefaultWorld = GameWorld()
 val TownWorld    = GameWorld(mapType = MapType.TOWN)
+val Field2World  = GameWorld(mapType = MapType.FIELD_2)
+val Field3World  = GameWorld(mapType = MapType.FIELD_3)

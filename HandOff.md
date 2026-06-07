@@ -3,7 +3,7 @@
 ## 프로젝트 개요
 
 메이플스토리 스타일의 픽셀아트 사냥터를 배경으로 한 안드로이드 생존형 게임.
-주문서 강화 시스템, 몬스터 AI, 픽셀 충돌, 마을/포탈 시스템, NPC/퀘스트 시스템 구현 완료.
+주문서 강화 시스템, 몬스터 AI, 픽셀 충돌, 마을/포탈 시스템, NPC/퀘스트 시스템, 스켈레톤 워리어 애니메이션 구현 완료.
 
 - **패키지명:** `com.a_survivor.app`
 - **언어:** Kotlin + Jetpack Compose
@@ -25,7 +25,7 @@ com.a_survivor.app/
 │   ├── PlayerStats.kt            (+ StatType enum)
 │   ├── Weapon.kt                 (+ DefaultWeapon)
 │   ├── GameWorld.kt              (1024×572 + MapType enum)
-│   ├── Monster.kt                (+ slime() + distanceTo() + MonsterState + avoidability/accuracy)
+│   ├── Monster.kt                (+ skeletonWarrior() + distanceTo() + MonsterState + avoidability/accuracy + facingLeft + variant)
 │   ├── MonsterState.kt           (IDLE / AGGRO / ATTACKING)
 │   ├── CameraState.kt            (좌표 변환 / 추적)
 │   ├── DropTable.kt              (DropItem + SlimeDropTable)
@@ -43,7 +43,7 @@ com.a_survivor.app/
 │   ├── EnhancementService.kt
 │   ├── CombatStatCalculator.kt   (레거시, 미사용)
 │   ├── DerivedStatsCalculator.kt (직업별 스탯→전투 능력치 계산)
-│   ├── MonsterSpawner.kt         (isBlocked 람다 파라미터)
+│   ├── MonsterSpawner.kt         (spawnMonsters — variant/hp/exp/avoidability/accuracy/speed 파라미터)
 │   ├── AutoAttackService.kt      (근접/원거리 분기 + 직업별 공격 범위)
 │   ├── ProjectileService.kt      (투사체 이동 + 충돌 판정)
 │   ├── MonsterAiService.kt       (추적 / 공격 / 어그로 해제 + 회피 판정)
@@ -54,15 +54,15 @@ com.a_survivor.app/
 └── res/drawable/
     ├── map_beginner.jpg           ← 초보자 사냥터 맵 (1024×572)
     ├── map_town.jpg               ← 마을 맵 (1024×572)
-    ├── energy_bolt_1.png          ← 에너지볼트 프레임 1
-    ├── energy_bolt_2.png          ← 에너지볼트 프레임 2
-    ├── energy_bolt_3.png          ← 에너지볼트 프레임 3
-    ├── slime.png
+    ├── energy_bolt_1.png ~ energy_bolt_3.png  ← 에너지볼트 3프레임
+    ├── skeleton_idle_0~5.png      ← 스켈레톤 Crusader_1 Idle (6프레임)
+    ├── skeleton_walk_0~7.png      ← 스켈레톤 Crusader_1 Walk (8프레임)
+    ├── skeleton_slash_0~5.png     ← 스켈레톤 Crusader_1 Slash (6프레임)
+    ├── skeleton2_idle/walk/slash  ← Crusader_2 (각 6/8/6프레임)
+    ├── skeleton3_idle/walk/slash  ← Crusader_3 (각 6/8/6프레임)
     ├── nogada_glove.png
     ├── nogada_sword.png
-    ├── scroll_100.png
-    ├── scroll_60.png
-    ├── scroll_10.png
+    ├── scroll_100.png / scroll_60.png / scroll_10.png
     └── npc_chuchu.png             ← 마을 NPC 츄츄 이미지
 ```
 
@@ -108,7 +108,7 @@ Box (게임 화면)
 | 3 | `drawPortal` × N — 포탈 (다층 파란 글로우 + 맵 이름 레이블) |
 | 4 | `drawNpc` × N — NPC 이미지 (size.height×0.20f 높이, 너비=높이×1.6) + 이름 텍스트 |
 | 5 | `drawAttackRange` — 공격 범위 원 (반투명 흰색, 직업별 반경) |
-| 6 | `drawMonster` × N — 그림자 → 슬라임 이미지 → HP 바 → 어그로 "!" |
+| 6 | `drawMonster` × N — 그림자 → 스켈레톤 애니메이션(variant별 프레임) → HP 바 → 어그로 "!" |
 | 7 | `drawProjectile` × N — 직업별 투사체 (임시 도형) |
 | 8 | `drawPlayer` — 그림자 → 몸통 → 테두리 → 하이라이트 |
 | 9 | `drawDamageNumber` × N — 데미지 숫자 (노랑: 플→몬, 빨강: 몬→플) |
@@ -118,8 +118,9 @@ Box (게임 화면)
 | 대상 | 표현 방식 | 크기 |
 |------|-----------|------|
 | 플레이어 | 주황 원 `#FFAA33` | `size.height * 0.026f` |
-| 슬라임 (IDLE) | PNG 이미지 + 초록 HP 바 | `size.height * 0.088f` |
-| 슬라임 (AGGRO/ATTACKING) | PNG 이미지 + 주황 HP 바 + 빨간 "!" | `size.height * 0.088f` |
+| 스켈레톤 (IDLE) | Idle 애니메이션 6프레임 + 초록 HP 바 | `size.height * 0.15f` |
+| 스켈레톤 (AGGRO) | Walk 애니메이션 8프레임 + 주황 HP 바 + "!" | `size.height * 0.15f` |
+| 스켈레톤 (ATTACKING) | Slash 애니메이션 6프레임 + 주황 HP 바 + "!" | `size.height * 0.15f` |
 | NPC 츄츄 | PNG 이미지 + 이름 텍스트 | 높이 `size.height * 0.20f`, 너비 `높이 * 1.6` |
 | 바닥 아이템 | PNG 이미지 + 이름 텍스트 | `size.height * 0.048f` |
 | 포탈 | 다층 파란 글로우 링 + 레이블 | `24f * cam.zoom` |
@@ -143,15 +144,17 @@ val cam = CameraState(zoom = zoom)
 ### MapType
 
 ```kotlin
-enum class MapType { BEGINNER_FIELD, TOWN }
+enum class MapType { BEGINNER_FIELD, TOWN, FIELD_2, FIELD_3 }
 ```
 
 ### 맵별 설정
 
-| 맵 | 이미지 | 월드 크기 | 몬스터 | 플레이어 초기 위치 |
-|----|--------|-----------|--------|------------------|
-| BEGINNER_FIELD | map_beginner.jpg | 1024×572 | 슬라임 5마리 + 리스폰 | (512, 286) |
-| TOWN | map_town.jpg | 1024×572 | 없음 | - |
+| 맵 | 이미지 | 월드 크기 | 몬스터 | 스켈레톤 variant |
+|----|--------|-----------|--------|-----------------|
+| BEGINNER_FIELD | map_beginner.jpg | 1024×572 | 스켈레톤 워리어 5마리 (HP 20, EXP 8) | Crusader_2 |
+| TOWN | map_town.jpg | 1024×572 | 없음 | — |
+| FIELD_2 | map_beginner.jpg | 1024×572 | 스켈레톤 워리어 5마리 (HP 60, EXP 20) | Crusader_3 |
+| FIELD_3 | map_beginner.jpg | 1024×572 | 스켈레톤 워리어 5마리 (HP 150, EXP 45) | Crusader_1 |
 
 ### 픽셀 충돌 시스템 (MainViewModel)
 
@@ -194,7 +197,13 @@ data class Portal(
 | 맵 | 포탈 위치 | 목적지 | 도착 위치 |
 |----|-----------|--------|-----------|
 | BEGINNER_FIELD | (850, 286) | TOWN | (350, 286) |
+| BEGINNER_FIELD | (174, 286) | FIELD_2 | (800, 286) |
 | TOWN | (250, 286) | BEGINNER_FIELD | (750, 286) |
+| FIELD_2 | (850, 286) | BEGINNER_FIELD | (300, 286) |
+| FIELD_2 | (174, 286) | FIELD_3 | (800, 286) |
+| FIELD_3 | (850, 286) | FIELD_2 | (300, 286) |
+
+포탈 체인: `FIELD_3 ←→ FIELD_2 ←→ BEGINNER_FIELD ←→ TOWN` (왼쪽이 더 고급 구역)
 
 > 마을 포탈이 x=250에 있는 이유: x=144(lum=68)·x=168~176(lum=30~70) 장애물 때문에
 > x=180 이전은 접근 불가 함정 지대. x=250(lum=146)부터 완전 개활지.
@@ -204,7 +213,7 @@ data class Portal(
 - 진입 범위: `PORTAL_RANGE = 30f`
 - 쿨다운: `PORTAL_COOLDOWN = 2000ms` (역방향 즉시 이동 방지)
 - 맵 전환 시: 몬스터·드랍·리스폰 전부 초기화
-- BEGINNER_FIELD 복귀 시: 슬라임 5마리 새로 스폰
+- 사냥터 맵 진입 시: 해당 맵 `skeletonConfig`에 따라 스켈레톤 5마리 스폰
 
 ---
 
@@ -283,18 +292,18 @@ enum class QuestStatus { NOT_STARTED, IN_PROGRESS, READY_TO_COMPLETE, COMPLETED 
 
 data class QuestState(
     val status: QuestStatus = QuestStatus.NOT_STARTED,
-    val slimeKillCount: Int = 0,
-    val slimeKillGoal: Int = 5
+    val killCount: Int = 0,
+    val killGoal: Int = 5
 )
 ```
 
-### 퀘스트: 슬라임 소탕 작전
+### 퀘스트: 스켈레톤 소탕 작전
 
 | 단계 | 조건 | 동작 |
 |------|------|------|
 | NOT_STARTED | 츄츄에게 대화 | 4페이지 + 수락/거절 선택지 |
-| IN_PROGRESS | 슬라임 처치마다 | slimeKillCount++ (autoAttackTick + projectileTick 양쪽) |
-| READY_TO_COMPLETE | slimeKillCount >= 5 | 자동 전환 |
+| IN_PROGRESS | 스켈레톤 처치마다 | killCount++ (autoAttackTick + projectileTick 양쪽) |
+| READY_TO_COMPLETE | killCount >= 5 | 자동 전환 |
 | COMPLETED | 츄츄에게 대화 후 보상 수령 | EXP +50, 장갑 공격력 100% 주문서 +1 |
 
 ### 대화 시나리오
@@ -304,10 +313,10 @@ data class QuestState(
 2. "요즘 마을 주변이 이상해졌어요..."
 3. "주민들이 밭을 관리하러 나가지도 못하고 있어요..."
 4. "혹시 저를 도와주실 수 있나요?" → [도와준다] / [거절한다]
-   - 수락: "정말 감사합니다!..." / "슬라임 5마리를 처치하면..." → 닫기
+   - 수락: "정말 감사합니다!..." / "스켈레톤 워리어 5마리를 처치하면..." → 닫기
    - 거절: "그렇군요... 마음이 바뀌면..." → 닫기
 
-**IN_PROGRESS (1페이지):** "슬라임들이 아직 남아있어요. (N/5)" → 닫기
+**IN_PROGRESS (1페이지):** "스켈레톤 워리어들이 아직 남아있어요. (N/5)" → 닫기
 
 **READY_TO_COMPLETE (4페이지 + 선택지):**
 1. "정말 해내셨군요!"
@@ -321,7 +330,7 @@ data class QuestState(
 
 - **위치:** 좌상단 HUD 아래 (padding start=12dp, top=80dp)
 - **표시 조건:** IN_PROGRESS 또는 READY_TO_COMPLETE
-- **내용:** 상태 레이블 + 퀘스트명 + 진행 프로그레스 바 + 처치 수 텍스트
+- **내용:** 상태 레이블 + "스켈레톤 소탕 작전" + 진행 프로그레스 바 + "스켈레톤 처치 N/5" 텍스트
 - **색상:** 진행 중 주황 / 완료 가능 금색 (테두리도 변경)
 
 ---
@@ -525,7 +534,7 @@ COLLISION_RADIUS = 16f  // 몬스터 중심과의 거리
 
 | 항목 | 값 |
 |------|-----|
-| 이동 속도 | 1.2f / tick |
+| 이동 속도 | 맵별 상이 (초보자 1.0f / 중급 1.3f / 상급 1.5f) |
 | AI 틱 | 16ms |
 | 공격 범위 | 35f |
 | 공격 주기 | 1000ms |
@@ -545,7 +554,7 @@ COLLISION_RADIUS = 16f  // 몬스터 중심과의 거리
 
 ## 드랍 시스템
 
-### SlimeDropTable
+### SlimeDropTable (스켈레톤 워리어 공용)
 
 | 아이템 | 확률 |
 |--------|------|
@@ -614,12 +623,16 @@ criticalRate, moveSpeed, attackSpeed: Float
 - `derivedStats: DerivedStats` 추가
 - `computeDerived(state)` — 스탯 투자·장비 변경·강화·레벨업 시 자동 재계산
 
-### Monster 속성 추가
+### 스켈레톤 워리어 맵별 스탯 (skeletonConfig)
 
-| 속성 | 슬라임 기본값 |
-|------|--------------|
-| avoidability | 5 |
-| accuracy | 15 |
+| 맵 | variant | HP | EXP | avoidability | accuracy | speed |
+|----|---------|-----|-----|-------------|---------|-------|
+| BEGINNER_FIELD | 2 (Crusader_2) | 20 | 8 | 5 | 15 | 1.0f |
+| FIELD_2 | 3 (Crusader_3) | 60 | 20 | 10 | 20 | 1.3f |
+| FIELD_3 | 1 (Crusader_1) | 150 | 45 | 18 | 28 | 1.5f |
+
+- `skeletonConfig(mapType)` — MainViewModel 내 헬퍼, 맵별 스탯 집중 관리
+- `spawnSkeletons(world, count)` — 내부적으로 skeletonConfig 참조, 3곳 스폰 로직 통일
 
 ---
 
@@ -744,6 +757,17 @@ PORTAL_COOLDOWN        = 2000ms
 | 85 | DialogueWindow 터치 차단 — pointerInput detectTapGestures 로 대화 중 배경 터치 방지 | ✅ |
 | 86 | QuestTrackerPanel 컴포저블 — 좌상단 퀘스트 진행 상황 패널 (프로그레스 바 포함) | ✅ |
 | 87 | npc_chuchu.png 리소스 추가 | ✅ |
+| 88 | 슬라임 → 스켈레톤 워리어 교체 — Idle(6)/Walk(8)/Slash(6) 프레임 PNG + MonsterState별 애니메이션 | ✅ |
+| 89 | Monster.facingLeft 필드 추가 — MonsterAiService 이동 시 방향 갱신 + drawMonster scale(-1) 반전 | ✅ |
+| 90 | Monster.variant 필드 추가 — 3종 Crusader 색상 맵별 구분 | ✅ |
+| 91 | skeletonWarrior() 팩토리 스탯 파라미터화 (hp/expReward/avoidability/accuracy/speed) | ✅ |
+| 92 | MonsterSpawner: spawnSlimes → spawnMonsters (variant + 스탯 파라미터 전달) | ✅ |
+| 93 | QuestState: slimeKillCount → killCount / slimeKillGoal → killGoal 필드명 일반화 | ✅ |
+| 94 | 퀘스트 대화문 슬라임 → 스켈레톤 워리어로 교체 (MainViewModel buildDialoguePages) | ✅ |
+| 95 | FIELD_2 / FIELD_3 맵 추가 (MapType enum + map_beginner 재사용) | ✅ |
+| 96 | 포탈 체인 구성 — FIELD_3 ←→ FIELD_2 ←→ BEGINNER_FIELD ←→ TOWN | ✅ |
+| 97 | skeletonConfig(mapType) + spawnSkeletons() 헬퍼 — 맵별 스탯·variant 집중화 | ✅ |
+| 98 | 맵별 스켈레톤 배치 조정 — 초보자 Crusader_2(HP20) / 중급 Crusader_3(HP60) / 상급 Crusader_1(HP150) | ✅ |
 
 ---
 

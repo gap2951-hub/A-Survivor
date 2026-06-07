@@ -194,11 +194,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             description = "노동을 위해 만들어진 낡은 장갑이다.\n강화하면 공격력이 오를 것 같다."
         )
         val base = UiState(
-            monsters = MonsterSpawner().spawnSlimes(
-                world     = DefaultWorld,
-                count     = 5,
-                isBlocked = { x, y -> isBlocked(x, y, DefaultWorld) }
-            ),
+            monsters = spawnSkeletons(DefaultWorld, 5),
             portals   = PortalRegistry.portalsFor(MapType.BEGINNER_FIELD),
             weapon    = DefaultWeapon,
             equipment = initialEquip,
@@ -277,15 +273,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // 맵별 스켈레톤 설정 (variant, hp, exp, avoidability, accuracy, speed)
+    private data class SkeletonConfig(
+        val variant: Int, val hp: Int, val expReward: Int,
+        val avoidability: Int, val accuracy: Int, val speed: Float
+    )
+    private fun skeletonConfig(mapType: MapType): SkeletonConfig? = when (mapType) {
+        MapType.BEGINNER_FIELD -> SkeletonConfig(variant=2, hp=20,  expReward=8,  avoidability=5,  accuracy=15, speed=1.0f)
+        MapType.FIELD_2        -> SkeletonConfig(variant=3, hp=60,  expReward=20, avoidability=10, accuracy=20, speed=1.3f)
+        MapType.FIELD_3        -> SkeletonConfig(variant=1, hp=150, expReward=45, avoidability=18, accuracy=28, speed=1.5f)
+        else                   -> null
+    }
+
+    private fun spawnSkeletons(world: GameWorld, count: Int): List<Monster> {
+        val cfg = skeletonConfig(world.mapType) ?: return emptyList()
+        return MonsterSpawner().spawnMonsters(
+            world        = world,
+            count        = count,
+            variant      = cfg.variant,
+            hp           = cfg.hp,
+            expReward    = cfg.expReward,
+            avoidability = cfg.avoidability,
+            accuracy     = cfg.accuracy,
+            speed        = cfg.speed,
+            isBlocked    = { x, y -> isBlocked(x, y, world) }
+        )
+    }
+
     private fun teleportState(state: UiState, portal: Portal, now: Long): UiState {
         val targetWorld = GameWorld(mapType = portal.targetMap)
-        val newMonsters = if (portal.targetMap == MapType.BEGINNER_FIELD)
-            MonsterSpawner().spawnSlimes(
-                world     = targetWorld,
-                count     = 5,
-                isBlocked = { x, y -> isBlocked(x, y, targetWorld) }
-            )
-        else emptyList()
+        val newMonsters = spawnSkeletons(targetWorld, 5)
 
         return state.copy(
             player          = state.player.copy(positionX = portal.targetX, positionY = portal.targetY),
@@ -387,11 +404,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // 퀘스트 킬 카운트
             val questKillAdd = if (state.questState.status == QuestStatus.IN_PROGRESS) result.killedMonsters.size else 0
-            val newKillCount = (state.questState.slimeKillCount + questKillAdd)
-            val newQuestStatus = if (state.questState.status == QuestStatus.IN_PROGRESS && newKillCount >= state.questState.slimeKillGoal)
+            val newKillCount = (state.questState.killCount + questKillAdd)
+            val newQuestStatus = if (state.questState.status == QuestStatus.IN_PROGRESS && newKillCount >= state.questState.killGoal)
                 QuestStatus.READY_TO_COMPLETE else state.questState.status
             val newQuestState = state.questState.copy(
-                slimeKillCount = newKillCount.coerceAtMost(state.questState.slimeKillGoal),
+                killCount = newKillCount.coerceAtMost(state.questState.killGoal),
                 status = newQuestStatus
             )
 
@@ -473,11 +490,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // 퀘스트 킬 카운트 (투사체)
             val questKillAddProj = if (state.questState.status == QuestStatus.IN_PROGRESS) killed.size else 0
-            val newKillCountProj = (state.questState.slimeKillCount + questKillAddProj)
-            val newQuestStatusProj = if (state.questState.status == QuestStatus.IN_PROGRESS && newKillCountProj >= state.questState.slimeKillGoal)
+            val newKillCountProj = (state.questState.killCount + questKillAddProj)
+            val newQuestStatusProj = if (state.questState.status == QuestStatus.IN_PROGRESS && newKillCountProj >= state.questState.killGoal)
                 QuestStatus.READY_TO_COMPLETE else state.questState.status
             val newQuestStateProj = state.questState.copy(
-                slimeKillCount = newKillCountProj.coerceAtMost(state.questState.slimeKillGoal),
+                killCount = newKillCountProj.coerceAtMost(state.questState.killGoal),
                 status = newQuestStatusProj
             )
 
@@ -504,11 +521,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (ready.isEmpty()) return@update state
 
             val newMonsters = ready.mapNotNull {
-                MonsterSpawner().spawnSlimes(
-                    world     = state.world,
-                    count     = 1,
-                    isBlocked = { x, y -> isBlocked(x, y, state.world) }
-                ).firstOrNull()?.copy(id = nextMonsterId++)
+                spawnSkeletons(state.world, 1).firstOrNull()?.copy(id = nextMonsterId++)
             }
             state.copy(monsters = state.monsters + newMonsters, pendingRespawns = waiting)
         }
@@ -685,8 +698,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 quest.status == QuestStatus.NOT_STARTED -> if (index == 0) {
                     // 수락
                     val newPages = listOf(
-                        DialoguePage("츄츄", "정말 감사합니다!\n마을 밖 초보자 사냥터에 있는 슬라임들을 조금만 정리해 주세요."),
-                        DialoguePage("츄츄", "슬라임 5마리를 처치하면 다시 저를 찾아와 주세요.")
+                        DialoguePage("츄츄", "정말 감사합니다!\n마을 밖 초보자 사냥터에 있는 스켈레톤 워리어들을 조금만 정리해 주세요."),
+                        DialoguePage("츄츄", "스켈레톤 워리어 5마리를 처치하면 다시 저를 찾아와 주세요.")
                     )
                     state.copy(
                         questState = quest.copy(status = QuestStatus.IN_PROGRESS),
@@ -725,13 +738,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun buildDialoguePages(quest: QuestState): List<DialoguePage> = when (quest.status) {
         QuestStatus.NOT_STARTED -> listOf(
             DialoguePage("츄츄", "안녕하세요!\n혹시 모험가이신가요?"),
-            DialoguePage("츄츄", "요즘 마을 주변이 이상해졌어요.\n원래는 슬라임이 이렇게 많지 않았는데 최근 들어 개체 수가 갑자기 늘어났어요."),
-            DialoguePage("츄츄", "주민들이 밭을 관리하러 나가지도 못하고 있어요.\n슬라임들이 농작물을 망가뜨리고 길까지 막고 있거든요."),
+            DialoguePage("츄츄", "요즘 마을 주변이 이상해졌어요.\n어디선가 나타난 스켈레톤 워리어들이 마을 주변을 배회하고 있어요."),
+            DialoguePage("츄츄", "주민들이 밭을 관리하러 나가지도 못하고 있어요.\n스켈레톤들이 농작물을 망가뜨리고 길까지 막고 있거든요."),
             DialoguePage("츄츄", "저는 싸울 줄 몰라서 어떻게 할 수가 없어요.\n혹시 저를 도와주실 수 있나요?",
                 choices = listOf("도와준다", "거절한다"))
         )
         QuestStatus.IN_PROGRESS -> listOf(
-            DialoguePage("츄츄", "슬라임들이 아직 남아있어요. 힘내주세요!\n(${quest.slimeKillCount} / ${quest.slimeKillGoal})")
+            DialoguePage("츄츄", "스켈레톤 워리어들이 아직 남아있어요. 힘내주세요!\n(${quest.killCount} / ${quest.killGoal})")
         )
         QuestStatus.READY_TO_COMPLETE -> listOf(
             DialoguePage("츄츄", "정말 해내셨군요!"),
