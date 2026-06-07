@@ -426,7 +426,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 damageNumbers         = state.damageNumbers + listOfNotNull(attackDmgNum),
                 jobAdvancementPending = advancePending,
                 questState            = newQuestState,
-                playerAttackAnimStart  = now
+                playerAttackAnimStart  = if (result.targetId != null) now else state.playerAttackAnimStart
             )
             if (gainedExp > 0) computeDerived(finalState) else finalState
         }

@@ -1568,7 +1568,7 @@ private fun DrawScope.drawPlayer(
     playerDeathTime: Long
 ) {
     val c    = cam.toScreenOffset(player.positionX, player.positionY, size.width, size.height)
-    val imgH = (size.height * 0.18f).toInt().coerceAtLeast(40)
+    val imgH = (size.height * 0.15f).toInt().coerceAtLeast(30)
     val imgW = imgH
     val now  = System.currentTimeMillis()
 
