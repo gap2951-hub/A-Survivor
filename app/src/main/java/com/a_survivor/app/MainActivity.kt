@@ -2237,13 +2237,16 @@ fun InventoryWindow(
                 Spacer(Modifier.height(10.dp))
             }
 
+            val ownedScrolls = inventory.filter { it.quantity > 0 }
+            if (ownedScrolls.isNotEmpty()) {
             Text(
                 "주문서 — 꾹 눌러 장갑 슬롯으로 드래그",
                 color = TextMuted, fontSize = 11.sp
             )
             Spacer(Modifier.height(10.dp))
+            }
 
-            inventory.chunked(4).forEach { rowItems ->
+            ownedScrolls.chunked(4).forEach { rowItems ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
