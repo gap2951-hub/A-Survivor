@@ -570,8 +570,8 @@ COLLISION_RADIUS = 16f  // 몬스터 중심과의 거리
 | 장갑 공격력 10% | 3% | 3% | 3% |
 | 백의 주문서 1% | 1% | 1% | 1% |
 
-- **MoneyDrop**: 몬스터 처치 즉시 `UiState.money`에 직접 가산 (ground item 미사용)
-- **스크롤/장비**: ground item으로 바닥에 드랍 → PICKUP_DELAY(1500ms) 후 PICKUP_RANGE(50f) 내 자동 습득
+- **MoneyDrop**: ground item으로 바닥에 드랍 → 노란 원형 동전 + "N원" 텍스트 Canvas 렌더링 → PICKUP_DELAY(2000ms) 경과 후 PICKUP_RANGE(150f) 내 자동 습득 → `UiState.money` 가산
+- **스크롤/장비**: ground item으로 바닥에 드랍 → PICKUP_DELAY(2000ms) 후 PICKUP_RANGE(150f) 내 자동 습득
 - 포탈 이동 시 바닥 아이템 초기화
 
 ---
@@ -651,8 +651,8 @@ AI_TICK_INTERVAL       = 16ms
 RESPAWN_DELAY          = 5000ms
 RESPAWN_CHECK_INTERVAL = 1000ms
 DAMAGE_NUMBER_DURATION = 800ms
-PICKUP_RANGE           = 50f
-PICKUP_DELAY           = 1500ms
+PICKUP_RANGE           = 150f
+PICKUP_DELAY           = 2000ms
 COLLISION_RADIUS       = 10f
 LUMINANCE_THRESHOLD    = 80f
 PORTAL_RANGE           = 30f
@@ -968,6 +968,9 @@ private fun scrollDrawableRes(scrollType: ScrollType): Int? = when (scrollType) 
 | 116 | unequipEquipment() 수정 — 해제된 장갑이 equipmentBag으로 이동 (기존: 버려짐) | ✅ |
 | 117 | equipFromBag() 추가 — 인벤토리 장갑을 장착 슬롯으로, 기존 장착 장갑은 bag으로 교환 | ✅ |
 | 118 | ItemInfoDialog onEquip 파라미터 추가 — 인벤토리에서 열 때만 "장착" 버튼 표시 (스크롤 하단) | ✅ |
+| 119 | 인벤토리 시스템 개편 — equipmentBag → InventorySlot sealed class (ScrollItem/EquipItem) 통합 4×8 그리드 | ✅ |
+| 120 | InventoryWindow 높이 클리핑 수정 — heightIn(max=300.dp) + verticalScroll, 소지금 헤더 스크롤 영역 밖으로 분리 | ✅ |
+| 121 | 돈 드랍 시스템 구현 — MoneyDrop ground item 방식 (노란 원형 동전 Canvas 렌더링, PICKUP_RANGE=150f, PICKUP_DELAY=2000ms) | ✅ |
 
 ---
 
