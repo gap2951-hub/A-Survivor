@@ -103,7 +103,7 @@ import com.a_survivor.app.model.ScrollType
 import com.a_survivor.app.model.StatType
 import com.a_survivor.app.model.attackRange
 import com.a_survivor.app.model.Weapon
-import com.a_survivor.app.viewmodel.InventoryItem
+import com.a_survivor.app.viewmodel.InventorySlot
 import com.a_survivor.app.viewmodel.MainViewModel
 import com.a_survivor.app.viewmodel.UiState
 import kotlin.math.roundToInt
@@ -217,7 +217,7 @@ class MainActivity : ComponentActivity() {
                     onAllocateStat      = vm::allocateStat,
                     onAdvanceJob        = vm::advanceJob,
                     onClearResult       = vm::clearLastResult,
-                    onEquipFromBag      = vm::equipFromBag,
+                    onEquipFromInventory = vm::equipFromInventory,
                     onTalkToNpc         = vm::startDialogue,
                     onNextDialoguePage  = vm::nextDialoguePage,
                     onChooseOption      = vm::chooseDialogueOption,
@@ -242,7 +242,7 @@ fun MainScreen(
     onAllocateStat: (StatType) -> Unit,
     onAdvanceJob: (PlayerJob) -> Unit = {},
     onClearResult: () -> Unit = {},
-    onEquipFromBag: (Equipment) -> Unit = {},
+    onEquipFromInventory: (Equipment) -> Unit = {},
     onTalkToNpc: (Int) -> Unit = {},
     onNextDialoguePage: () -> Unit = {},
     onChooseOption: (Int) -> Unit = {},
@@ -388,11 +388,11 @@ fun MainScreen(
                     .width(280.dp)
             ) {
                 InventoryWindow(
-                    inventory        = state.inventory,
-                    equipmentBag     = state.equipmentBag,
+                    slots            = state.inventorySlots,
+                    money            = state.money,
                     dragState        = dragState,
                     rootWindowOffset = rootWindowOffset,
-                    onEquip          = onEquipFromBag,
+                    onEquip          = onEquipFromInventory,
                     onClose          = { isInventoryOpen = false },
                     onDragEnd        = { scrollType, dropPos ->
                         if (isEquipmentOpen &&
@@ -1445,29 +1445,36 @@ private fun DrawScope.drawGroundItem(
     // 바닥 글로우
     drawCircle(Color(0x44FFEE44), radius = iconSize * 0.75f, center = pos)
 
-    // 아이템 이미지
-    val bitmap = when (val drop = item.dropItem) {
-        is DropItem.ScrollDrop -> when (drop.scrollType) {
-            ScrollType.GLOVE_ATK_100 -> scroll100
-            ScrollType.GLOVE_ATK_60  -> scroll60
-            else                     -> scroll10
+    // 아이템 이미지 (돈은 코인 원으로 표현)
+    if (item.dropItem is DropItem.MoneyDrop) {
+        drawCircle(Color(0xFFFFCC00), radius = iconSize * 0.45f, center = pos.copy(y = pos.y - iconSize * 0.5f))
+        drawCircle(Color(0xFFFFAA00), radius = iconSize * 0.45f, center = pos.copy(y = pos.y - iconSize * 0.5f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f * size.height / 1080f))
+    } else {
+        val bitmap = when (val drop = item.dropItem) {
+            is DropItem.ScrollDrop -> when (drop.scrollType) {
+                ScrollType.GLOVE_ATK_100 -> scroll100
+                ScrollType.GLOVE_ATK_60  -> scroll60
+                else                     -> scroll10
+            }
+            is DropItem.EquipmentDrop -> glove
+            else -> scroll10
         }
-        is DropItem.EquipmentDrop -> glove
+        drawImage(
+            image         = bitmap,
+            dstOffset     = androidx.compose.ui.unit.IntOffset(
+                (pos.x - iconSize / 2).toInt(),
+                (pos.y - iconSize).toInt()
+            ),
+            dstSize       = IntSize(iconSize, iconSize),
+            filterQuality = androidx.compose.ui.graphics.FilterQuality.High
+        )
     }
-    drawImage(
-        image         = bitmap,
-        dstOffset     = androidx.compose.ui.unit.IntOffset(
-            (pos.x - iconSize / 2).toInt(),
-            (pos.y - iconSize).toInt()
-        ),
-        dstSize       = IntSize(iconSize, iconSize),
-        filterQuality = androidx.compose.ui.graphics.FilterQuality.High
-    )
 
     // 아이템 이름 텍스트
     val label = when (val drop = item.dropItem) {
         is DropItem.ScrollDrop    -> ScrollCatalog.get(drop.scrollType).name
         is DropItem.EquipmentDrop -> drop.equipment.name
+        is DropItem.MoneyDrop     -> "${drop.amount}원"
     }
     val labelPaint = android.graphics.Paint().apply {
         color       = android.graphics.Color.parseColor("#FFEE66")
@@ -2199,8 +2206,8 @@ private fun EquipmentBagItem(
 
 @Composable
 fun InventoryWindow(
-    inventory: List<InventoryItem>,
-    equipmentBag: List<Equipment>,
+    slots: List<InventorySlot?>,
+    money: Int,
     dragState: DragDropState,
     rootWindowOffset: Offset,
     onDragEnd: (ScrollType, Offset) -> Unit,
@@ -2217,69 +2224,81 @@ fun InventoryWindow(
     ) {
         WindowTitleBar("인벤토리", onClose = onClose, onDrag = onDrag)
 
-        Column(modifier = Modifier.padding(12.dp)) {
-            if (equipmentBag.isNotEmpty()) {
-                Text("장비 아이템", color = TextMuted, fontSize = 11.sp)
-                Spacer(Modifier.height(6.dp))
-                equipmentBag.chunked(4).forEach { rowItems ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        rowItems.forEach { equip ->
-                            EquipmentBagItem(equip, onEquip = onEquip, modifier = Modifier.weight(1f))
-                        }
-                        repeat(4 - rowItems.size) { Spacer(Modifier.weight(1f)) }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-                HorizontalDivider(color = BorderGold.copy(alpha = 0.3f))
-                Spacer(Modifier.height(10.dp))
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            // 소지금
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("소지금", color = TextMuted, fontSize = 11.sp)
+                Text(
+                    text = "%,d원".format(money),
+                    color = TextGold,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
+            HorizontalDivider(color = BorderGold.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
 
-            val ownedScrolls = inventory.filter { it.quantity > 0 }
-            if (ownedScrolls.isNotEmpty()) {
-            Text(
-                "주문서 — 꾹 눌러 장갑 슬롯으로 드래그",
-                color = TextMuted, fontSize = 11.sp
-            )
-            Spacer(Modifier.height(10.dp))
-            }
-
-            ownedScrolls.chunked(4).forEach { rowItems ->
+            // 4×8 슬롯 그리드
+            slots.chunked(4).forEach { rowSlots ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    rowItems.forEach { item ->
-                        DraggableScrollItem(
-                            item = item,
-                            dragState = dragState,
-                            rootWindowOffset = rootWindowOffset,
-                            onDragEnd = onDragEnd,
-                            modifier = Modifier.weight(1f)
-                        )
+                    rowSlots.forEach { slot ->
+                        when (slot) {
+                            null -> EmptyInventorySlot(modifier = Modifier.weight(1f))
+                            is InventorySlot.ScrollItem -> DraggableScrollItem(
+                                scrollType       = slot.type,
+                                quantity         = slot.quantity,
+                                dragState        = dragState,
+                                rootWindowOffset = rootWindowOffset,
+                                onDragEnd        = onDragEnd,
+                                modifier         = Modifier.weight(1f)
+                            )
+                            is InventorySlot.EquipItem -> EquipmentBagItem(
+                                equipment = slot.equipment,
+                                onEquip   = onEquip,
+                                modifier  = Modifier.weight(1f)
+                            )
+                        }
                     }
-                    repeat(4 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                    repeat(4 - rowSlots.size) {
+                        EmptyInventorySlot(modifier = Modifier.weight(1f))
+                    }
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
             }
         }
     }
 }
 
 @Composable
+private fun EmptyInventorySlot(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(6.dp))
+            .background(SlotEmpty)
+            .border(1.dp, SlotBorder, RoundedCornerShape(6.dp))
+    )
+}
+
+@Composable
 private fun DraggableScrollItem(
-    item: InventoryItem,
+    scrollType: ScrollType,
+    quantity: Int,
     dragState: DragDropState,
     rootWindowOffset: Offset,
     onDragEnd: (ScrollType, Offset) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scroll         = ScrollCatalog.get(item.scrollType)
-    val isEmpty        = item.quantity <= 0
-    val isBeingDragged = dragState.isDragging && dragState.scrollType == item.scrollType
-    val drawableRes    = scrollDrawableRes(item.scrollType)
+    val scroll         = ScrollCatalog.get(scrollType)
+    val isEmpty        = quantity <= 0
+    val isBeingDragged = dragState.isDragging && dragState.scrollType == scrollType
+    val drawableRes    = scrollDrawableRes(scrollType)
 
     var itemWindowPos by remember { mutableStateOf(Offset.Zero) }
     var showInfo      by remember { mutableStateOf(false) }
@@ -2299,22 +2318,22 @@ private fun DraggableScrollItem(
             )
             .alpha(if (isBeingDragged) 0.25f else 1f)
             .onGloballyPositioned { itemWindowPos = it.positionInWindow() }
-            .pointerInput(item.scrollType) {
+            .pointerInput(scrollType) {
                 detectTapGestures(onTap = { showInfo = true })
             }
-            .pointerInput(item.scrollType, isEmpty) {
+            .pointerInput(scrollType, isEmpty) {
                 if (isEmpty) return@pointerInput
                 detectDragGesturesAfterLongPress(
                     onDragStart = { localOffset ->
-                        dragState.scrollType = item.scrollType
+                        dragState.scrollType = scrollType
                         dragState.position = itemWindowPos + localOffset
                     },
                     onDrag = { _, delta -> dragState.position += delta },
                     onDragEnd = {
                         val finalPos   = dragState.position
-                        val scrollType = dragState.scrollType
+                        val st = dragState.scrollType
                         dragState.scrollType = null
-                        if (scrollType != null) onDragEnd(scrollType, finalPos)
+                        if (st != null) onDragEnd(st, finalPos)
                     },
                     onDragCancel = { dragState.scrollType = null }
                 )
@@ -2343,7 +2362,7 @@ private fun DraggableScrollItem(
                 )
             }
             Text(
-                text = "×${item.quantity}",
+                text = "×$quantity",
                 color = if (isEmpty) ColorDisabled else TextGold,
                 fontSize = 10.sp
             )
@@ -2351,7 +2370,7 @@ private fun DraggableScrollItem(
     }
 
     if (showInfo) {
-        ScrollInfoDialog(scrollType = item.scrollType, quantity = item.quantity, onDismiss = { showInfo = false })
+        ScrollInfoDialog(scrollType = scrollType, quantity = quantity, onDismiss = { showInfo = false })
     }
 }
 

@@ -32,7 +32,7 @@ import com.a_survivor.app.model.QuestStatus
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
 import com.a_survivor.app.model.StatType
-import com.a_survivor.app.model.SlimeDropTable
+import com.a_survivor.app.model.dropEntriesFor
 import com.a_survivor.app.model.Weapon
 import com.a_survivor.app.model.attackRange
 import com.a_survivor.app.service.AutoAttackService
@@ -53,7 +53,10 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-data class InventoryItem(val scrollType: ScrollType, val quantity: Int)
+sealed class InventorySlot {
+    data class ScrollItem(val type: ScrollType, val quantity: Int) : InventorySlot()
+    data class EquipItem(val equipment: Equipment) : InventorySlot()
+}
 
 data class PendingRespawn(val monsterId: Int, val diedAt: Long)
 
@@ -67,8 +70,8 @@ data class PendingPlayerAttack(
 data class UiState(
     val equipment: Equipment?,
     val weapon: Weapon?,
-    val inventory: List<InventoryItem>,
-    val equipmentBag: List<Equipment> = emptyList(),
+    val money: Int = 0,
+    val inventorySlots: List<InventorySlot?> = List(32) { null },
     val selectedScrollType: ScrollType? = null,
     val lastResult: EnhancementResult? = null,
     val player: Player = Player(),
@@ -217,14 +220,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             portals   = PortalRegistry.portalsFor(MapType.BEGINNER_FIELD),
             weapon    = DefaultWeapon,
             equipment = initialEquip,
-            player    = initialPlayer,
-            inventory = listOf(
-                InventoryItem(ScrollType.GLOVE_ATK_100, 0),
-                InventoryItem(ScrollType.GLOVE_ATK_60, 0),
-                InventoryItem(ScrollType.GLOVE_ATK_10, 0),
-                InventoryItem(ScrollType.WHITE_SCROLL_1, 0),
-                InventoryItem(ScrollType.WHITE_SCROLL_3, 0)
-            )
+            player    = initialPlayer
         )
         return computeDerived(base)
     }
@@ -428,7 +424,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val newGroundItems = mutableListOf<GroundItem>()
             killedList.forEach { monster ->
-                val drops = dropService.roll(SlimeDropTable.entries)
+                val drops = dropService.roll(dropEntriesFor(state.world.mapType))
                 drops.forEachIndexed { index, drop ->
                     val angle  = index * (Math.PI * 2.0 / drops.size.coerceAtLeast(1)).toFloat()
                     val spread = if (drops.size > 1) 20f else 0f
@@ -514,7 +510,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val newGroundItems = mutableListOf<GroundItem>()
             killed.forEach { monster ->
-                val drops = dropService.roll(SlimeDropTable.entries)
+                val drops = dropService.roll(dropEntriesFor(state.world.mapType))
                 drops.forEachIndexed { index, drop ->
                     val angle  = index * (Math.PI * 2.0 / drops.size.coerceAtLeast(1)).toFloat()
                     val spread = if (drops.size > 1) 20f else 0f
@@ -634,20 +630,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return applyDrops(state.copy(groundItems = remaining), toPickup.map { it.dropItem })
     }
 
+    private fun addScrollToSlots(slots: List<InventorySlot?>, type: ScrollType): List<InventorySlot?> {
+        val m = slots.toMutableList()
+        val idx = m.indexOfFirst { it is InventorySlot.ScrollItem && it.type == type }
+        if (idx >= 0) {
+            m[idx] = (m[idx] as InventorySlot.ScrollItem).let { it.copy(quantity = it.quantity + 1) }
+        } else {
+            val empty = m.indexOfFirst { it == null }
+            if (empty >= 0) m[empty] = InventorySlot.ScrollItem(type, 1)
+        }
+        return m
+    }
+
+    private fun addEquipToSlots(slots: List<InventorySlot?>, equipment: Equipment): List<InventorySlot?> {
+        val m = slots.toMutableList()
+        val empty = m.indexOfFirst { it == null }
+        if (empty >= 0) m[empty] = InventorySlot.EquipItem(equipment)
+        return m
+    }
+
     private fun applyDrops(state: UiState, drops: List<DropItem>): UiState {
         var s = state
         for (drop in drops) {
             s = when (drop) {
-                is DropItem.ScrollDrop -> s.copy(
-                    inventory = s.inventory.map { item ->
-                        if (item.scrollType == drop.scrollType)
-                            item.copy(quantity = item.quantity + 1)
-                        else item
-                    }
-                )
+                is DropItem.MoneyDrop     -> s.copy(money = s.money + drop.amount)
+                is DropItem.ScrollDrop    -> s.copy(inventorySlots = addScrollToSlots(s.inventorySlots, drop.scrollType))
                 is DropItem.EquipmentDrop -> {
-                    val withBag = s.copy(equipmentBag = s.equipmentBag + drop.equipment)
-                    if (withBag.equipment == null) withBag.copy(equipment = drop.equipment) else withBag
+                    val withSlots = s.copy(inventorySlots = addEquipToSlots(s.inventorySlots, drop.equipment))
+                    if (withSlots.equipment == null) withSlots.copy(equipment = drop.equipment) else withSlots
                 }
             }
         }
@@ -673,33 +683,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val scrollType = state.selectedScrollType ?: return
         val scroll     = ScrollCatalog.get(scrollType)
 
-        val item = state.inventory.find { it.scrollType == scrollType }
-        if (item == null || item.quantity <= 0) {
+        val slotIdx = state.inventorySlots.indexOfFirst { it is InventorySlot.ScrollItem && it.type == scrollType }
+        val slot = state.inventorySlots.getOrNull(slotIdx) as? InventorySlot.ScrollItem
+        if (slot == null || slot.quantity <= 0) {
             _uiState.update { it.copy(lastResult = EnhancementResult.Error("주문서 수량이 부족합니다.")) }
             return
         }
 
         val (newEquipment, result) = service.applyScroll(equipment, scroll)
-        val newInventory = state.inventory.map {
-            if (it.scrollType == scrollType) it.copy(quantity = it.quantity - 1) else it
-        }
         _uiState.update { s ->
-            computeDerived(s.copy(equipment = newEquipment, inventory = newInventory, lastResult = result))
+            val newSlots = s.inventorySlots.toMutableList()
+            newSlots[slotIdx] = if (slot.quantity > 1) slot.copy(quantity = slot.quantity - 1) else null
+            computeDerived(s.copy(equipment = newEquipment, inventorySlots = newSlots, lastResult = result))
         }
     }
 
     fun unequipEquipment() {
         _uiState.update { s ->
-            val newBag = if (s.equipment != null) s.equipmentBag + s.equipment else s.equipmentBag
-            computeDerived(s.copy(equipment = null, equipmentBag = newBag, selectedScrollType = null, lastResult = null))
+            if (s.equipment == null) return@update s
+            val newSlots = addEquipToSlots(s.inventorySlots, s.equipment)
+            computeDerived(s.copy(equipment = null, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
         }
     }
 
-    fun equipFromBag(equipment: Equipment) {
+    fun equipFromInventory(equipment: Equipment) {
         _uiState.update { s ->
-            val bagWithoutTarget = s.equipmentBag - equipment
-            val newBag = if (s.equipment != null) bagWithoutTarget + s.equipment else bagWithoutTarget
-            computeDerived(s.copy(equipment = equipment, equipmentBag = newBag, selectedScrollType = null, lastResult = null))
+            val slotIdx = s.inventorySlots.indexOfFirst { it is InventorySlot.EquipItem && it.equipment == equipment }
+            if (slotIdx < 0) return@update s
+            val newSlots = s.inventorySlots.toMutableList()
+            newSlots[slotIdx] = if (s.equipment != null) InventorySlot.EquipItem(s.equipment) else null
+            computeDerived(s.copy(equipment = equipment, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
         }
     }
 
@@ -783,13 +796,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 quest.status == QuestStatus.READY_TO_COMPLETE -> {
                     // 보상 받기
                     val rewarded = levelService.applyExp(state.player, 50)
-                    val newInventory = state.inventory.map { item ->
-                        if (item.scrollType == ScrollType.GLOVE_ATK_100) item.copy(quantity = item.quantity + 1)
-                        else item
-                    }
+                    val newSlots = addScrollToSlots(state.inventorySlots, ScrollType.GLOVE_ATK_100)
                     computeDerived(state.copy(
                         player = rewarded,
-                        inventory = newInventory,
+                        inventorySlots = newSlots,
                         questState = quest.copy(status = QuestStatus.COMPLETED),
                         activeDialogue = null
                     ))
