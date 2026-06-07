@@ -1582,7 +1582,7 @@ private fun DrawScope.drawPlayer(
             dieFrames[idx]
         }
         isHurt      -> hurtFrames[((now - playerHurtAnimStart) / 100L).toInt().coerceIn(0, hurtFrames.size - 1)]
-        isAttacking -> attackFrames[((now - playerAttackAnimStart) / 100L).toInt().coerceIn(0, attackFrames.size - 1)]
+        isAttacking -> attackFrames[((now - playerAttackAnimStart) / 60L).toInt().coerceIn(0, attackFrames.size - 1)]
         isMoving    -> walkFrames[((now / 100L) % walkFrames.size).toInt()]
         else        -> idleFrames[((now / 200L) % idleFrames.size).toInt()]
     }

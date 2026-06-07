@@ -57,6 +57,13 @@ data class InventoryItem(val scrollType: ScrollType, val quantity: Int)
 
 data class PendingRespawn(val monsterId: Int, val diedAt: Long)
 
+data class PendingPlayerAttack(
+    val targetId: Int,
+    val damage: Int,
+    val isMiss: Boolean,
+    val applyAt: Long
+)
+
 data class UiState(
     val equipment: Equipment?,
     val weapon: Weapon?,
@@ -79,6 +86,7 @@ data class UiState(
     val activeDialogue: DialogueSession? = null,
     val playerAttackAnimStart: Long = 0L,
     val playerHurtAnimStart: Long = 0L,
+    val pendingPlayerAttack: PendingPlayerAttack? = null,
     val playerDeathTime: Long = 0L
 )
 
@@ -124,6 +132,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val LUMINANCE_THRESHOLD   = 80f
         private const val PORTAL_RANGE          = 30f
         private const val PORTAL_COOLDOWN       = 2000L
+        private const val ATTACK_ANIM_DURATION  = 300L  // 5프레임 × 60ms
     }
 
     init {
@@ -149,6 +158,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             while (true) {
                 delay(RESPAWN_CHECK_INTERVAL)
                 respawnTick()
+            }
+        }
+        viewModelScope.launch {
+            while (true) {
+                delay(AI_TICK_INTERVAL)
+                pendingAttackTick()
             }
         }
     }
@@ -338,8 +353,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val now = System.currentTimeMillis()
 
+            // 대상 없음
+            if (result.targetId == null) return@update state
+
+            // 원거리 공격: 투사체 즉시 생성
             if (result.newProjectile != null) {
-                // 원거리 공격: 투사체 생성, 즉시 데미지 없음
                 nextProjectileId++
                 return@update state.copy(
                     projectiles          = state.projectiles + result.newProjectile,
@@ -347,86 +365,109 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
-            // 명중 실패
-            if (result.isMiss) {
-                val targetMonster = state.monsters.find { it.id == result.targetId }
-                val missNum = targetMonster?.let {
-                    DamageNumber(
-                        nextDamageNumberId++, 0,
-                        it.positionX, it.positionY, now,
-                        isPlayerDamage = false, isMiss = true
-                    )
+            // 근접 공격(히트/미스): 애니메이션만 시작하고 데미지는 pendingAttackTick에서 처리
+            // 이미 진행 중인 pending이 있으면 덮어쓰지 않음
+            if (state.pendingPlayerAttack != null) return@update state
+
+            state.copy(
+                playerAttackAnimStart = now,
+                pendingPlayerAttack   = PendingPlayerAttack(
+                    targetId = result.targetId,
+                    damage   = result.damage,
+                    isMiss   = result.isMiss,
+                    applyAt  = now + ATTACK_ANIM_DURATION
+                ),
+                // 대상 몬스터를 AGGRO로 전환 (HP 차감은 나중에)
+                monsters = state.monsters.map { m ->
+                    if (m.id == result.targetId && m.state == MonsterState.IDLE)
+                        m.copy(state = MonsterState.AGGRO) else m
                 }
-                return@update state.copy(
-                    damageNumbers        = state.damageNumbers + listOfNotNull(missNum),
-                    playerAttackAnimStart = now
+            )
+        }
+    }
+
+    // ── 대기 중인 공격 데미지 적용 (애니메이션 완료 후) ────────────────────────
+
+    private fun pendingAttackTick() {
+        _uiState.update { state ->
+            val pending = state.pendingPlayerAttack ?: return@update state
+            val now = System.currentTimeMillis()
+            if (now < pending.applyAt) return@update state
+
+            val baseState = state.copy(pendingPlayerAttack = null)
+
+            // 미스: MISS 텍스트만 표시
+            if (pending.isMiss) {
+                val targetMonster = state.monsters.find { it.id == pending.targetId }
+                val missNum = targetMonster?.let {
+                    DamageNumber(nextDamageNumberId++, 0,
+                        it.positionX, it.positionY, now, isPlayerDamage = false, isMiss = true)
+                }
+                return@update baseState.copy(
+                    damageNumbers = baseState.damageNumbers + listOfNotNull(missNum)
                 )
             }
 
-            // 근접 공격 히트
-            val killedIds = result.killedMonsters.map { it.id }.toSet()
-            val monstersWithAggro = result.updatedMonsters.map { m ->
-                if (m.id == result.targetId && m.id !in killedIds && m.state == MonsterState.IDLE)
-                    m.copy(state = MonsterState.AGGRO)
-                else m
+            // 히트: 현재 상태에서 데미지 적용
+            val targetMonster = state.monsters.find { it.id == pending.targetId }
+                ?: return@update baseState  // 이미 사망/사라진 경우
+            if (targetMonster.hp <= 0) return@update baseState
+
+            val newHp         = targetMonster.hp - pending.damage
+            val killed        = newHp <= 0
+            val updatedMonsters = if (killed) {
+                state.monsters.filter { it.id != pending.targetId }
+            } else {
+                state.monsters.map { if (it.id == pending.targetId) it.copy(hp = newHp) else it }
             }
 
-            val gainedExp     = result.killedMonsters.sumOf { it.expReward }
+            val killedList    = if (killed) listOf(targetMonster) else emptyList()
+            val gainedExp     = killedList.sumOf { it.expReward }
             val updatedPlayer = if (gainedExp > 0) levelService.applyExp(state.player, gainedExp) else state.player
 
             val newGroundItems = mutableListOf<GroundItem>()
-            result.killedMonsters.forEach { monster ->
+            killedList.forEach { monster ->
                 val drops = dropService.roll(SlimeDropTable.entries)
                 drops.forEachIndexed { index, drop ->
                     val angle  = index * (Math.PI * 2.0 / drops.size.coerceAtLeast(1)).toFloat()
                     val spread = if (drops.size > 1) 20f else 0f
                     newGroundItems.add(GroundItem(
-                        id        = nextGroundItemId++,
+                        id = nextGroundItemId++,
                         positionX = monster.positionX + cos(angle) * spread,
                         positionY = monster.positionY + sin(angle) * spread,
-                        dropItem  = drop,
-                        droppedAt = now
+                        dropItem  = drop, droppedAt = now
                     ))
                 }
             }
 
-            val newPending = result.killedMonsters.map { PendingRespawn(it.id, now) }
-
-            val targetMonster = state.monsters.find { it.id == result.targetId }
-            val attackDmgNum  = if (targetMonster != null && result.damage > 0) {
-                DamageNumber(
-                    nextDamageNumberId++, result.damage,
-                    targetMonster.positionX, targetMonster.positionY, now,
-                    isPlayerDamage = false
-                )
-            } else null
+            val attackDmgNum = if (pending.damage > 0) DamageNumber(
+                nextDamageNumberId++, pending.damage,
+                targetMonster.positionX, targetMonster.positionY, now, isPlayerDamage = false
+            ) else null
 
             val advancePending = state.jobAdvancementPending || (
-                gainedExp > 0 &&
-                updatedPlayer.job == PlayerJob.BEGINNER &&
-                updatedPlayer.level >= 3 &&
-                state.player.level < 3
+                gainedExp > 0 && updatedPlayer.job == PlayerJob.BEGINNER &&
+                updatedPlayer.level >= 3 && state.player.level < 3
             )
 
-            // 퀘스트 킬 카운트
-            val questKillAdd = if (state.questState.status == QuestStatus.IN_PROGRESS) result.killedMonsters.size else 0
-            val newKillCount = (state.questState.killCount + questKillAdd)
-            val newQuestStatus = if (state.questState.status == QuestStatus.IN_PROGRESS && newKillCount >= state.questState.killGoal)
-                QuestStatus.READY_TO_COMPLETE else state.questState.status
-            val newQuestState = state.questState.copy(
+            val questKillAdd   = if (state.questState.status == QuestStatus.IN_PROGRESS) killedList.size else 0
+            val newKillCount   = (state.questState.killCount + questKillAdd)
+            val newQuestStatus = if (state.questState.status == QuestStatus.IN_PROGRESS &&
+                newKillCount >= state.questState.killGoal) QuestStatus.READY_TO_COMPLETE
+                else state.questState.status
+            val newQuestState  = state.questState.copy(
                 killCount = newKillCount.coerceAtMost(state.questState.killGoal),
-                status = newQuestStatus
+                status    = newQuestStatus
             )
 
-            val finalState = state.copy(
-                monsters              = monstersWithAggro,
+            val finalState = baseState.copy(
+                monsters              = updatedMonsters,
                 player                = updatedPlayer,
-                groundItems           = state.groundItems + newGroundItems,
-                pendingRespawns       = state.pendingRespawns + newPending,
-                damageNumbers         = state.damageNumbers + listOfNotNull(attackDmgNum),
+                groundItems           = baseState.groundItems + newGroundItems,
+                pendingRespawns       = baseState.pendingRespawns + killedList.map { PendingRespawn(it.id, now) },
+                damageNumbers         = baseState.damageNumbers + listOfNotNull(attackDmgNum),
                 jobAdvancementPending = advancePending,
-                questState            = newQuestState,
-                playerAttackAnimStart  = if (result.targetId != null) now else state.playerAttackAnimStart
+                questState            = newQuestState
             )
             if (gainedExp > 0) computeDerived(finalState) else finalState
         }
