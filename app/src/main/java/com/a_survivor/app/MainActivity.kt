@@ -438,6 +438,7 @@ fun MainScreen(
                 scrollType = dragState.scrollType!!,
                 windowPosition = dragState.position,
                 rootOffset = rootWindowOffset
+
             )
         }
 
@@ -2224,24 +2225,31 @@ fun InventoryWindow(
     ) {
         WindowTitleBar("인벤토리", onClose = onClose, onDrag = onDrag)
 
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            // 소지금
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("소지금", color = TextMuted, fontSize = 11.sp)
-                Text(
-                    text = "%,d원".format(money),
-                    color = TextGold,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            HorizontalDivider(color = BorderGold.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
+        // 소지금 헤더 (스크롤 밖)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("소지금", color = TextMuted, fontSize = 11.sp)
+            Text(
+                text = "%,d원".format(money),
+                color = TextGold,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        HorizontalDivider(color = BorderGold.copy(alpha = 0.3f), modifier = Modifier.padding(horizontal = 12.dp))
 
-            // 4×8 슬롯 그리드
+        // 4×8 슬롯 그리드 (스크롤 가능)
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .heightIn(max = 300.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
             slots.chunked(4).forEach { rowSlots ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),

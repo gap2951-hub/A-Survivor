@@ -559,18 +559,19 @@ COLLISION_RADIUS = 16f  // 몬스터 중심과의 거리
 
 ## 드랍 시스템
 
-### SlimeDropTable (스켈레톤 워리어 공용)
+### dropEntriesFor(mapType) — 맵별 드랍 테이블
 
-| 아이템 | 확률 |
-|--------|------|
-| 노가다 목장갑 | 5% |
-| 장갑 공격력 100% | 20% |
-| 장갑 공격력 60% | 10% |
-| 장갑 공격력 10% | 3% |
-| 백의 주문서 1% | 1% |
+| 아이템 | BEGINNER_FIELD | FIELD_2 | FIELD_3 |
+|--------|---------------|---------|---------|
+| **돈** | 10~15원 (100%) | 15~20원 (100%) | 25~35원 (100%) |
+| 노가다 목장갑 | 5% | 5% | 5% |
+| 장갑 공격력 100% | 20% | 20% | 20% |
+| 장갑 공격력 60% | 10% | 10% | 10% |
+| 장갑 공격력 10% | 3% | 3% | 3% |
+| 백의 주문서 1% | 1% | 1% | 1% |
 
-- 드랍 후 **PICKUP_DELAY = 1500ms** 경과 후부터 픽업 가능
-- **PICKUP_RANGE = 50f** 이내 자동 습득
+- **MoneyDrop**: 몬스터 처치 즉시 `UiState.money`에 직접 가산 (ground item 미사용)
+- **스크롤/장비**: ground item으로 바닥에 드랍 → PICKUP_DELAY(1500ms) 후 PICKUP_RANGE(50f) 내 자동 습득
 - 포탈 이동 시 바닥 아이템 초기화
 
 ---
@@ -732,50 +733,62 @@ withTransform({ if (player.facingLeft) scale(-1f, 1f, pivot = c) }) {
 ```
 InventoryWindow (280dp, 드래그 이동 가능)
  ├── WindowTitleBar "인벤토리"
- ├── [장비 아이템] 섹션 — equipmentBag가 비어있지 않을 때만 표시
- │    └── EquipmentBagItem × N — nogada_glove 이미지, 탭 → ItemInfoDialog
- ├── [주문서] 섹션 — "주문서 — 꾹 눌러 장갑 슬롯으로 드래그"
- │    └── DraggableScrollItem × 5 — 이미지(or 텍스트 폴백) + 수량, 탭 → ScrollInfoDialog
- └── DragGhost (zIndex 100) — 드래그 중 이미지 고스트
+ ├── 소지금 헤더 (항상 표시) — "소지금 N원"
+ ├── HorizontalDivider
+ └── 4×8 슬롯 그리드 (스크롤 가능, heightIn(max=300.dp))
+      ├── null → EmptyInventorySlot (어두운 빈 슬롯)
+      ├── InventorySlot.ScrollItem → DraggableScrollItem (수량 표시, 꾹 눌러 드래그)
+      └── InventorySlot.EquipItem → EquipmentBagItem (탭 → ItemInfoDialog)
 ```
 
-### UiState 추가 필드
+### UiState 필드
 
 ```kotlin
-val equipmentBag: List<Equipment> = emptyList(),
+val money: Int = 0,
+val inventorySlots: List<InventorySlot?> = List(32) { null },  // 4열 × 8행
 ```
 
-- 드랍된 장갑이 항상 `equipmentBag`에 추가됨 (이전에는 `equipment == null`일 때만 처리 → 무시 버그 수정)
-- `equipment` 슬롯이 비어있으면 추가로 자동 장착
+### InventorySlot sealed class
+
+```kotlin
+sealed class InventorySlot {
+    data class ScrollItem(val type: ScrollType, val quantity: Int) : InventorySlot()
+    data class EquipItem(val equipment: Equipment) : InventorySlot()
+}
+```
+
+- 같은 종류 스크롤은 동일 슬롯에 스택 (`addScrollToSlots`)
+- 장비는 개별 슬롯 점유 (`addEquipToSlots`)
 
 ### 장비 해제 → 인벤토리 이동
 
 ```kotlin
 fun unequipEquipment() {
     _uiState.update { s ->
-        val newBag = if (s.equipment != null) s.equipmentBag + s.equipment else s.equipmentBag
-        computeDerived(s.copy(equipment = null, equipmentBag = newBag, ...))
+        val newSlots = addEquipToSlots(s.inventorySlots, s.equipment)
+        computeDerived(s.copy(equipment = null, inventorySlots = newSlots, ...))
     }
 }
 ```
 
 - 장갑 슬롯 꾹 누르기 → "장비 해제" 확인 다이얼로그 → "해제" 탭 → `unequipEquipment()` 호출
-- 해제된 장갑이 `equipment = null`로 청소되고 `equipmentBag`에 추가됨
+- 해제된 장갑이 `inventorySlots`의 빈 슬롯에 `EquipItem`으로 들어감
 
 ### 인벤토리 → 장착
 
 ```kotlin
-fun equipFromBag(equipment: Equipment) {
+fun equipFromInventory(equipment: Equipment) {
     _uiState.update { s ->
-        val bagWithoutTarget = s.equipmentBag - equipment
-        val newBag = if (s.equipment != null) bagWithoutTarget + s.equipment else bagWithoutTarget
-        computeDerived(s.copy(equipment = equipment, equipmentBag = newBag, ...))
+        val slotIdx = s.inventorySlots.indexOfFirst { it is InventorySlot.EquipItem && it.equipment == equipment }
+        val newSlots = s.inventorySlots.toMutableList()
+        newSlots[slotIdx] = if (s.equipment != null) InventorySlot.EquipItem(s.equipment) else null
+        computeDerived(s.copy(equipment = equipment, inventorySlots = newSlots, ...))
     }
 }
 ```
 
 - 인벤토리 장갑 탭 → `ItemInfoDialog` 표시 (스크롤 내리면 "장착" 버튼 노출)
-- "장착" 탭 → `equipFromBag()` 호출 → 선택 장갑이 equipment 슬롯으로, 기존 장착 장갑은 bag으로 교환
+- "장착" 탭 → `equipFromInventory()` 호출 → 선택 장갑이 equipment 슬롯으로, 기존 장착 장갑은 그 슬롯으로 교환
 
 ### ItemInfoDialog "장착" 버튼
 
