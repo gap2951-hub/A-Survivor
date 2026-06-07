@@ -3,7 +3,7 @@
 ## 프로젝트 개요
 
 메이플스토리 스타일의 픽셀아트 사냥터를 배경으로 한 안드로이드 생존형 게임.
-주문서 강화 시스템, 몬스터 AI, 픽셀 충돌, 마을/포탈 시스템, NPC/퀘스트 시스템, 스켈레톤 워리어 애니메이션, 전사 플레이어 스프라이트 애니메이션(히트 프레임 시스템 포함) 구현 완료.
+주문서 강화 시스템, 몬스터 AI, 픽셀 충돌, 마을/포탈 시스템, NPC/퀘스트 시스템, 스켈레톤 워리어 애니메이션, 전사 플레이어 스프라이트 애니메이션(히트 프레임 시스템 포함), 인벤토리 아이템 이미지화 구현 완료.
 
 - **패키지명:** `com.a_survivor.app`
 - **언어:** Kotlin + Jetpack Compose
@@ -50,7 +50,7 @@ com.a_survivor.app/
 │   ├── LevelService.kt
 │   └── DropService.kt
 ├── viewmodel/
-│   └── MainViewModel.kt          (AndroidViewModel — 충돌 비트맵 + AI/투사체 틱 루프 + DerivedStats + PendingPlayerAttack + pendingAttackTick)
+│   └── MainViewModel.kt          (AndroidViewModel — 충돌 비트맵 + AI/투사체 틱 루프 + DerivedStats + PendingPlayerAttack + pendingAttackTick + equipmentBag)
 └── res/drawable/
     ├── map_beginner.jpg           ← 초보자 사냥터 맵 (1024×572)
     ├── map_town.jpg               ← 마을 맵 (1024×572)
@@ -725,6 +725,59 @@ withTransform({ if (player.facingLeft) scale(-1f, 1f, pivot = c) }) {
 
 ---
 
+## 인벤토리 시스템
+
+### InventoryWindow 구조
+
+```
+InventoryWindow (280dp, 드래그 이동 가능)
+ ├── WindowTitleBar "인벤토리"
+ ├── [장비 아이템] 섹션 — equipmentBag가 비어있지 않을 때만 표시
+ │    └── EquipmentBagItem × N — nogada_glove 이미지, 탭 → ItemInfoDialog
+ ├── [주문서] 섹션 — "주문서 — 꾹 눌러 장갑 슬롯으로 드래그"
+ │    └── DraggableScrollItem × 5 — 이미지(or 텍스트 폴백) + 수량, 탭 → ScrollInfoDialog
+ └── DragGhost (zIndex 100) — 드래그 중 이미지 고스트
+```
+
+### UiState 추가 필드
+
+```kotlin
+val equipmentBag: List<Equipment> = emptyList(),
+```
+
+- 드랍된 장갑이 항상 `equipmentBag`에 추가됨 (이전에는 `equipment == null`일 때만 처리 → 무시 버그 수정)
+- `equipment` 슬롯이 비어있으면 추가로 자동 장착
+
+### 주문서 슬롯 — DraggableScrollItem
+
+| ScrollType | 이미지 | 폴백 |
+|------------|--------|------|
+| GLOVE_ATK_100 | scroll_100.png | — |
+| GLOVE_ATK_60 | scroll_60.png | — |
+| GLOVE_ATK_10 | scroll_10.png | — |
+| WHITE_SCROLL_1/3 | 없음 | "백의" 텍스트 |
+
+- 수량 0 포함 모든 슬롯을 탭하면 `ScrollInfoDialog` 표시
+- 꾹 누르면 드래그 시작 (기존 동작 유지)
+
+### ScrollInfoDialog
+
+- 이름 / 수량 / 성공률 / 효과 (공격력 보너스 or "업그레이드 실패 횟수 복구")
+- 이미지가 있으면 PNG, 없으면 텍스트 폴백
+
+### scrollDrawableRes 헬퍼
+
+```kotlin
+private fun scrollDrawableRes(scrollType: ScrollType): Int? = when (scrollType) {
+    ScrollType.GLOVE_ATK_100 -> R.drawable.scroll_100
+    ScrollType.GLOVE_ATK_60  -> R.drawable.scroll_60
+    ScrollType.GLOVE_ATK_10  -> R.drawable.scroll_10
+    else                     -> null
+}
+```
+
+---
+
 ## 주문서 강화 시스템
 
 | 주문서 | 성공률 | 성공 시 |
@@ -849,6 +902,12 @@ withTransform({ if (player.facingLeft) scale(-1f, 1f, pivot = c) }) {
 | 107 | ATTACK_ANIM_DURATION = 300ms 상수 추가 — 5프레임 × 60ms 기준 | ✅ |
 | 108 | 공격 애니메이션 속도 조정 — 100ms/frame → 60ms/frame (빠른 타격감) | ✅ |
 | 109 | GameCanvas 파라미터 추가 — isMoving / playerAttackAnimStart / playerHurtAnimStart / playerDeathTime | ✅ |
+| 110 | UiState.equipmentBag 추가 — 드랍 장갑을 인벤토리 가방에 저장 (기존 무시 버그 수정) | ✅ |
+| 111 | DraggableScrollItem 이미지화 — 텍스트 → PNG 이미지 (100%/60%/10%), 수량만 하단 표시 | ✅ |
+| 112 | ScrollInfoDialog 추가 — 주문서 슬롯 탭 시 이름·수량·성공률·효과 표시 (수량 0도 가능) | ✅ |
+| 113 | EquipmentBagItem 추가 — 인벤토리 상단 장갑 이미지 슬롯, 탭 시 ItemInfoDialog | ✅ |
+| 114 | InventoryWindow 장비 아이템 섹션 추가 — equipmentBag 비어있지 않을 때 상단에 렌더링 | ✅ |
+| 115 | DragGhost 이미지화 — 드래그 중 고스트도 PNG 이미지로 표시 (백의는 텍스트 폴백) | ✅ |
 
 ---
 
