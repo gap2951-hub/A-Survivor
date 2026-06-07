@@ -6,6 +6,10 @@ import android.graphics.BitmapFactory
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.a_survivor.app.R
+import com.a_survivor.app.model.ConsumableCatalog
+import com.a_survivor.app.model.ConsumableType
+import com.a_survivor.app.model.GameMessage
+import com.a_survivor.app.model.MessageType
 import com.a_survivor.app.model.DamageNumber
 import com.a_survivor.app.model.DefaultWeapon
 import com.a_survivor.app.model.DefaultWorld
@@ -22,8 +26,10 @@ import com.a_survivor.app.model.Monster
 import com.a_survivor.app.model.MonsterState
 import com.a_survivor.app.model.Npc
 import com.a_survivor.app.model.NpcRegistry
+import com.a_survivor.app.model.NpcRole
 import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.PlayerJob
+import com.a_survivor.app.model.PlayerStats
 import com.a_survivor.app.model.Portal
 import com.a_survivor.app.model.PortalRegistry
 import com.a_survivor.app.model.Projectile
@@ -31,6 +37,10 @@ import com.a_survivor.app.model.QuestState
 import com.a_survivor.app.model.QuestStatus
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
+import com.a_survivor.app.model.ShopInfo
+import com.a_survivor.app.model.ShopItemType
+import com.a_survivor.app.model.ShopRegistry
+import com.a_survivor.app.model.ShopType
 import com.a_survivor.app.model.StatType
 import com.a_survivor.app.model.dropEntriesFor
 import com.a_survivor.app.model.Weapon
@@ -56,6 +66,7 @@ import kotlin.math.sqrt
 sealed class InventorySlot {
     data class ScrollItem(val type: ScrollType, val quantity: Int) : InventorySlot()
     data class EquipItem(val equipment: Equipment) : InventorySlot()
+    data class ConsumableItem(val type: ConsumableType, val quantity: Int) : InventorySlot()
 }
 
 data class PendingRespawn(val monsterId: Int, val diedAt: Long)
@@ -91,7 +102,9 @@ data class UiState(
     val playerAttackAnimStart: Long = 0L,
     val playerHurtAnimStart: Long = 0L,
     val pendingPlayerAttack: PendingPlayerAttack? = null,
-    val playerDeathTime: Long = 0L
+    val playerDeathTime: Long = 0L,
+    val activeShop: ShopInfo? = null,
+    val messages: List<GameMessage> = emptyList()
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -103,11 +116,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val dropService            = DropService()
     private val derivedStatsCalculator = DerivedStatsCalculator()
     private val projectileService      = ProjectileService()
+    private val saveService            = com.a_survivor.app.service.SaveService(application.applicationContext)
 
     private var nextGroundItemId    = 0
     private var nextProjectileId    = 0
+    private var nextMessageId       = 0L
 
-    // 충돌 판정용 저해상도 비트맵 (원본 1/4 크기)
+    private fun addMessage(state: UiState, text: String, type: MessageType): UiState {
+        val newMsg = GameMessage(id = nextMessageId++, text = text, type = type)
+        viewModelScope.launch {
+            delay(2000L)
+            _uiState.update { s -> s.copy(messages = s.messages.filter { it.id != newMsg.id }) }
+        }
+        return state.copy(messages = (state.messages + newMsg).takeLast(5))
+    }
+
     private val collisionBitmap: Bitmap? by lazy {
         val opts = BitmapFactory.Options().apply {
             inSampleSize      = 4
@@ -136,7 +159,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val LUMINANCE_THRESHOLD   = 80f
         private const val PORTAL_RANGE          = 30f
         private const val PORTAL_COOLDOWN       = 2000L
-        private const val ATTACK_ANIM_DURATION  = 300L  // 5프레임 × 60ms
+        private const val ATTACK_ANIM_DURATION  = 300L
     }
 
     init {
@@ -178,8 +201,71 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var nextMonsterId      = (_uiState.value.monsters.maxOfOrNull { it.id } ?: 0) + 1
     private var nextDamageNumberId = 0
 
+    // 저장된 데이터 로드 + 자동 저장
+    init {
+        saveService.load()?.let { restoreState(it) }?.let { restored ->
+            _uiState.value = restored
+            nextMonsterId = (restored.monsters.maxOfOrNull { it.id } ?: 0) + 1
+        }
+        viewModelScope.launch {
+            while (true) {
+                delay(10_000L)
+                saveService.save(_uiState.value)
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        saveService.save(_uiState.value)
+    }
+
+    private fun restoreState(data: com.a_survivor.app.service.GameSaveData): UiState {
+        val job       = runCatching { PlayerJob.valueOf(data.playerJob) }.getOrDefault(PlayerJob.BEGINNER)
+        val mapType   = runCatching { MapType.valueOf(data.mapType) }.getOrDefault(MapType.BEGINNER_FIELD)
+        val questStat = runCatching { QuestStatus.valueOf(data.questStatus) }.getOrDefault(QuestStatus.NOT_STARTED)
+
+        val player = Player(
+            level              = data.playerLevel,
+            exp                = data.playerExp,
+            hp                 = data.playerHp.coerceAtLeast(1),
+            maxHp              = data.playerMaxHp,
+            job                = job,
+            stats              = PlayerStats(str = data.playerStr, dex = data.playerDex, `int` = data.playerInt, luk = data.playerLuk),
+            availableStatPoint = data.playerStatPoints,
+            weapon             = data.weapon ?: DefaultWeapon,
+            positionX          = data.playerPosX,
+            positionY          = data.playerPosY
+        )
+
+        val inventory = data.inventory
+            .map { saveService.toInventorySlot(it) }
+            .let { slots -> (slots + List(32) { null }).take(32) }
+
+        val world = GameWorld(mapType = mapType)
+        val base = UiState(
+            player         = player,
+            equipment      = data.equipment,
+            weapon         = data.weapon,
+            money          = data.money,
+            inventorySlots = inventory,
+            world          = world,
+            monsters       = spawnSkeletons(world, 5),
+            portals        = PortalRegistry.portalsFor(mapType),
+            npcs           = NpcRegistry.npcsFor(mapType),
+            questState     = QuestState(
+                status    = questStat,
+                killCount = data.questKillCount,
+                killGoal  = data.questKillGoal
+            )
+        )
+        return computeDerived(base)
+    }
+
     fun startGame(job: PlayerJob = PlayerJob.BEGINNER) {
-        _uiState.value = createInitialState(job)
+        val newState = createInitialState(job)
+        _uiState.value = newState
+        saveService.save(newState)
     }
 
     fun advanceJob(job: PlayerJob) {
@@ -259,7 +345,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return luminance < LUMINANCE_THRESHOLD
     }
 
-    // ── 이동 (충돌 + 벽 슬라이딩) ──────────────────────────────────────────────
+    // ── 이동 ──────────────────────────────────────────────────────────────────
 
     fun movePlayer(dirX: Float, dirY: Float) {
         _uiState.update { state ->
@@ -289,7 +375,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // 맵별 스켈레톤 설정 (variant, hp, exp, avoidability, accuracy, speed)
     private data class SkeletonConfig(
         val variant: Int, val hp: Int, val expReward: Int,
         val avoidability: Int, val accuracy: Int, val speed: Float
@@ -350,10 +435,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val now = System.currentTimeMillis()
 
-            // 대상 없음
             if (result.targetId == null) return@update state
 
-            // 원거리 공격: 투사체 즉시 생성
             if (result.newProjectile != null) {
                 nextProjectileId++
                 return@update state.copy(
@@ -362,8 +445,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
-            // 근접 공격(히트/미스): 애니메이션만 시작하고 데미지는 pendingAttackTick에서 처리
-            // 이미 진행 중인 pending이 있으면 덮어쓰지 않음
             if (state.pendingPlayerAttack != null) return@update state
 
             state.copy(
@@ -374,7 +455,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isMiss   = result.isMiss,
                     applyAt  = now + ATTACK_ANIM_DURATION
                 ),
-                // 대상 몬스터를 AGGRO로 전환 (HP 차감은 나중에)
                 monsters = state.monsters.map { m ->
                     if (m.id == result.targetId && m.state == MonsterState.IDLE)
                         m.copy(state = MonsterState.AGGRO) else m
@@ -383,7 +463,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ── 대기 중인 공격 데미지 적용 (애니메이션 완료 후) ────────────────────────
+    // ── 대기 중인 공격 데미지 적용 ─────────────────────────────────────────────
 
     private fun pendingAttackTick() {
         _uiState.update { state ->
@@ -393,7 +473,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val baseState = state.copy(pendingPlayerAttack = null)
 
-            // 미스: MISS 텍스트만 표시
             if (pending.isMiss) {
                 val targetMonster = state.monsters.find { it.id == pending.targetId }
                 val missNum = targetMonster?.let {
@@ -405,9 +484,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
-            // 히트: 현재 상태에서 데미지 적용
             val targetMonster = state.monsters.find { it.id == pending.targetId }
-                ?: return@update baseState  // 이미 사망/사라진 경우
+                ?: return@update baseState
             if (targetMonster.hp <= 0) return@update baseState
 
             val newHp         = targetMonster.hp - pending.damage
@@ -466,7 +544,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 jobAdvancementPending = advancePending,
                 questState            = newQuestState
             )
-            if (gainedExp > 0) computeDerived(finalState) else finalState
+            val msgsState = if (gainedExp > 0) addMessage(finalState, "+${gainedExp} EXP", MessageType.EXP) else finalState
+            if (gainedExp > 0) computeDerived(msgsState) else msgsState
         }
     }
 
@@ -533,7 +612,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 state.player.level < 3
             )
 
-            // 퀘스트 킬 카운트 (투사체)
             val questKillAddProj = if (state.questState.status == QuestStatus.IN_PROGRESS) killed.size else 0
             val newKillCountProj = (state.questState.killCount + questKillAddProj)
             val newQuestStatusProj = if (state.questState.status == QuestStatus.IN_PROGRESS && newKillCountProj >= state.questState.killGoal)
@@ -553,7 +631,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 jobAdvancementPending = advancePending,
                 questState            = newQuestStateProj
             )
-            if (gainedExp > 0) computeDerived(newState) else newState
+            val msgsState = if (gainedExp > 0) addMessage(newState, "+${gainedExp} EXP", MessageType.EXP) else newState
+            if (gainedExp > 0) computeDerived(msgsState) else msgsState
         }
     }
 
@@ -630,6 +709,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return applyDrops(state.copy(groundItems = remaining), toPickup.map { it.dropItem })
     }
 
+    // ── 인벤토리 슬롯 헬퍼 ────────────────────────────────────────────────────
+
     private fun addScrollToSlots(slots: List<InventorySlot?>, type: ScrollType): List<InventorySlot?> {
         val m = slots.toMutableList()
         val idx = m.indexOfFirst { it is InventorySlot.ScrollItem && it.type == type }
@@ -649,15 +730,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return m
     }
 
+    private fun addConsumableToSlots(slots: List<InventorySlot?>, type: ConsumableType): List<InventorySlot?> {
+        val m = slots.toMutableList()
+        val idx = m.indexOfFirst { it is InventorySlot.ConsumableItem && it.type == type }
+        if (idx >= 0) {
+            m[idx] = (m[idx] as InventorySlot.ConsumableItem).let { it.copy(quantity = it.quantity + 1) }
+        } else {
+            val empty = m.indexOfFirst { it == null }
+            if (empty >= 0) m[empty] = InventorySlot.ConsumableItem(type, 1)
+        }
+        return m
+    }
+
     private fun applyDrops(state: UiState, drops: List<DropItem>): UiState {
         var s = state
         for (drop in drops) {
             s = when (drop) {
-                is DropItem.MoneyDrop     -> s.copy(money = s.money + drop.amount)
-                is DropItem.ScrollDrop    -> s.copy(inventorySlots = addScrollToSlots(s.inventorySlots, drop.scrollType))
+                is DropItem.MoneyDrop -> addMessage(
+                    s.copy(money = s.money + drop.amount),
+                    "+${drop.amount}원", MessageType.MONEY
+                )
+                is DropItem.ScrollDrop -> addMessage(
+                    s.copy(inventorySlots = addScrollToSlots(s.inventorySlots, drop.scrollType)),
+                    "${ScrollCatalog.get(drop.scrollType).name} 획득", MessageType.ITEM
+                )
                 is DropItem.EquipmentDrop -> {
                     val withSlots = s.copy(inventorySlots = addEquipToSlots(s.inventorySlots, drop.equipment))
-                    if (withSlots.equipment == null) withSlots.copy(equipment = drop.equipment) else withSlots
+                    val withEquip = if (withSlots.equipment == null) withSlots.copy(equipment = drop.equipment) else withSlots
+                    addMessage(withEquip, "${drop.equipment.name} 획득", MessageType.ITEM)
                 }
             }
         }
@@ -757,8 +857,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startDialogue(npcId: Int) {
         _uiState.update { state ->
-            val pages = buildDialoguePages(state.questState)
-            state.copy(activeDialogue = DialogueSession(pages = pages))
+            val npc = state.npcs.find { it.id == npcId } ?: return@update state
+            val pages = when (npc.role) {
+                NpcRole.QUEST -> buildDialoguePages(state.questState)
+                NpcRole.EQUIPMENT_SHOP -> listOf(
+                    DialoguePage(
+                        speaker = "브루스",
+                        text = "어서 오게 모험가.\n장비를 사거나 필요 없는 물건을 정리하고 싶다면 나를 찾아오게.",
+                        choices = listOf("장비 상점 열기", "나가기")
+                    )
+                )
+                NpcRole.CONSUMABLE_SHOP -> listOf(
+                    DialoguePage(
+                        speaker = "피아",
+                        text = "전투가 길어질수록 물약은 꼭 필요해요.\n필요 없는 물건도 제가 사드릴게요.",
+                        choices = listOf("소비 상점 열기", "나가기")
+                    )
+                )
+            }
+            state.copy(activeDialogue = DialogueSession(pages = pages, npcId = npcId))
         }
     }
 
@@ -774,37 +891,61 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun chooseDialogueOption(index: Int) {
         _uiState.update { state ->
             val dlg = state.activeDialogue ?: return@update state
-            val quest = state.questState
-            when {
-                quest.status == QuestStatus.NOT_STARTED -> if (index == 0) {
-                    // 수락
-                    val newPages = listOf(
-                        DialoguePage("츄츄", "정말 감사합니다!\n마을 밖 초보자 사냥터에 있는 스켈레톤 워리어들을 조금만 정리해 주세요."),
-                        DialoguePage("츄츄", "스켈레톤 워리어 5마리를 처치하면 다시 저를 찾아와 주세요.")
-                    )
-                    state.copy(
-                        questState = quest.copy(status = QuestStatus.IN_PROGRESS),
-                        activeDialogue = DialogueSession(pages = newPages)
-                    )
-                } else {
-                    // 거절
-                    val newPages = listOf(
-                        DialoguePage("츄츄", "그렇군요...\n혹시 마음이 바뀌면 다시 말을 걸어주세요.")
-                    )
-                    state.copy(activeDialogue = DialogueSession(pages = newPages))
+            val npc = state.npcs.find { it.id == dlg.npcId }
+
+            when (npc?.role) {
+                NpcRole.EQUIPMENT_SHOP -> {
+                    if (index == 0) {
+                        state.copy(
+                            activeDialogue = null,
+                            activeShop = ShopInfo(ShopType.EQUIPMENT, "브루스")
+                        )
+                    } else {
+                        state.copy(activeDialogue = null)
+                    }
                 }
-                quest.status == QuestStatus.READY_TO_COMPLETE -> {
-                    // 보상 받기
-                    val rewarded = levelService.applyExp(state.player, 50)
-                    val newSlots = addScrollToSlots(state.inventorySlots, ScrollType.GLOVE_ATK_100)
-                    computeDerived(state.copy(
-                        player = rewarded,
-                        inventorySlots = newSlots,
-                        questState = quest.copy(status = QuestStatus.COMPLETED),
-                        activeDialogue = null
-                    ))
+                NpcRole.CONSUMABLE_SHOP -> {
+                    if (index == 0) {
+                        state.copy(
+                            activeDialogue = null,
+                            activeShop = ShopInfo(ShopType.CONSUMABLE, "피아")
+                        )
+                    } else {
+                        state.copy(activeDialogue = null)
+                    }
                 }
-                else -> state.copy(activeDialogue = null)
+                else -> {
+                    // 퀘스트 NPC (츄츄)
+                    val quest = state.questState
+                    when {
+                        quest.status == QuestStatus.NOT_STARTED -> if (index == 0) {
+                            val newPages = listOf(
+                                DialoguePage("츄츄", "정말 감사합니다!\n마을 밖 초보자 사냥터에 있는 스켈레톤 워리어들을 조금만 정리해 주세요."),
+                                DialoguePage("츄츄", "스켈레톤 워리어 5마리를 처치하면 다시 저를 찾아와 주세요.")
+                            )
+                            state.copy(
+                                questState = quest.copy(status = QuestStatus.IN_PROGRESS),
+                                activeDialogue = DialogueSession(pages = newPages, npcId = dlg.npcId)
+                            )
+                        } else {
+                            val newPages = listOf(
+                                DialoguePage("츄츄", "그렇군요...\n혹시 마음이 바뀌면 다시 말을 걸어주세요.")
+                            )
+                            state.copy(activeDialogue = DialogueSession(pages = newPages, npcId = dlg.npcId))
+                        }
+                        quest.status == QuestStatus.READY_TO_COMPLETE -> {
+                            val rewarded = levelService.applyExp(state.player, 50)
+                            val newSlots = addScrollToSlots(state.inventorySlots, ScrollType.GLOVE_ATK_100)
+                            computeDerived(state.copy(
+                                player = rewarded,
+                                inventorySlots = newSlots,
+                                questState = quest.copy(status = QuestStatus.COMPLETED),
+                                activeDialogue = null
+                            ))
+                        }
+                        else -> state.copy(activeDialogue = null)
+                    }
+                }
             }
         }
     }
@@ -833,5 +974,107 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         QuestStatus.COMPLETED -> listOf(
             DialoguePage("츄츄", "덕분에 평화로워졌어요.\n정말 감사합니다!")
         )
+    }
+
+    // ── 상점 시스템 ────────────────────────────────────────────────────────────
+
+    fun closeShop() {
+        _uiState.update { it.copy(activeShop = null) }
+    }
+
+    fun buyShopItem(shopType: ShopType, shopItemId: Int, quantity: Int = 1) {
+        _uiState.update { state ->
+            val shopItem = ShopRegistry.itemsFor(shopType).find { it.id == shopItemId } ?: return@update state
+
+            val qty = if (shopItem.stackable) quantity.coerceAtLeast(1) else 1
+            val totalCost = shopItem.buyPrice * qty
+            if (state.money < totalCost) return@update state
+
+            var newSlots = state.inventorySlots
+            var newEquipment = state.equipment
+            when (shopItem.itemType) {
+                ShopItemType.EQUIPMENT -> {
+                    val equip = ShopRegistry.createEquipment(shopItem.itemId) ?: return@update state
+                    newSlots = addEquipToSlots(newSlots, equip)
+                    // 장착 슬롯이 비어있으면 자동 장착 (드롭 동작과 동일)
+                    if (state.equipment == null) newEquipment = equip
+                }
+                ShopItemType.SCROLL -> {
+                    val scrollType = runCatching { ScrollType.valueOf(shopItem.itemId) }.getOrNull() ?: return@update state
+                    repeat(qty) { newSlots = addScrollToSlots(newSlots, scrollType) }
+                }
+                ShopItemType.CONSUMABLE -> {
+                    val consumableType = ConsumableCatalog.fromItemId(shopItem.itemId) ?: return@update state
+                    repeat(qty) { newSlots = addConsumableToSlots(newSlots, consumableType) }
+                }
+            }
+            val newState = state.copy(money = state.money - totalCost, inventorySlots = newSlots, equipment = newEquipment)
+            if (newEquipment !== state.equipment) computeDerived(newState) else newState
+        }
+    }
+
+    fun sellEquipmentBySlot(slotIndex: Int) {
+        _uiState.update { state ->
+            val slot = state.inventorySlots.getOrNull(slotIndex) as? InventorySlot.EquipItem ?: return@update state
+            val sellPrice = ShopRegistry.sellPriceForEquipment(slot.equipment.name)
+            val newSlots = state.inventorySlots.toMutableList()
+            newSlots[slotIndex] = null
+            state.copy(money = state.money + sellPrice, inventorySlots = newSlots)
+        }
+    }
+
+    fun sellStackableItem(itemId: String, itemType: ShopItemType, quantity: Int) {
+        if (quantity <= 0) return
+        _uiState.update { state ->
+            var newSlots = state.inventorySlots
+            val earned: Int
+            when (itemType) {
+                ShopItemType.SCROLL -> {
+                    val scrollType = runCatching { ScrollType.valueOf(itemId) }.getOrNull() ?: return@update state
+                    val slotIdx = newSlots.indexOfFirst { it is InventorySlot.ScrollItem && it.type == scrollType }
+                    val slot = newSlots.getOrNull(slotIdx) as? InventorySlot.ScrollItem ?: return@update state
+                    if (slot.quantity < quantity) return@update state
+                    earned = ShopRegistry.sellPriceForScroll(scrollType) * quantity
+                    val m = newSlots.toMutableList()
+                    m[slotIdx] = if (slot.quantity > quantity) slot.copy(quantity = slot.quantity - quantity) else null
+                    newSlots = m
+                }
+                ShopItemType.CONSUMABLE -> {
+                    val consumableType = ConsumableCatalog.fromItemId(itemId) ?: return@update state
+                    val slotIdx = newSlots.indexOfFirst { it is InventorySlot.ConsumableItem && it.type == consumableType }
+                    val slot = newSlots.getOrNull(slotIdx) as? InventorySlot.ConsumableItem ?: return@update state
+                    if (slot.quantity < quantity) return@update state
+                    earned = ShopRegistry.sellPriceForConsumable(consumableType) * quantity
+                    val m = newSlots.toMutableList()
+                    m[slotIdx] = if (slot.quantity > quantity) slot.copy(quantity = slot.quantity - quantity) else null
+                    newSlots = m
+                }
+                else -> return@update state
+            }
+            state.copy(money = state.money + earned, inventorySlots = newSlots)
+        }
+    }
+
+    // ── 포션 사용 ──────────────────────────────────────────────────────────────
+
+    fun usePotion(consumableType: ConsumableType) {
+        _uiState.update { state ->
+            val slotIdx = state.inventorySlots.indexOfFirst {
+                it is InventorySlot.ConsumableItem && it.type == consumableType
+            }
+            val slot = state.inventorySlots.getOrNull(slotIdx) as? InventorySlot.ConsumableItem ?: return@update state
+            if (slot.quantity <= 0) return@update state
+
+            val info = ConsumableCatalog.get(consumableType)
+            val newHp = (state.player.hp + info.healAmount).coerceAtMost(state.player.maxHp)
+
+            val newSlots = state.inventorySlots.toMutableList()
+            newSlots[slotIdx] = if (slot.quantity > 1) slot.copy(quantity = slot.quantity - 1) else null
+
+            state.copy(
+                player = state.player.copy(hp = newHp),
+                inventorySlots = newSlots
+            )
+        }
     }
 }

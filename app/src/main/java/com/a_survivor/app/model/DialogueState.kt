@@ -8,7 +8,8 @@ data class DialoguePage(
 
 data class DialogueSession(
     val pages: List<DialoguePage>,
-    val currentIndex: Int = 0
+    val currentIndex: Int = 0,
+    val npcId: Int? = null
 ) {
     val currentPage get() = pages[currentIndex]
     val isLastPage get() = currentIndex >= pages.size - 1

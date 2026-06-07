@@ -38,7 +38,8 @@ com.a_survivor.app/
 │   ├── Projectile.kt             (투사체 모델 + traveledDistance / maxTravelDistance)
 │   ├── Npc.kt                    (Npc 데이터 클래스 + NpcRegistry)
 │   ├── QuestState.kt             (QuestStatus enum + QuestState)
-│   └── DialogueState.kt          (DialoguePage + DialogueSession)
+│   ├── DialogueState.kt          (DialoguePage + DialogueSession)
+│   └── GameMessage.kt            (MessageType enum + GameMessage 데이터 클래스)
 ├── service/
 │   ├── EnhancementService.kt
 │   ├── CombatStatCalculator.kt   (레거시, 미사용)
@@ -48,9 +49,11 @@ com.a_survivor.app/
 │   ├── ProjectileService.kt      (투사체 이동 + 충돌 판정)
 │   ├── MonsterAiService.kt       (추적 / 공격 / 어그로 해제 + 회피 판정)
 │   ├── LevelService.kt
-│   └── DropService.kt
+│   ├── DropService.kt
+│   ├── GameSaveData.kt           (GameSaveData + SavedSlot 직렬화 데이터 클래스)
+│   └── SaveService.kt            (Gson 직렬화 + SharedPreferences 저장/로드)
 ├── viewmodel/
-│   └── MainViewModel.kt          (AndroidViewModel — 충돌 비트맵 + AI/투사체 틱 루프 + DerivedStats + PendingPlayerAttack + pendingAttackTick + equipmentBag)
+│   └── MainViewModel.kt          (AndroidViewModel — 충돌 비트맵 + AI/투사체 틱 루프 + DerivedStats + PendingPlayerAttack + pendingAttackTick + 자동 저장)
 └── res/drawable/
     ├── map_beginner.jpg           ← 초보자 사냥터 맵 (1024×572)
     ├── map_town.jpg               ← 마을 맵 (1024×572)
@@ -68,7 +71,9 @@ com.a_survivor.app/
     ├── warrior_walk_0~3.png       ← 전사 Walk 4프레임 (100ms/frame)
     ├── warrior_attack_0~4.png     ← 전사 Attack 5프레임 (60ms/frame)
     ├── warrior_hurt_0~2.png       ← 전사 Hurt 3프레임 (100ms/frame)
-    └── warrior_die_0~5.png        ← 전사 Die 6프레임 (200ms/frame)
+    ├── warrior_die_0~5.png        ← 전사 Die 6프레임 (200ms/frame)
+    ├── coin_0~3.png               ← 동전 애니메이션 4프레임 (150ms 순환)
+    └── archer_sheet.png           ← 궁수 스프라이트시트 (4900×109, 140px/frame)
 ```
 
 ---
@@ -88,6 +93,7 @@ Box (게임 화면)
  ├── JoystickControl (좌하단)
  ├── DragGhost
  ├── JobAdvancementDialog  ← jobAdvancementPending=true 일 때만 표시 (전직 팝업 오버레이)
+ ├── MessageLogOverlay (우하단) ← EXP/돈/아이템 획득 메시지 (최대 5개, 2초 자동 소멸)
  ├── [대화하기] Button (하단 중앙) ← NPC 근접 시만 표시 (activeDialogue==null)
  └── DialogueWindow (zIndex 20, 하단 전체폭) ← activeDialogue != null 시 표시
 ```
@@ -570,7 +576,8 @@ COLLISION_RADIUS = 16f  // 몬스터 중심과의 거리
 | 장갑 공격력 10% | 3% | 3% | 3% |
 | 백의 주문서 1% | 1% | 1% | 1% |
 
-- **MoneyDrop**: ground item으로 바닥에 드랍 → 노란 원형 동전 + "N원" 텍스트 Canvas 렌더링 → PICKUP_DELAY(2000ms) 경과 후 PICKUP_RANGE(150f) 내 자동 습득 → `UiState.money` 가산
+- **MoneyDrop**: ground item으로 바닥에 드랍 → `coin_0~3.png` 4프레임 애니메이션(150ms 순환) Canvas 렌더링 → PICKUP_DELAY(2000ms) 경과 후 PICKUP_RANGE(150f) 내 자동 습득 → `UiState.money` 가산
+  - 프레임 인덱스: `((now - item.droppedAt) / 150L % 4).toInt()` — 드랍 시점 기준 개별 타이머
 - **스크롤/장비**: ground item으로 바닥에 드랍 → PICKUP_DELAY(2000ms) 후 PICKUP_RANGE(150f) 내 자동 습득
 - 포탈 이동 시 바닥 아이템 초기화
 
@@ -971,6 +978,14 @@ private fun scrollDrawableRes(scrollType: ScrollType): Int? = when (scrollType) 
 | 119 | 인벤토리 시스템 개편 — equipmentBag → InventorySlot sealed class (ScrollItem/EquipItem) 통합 4×8 그리드 | ✅ |
 | 120 | InventoryWindow 높이 클리핑 수정 — heightIn(max=300.dp) + verticalScroll, 소지금 헤더 스크롤 영역 밖으로 분리 | ✅ |
 | 121 | 돈 드랍 시스템 구현 — MoneyDrop ground item 방식 (노란 원형 동전 Canvas 렌더링, PICKUP_RANGE=150f, PICKUP_DELAY=2000ms) | ✅ |
+| 122 | 장비 인벤토리/장비창 표시 수정 — 장갑 이미지 제거, 이름 축약+공격력 텍스트로 교체 (EquipmentBagItem, GlovesSlot) | ✅ |
+| 123 | GameMessage 모델 추가 — MessageType enum (EXP/MONEY/ITEM) + GameMessage 데이터 클래스 | ✅ |
+| 124 | 메시지 로그 오버레이 추가 — 우측 하단 MessageLogOverlay, 최대 5개, 2초 자동 소멸 (coroutine delay) | ✅ |
+| 125 | 몬스터 처치/드랍 시 메시지 발생 — +N EXP (금색) / +N원 (초록) / 아이템명 획득 (파랑) | ✅ |
+| 126 | 동전 애니메이션 교체 — 노란 원 → coin_0~3.png 4프레임 150ms 순환 (드랍 시점 기준 개별 타이머) | ✅ |
+| 127 | 궁수 스프라이트 시스템 추가 — archer_sheet.png (4900×109, 프레임 140×109) + sliceSheet() 헬퍼 구현 | ✅ |
+| 128 | 직업별 플레이어 스프라이트 분기 — player.job == ARCHER 일 때 궁수 프레임 선택, 나머지는 전사 프레임 | ✅ |
+| 129 | 게임 데이터 저장 시스템 구현 — GameSaveData/SaveService (Gson+SharedPreferences), 10초 자동 저장 + 종료 시 저장 + 시작 시 로드 | ✅ |
 
 ---
 
@@ -1056,6 +1071,181 @@ private fun WindowTitleBar(
 
 - `EquipmentWindow`, `StatWindow`, `InventoryWindow` 모두 `onDrag: ((Offset) -> Unit)? = null` 파라미터 추가
 - 각 창은 `zIndex(10f)` + `offset { IntOffset(...) }` + `width(280.dp)` 적용
+
+---
+
+## 메시지 로그 시스템
+
+### 모델 (model/GameMessage.kt)
+
+```kotlin
+enum class MessageType { EXP, MONEY, ITEM }
+
+data class GameMessage(val id: Long, val text: String, val type: MessageType)
+```
+
+### UiState 추가 필드
+
+```kotlin
+val messages: List<GameMessage> = emptyList()
+```
+
+### addMessage 헬퍼 (MainViewModel)
+
+```kotlin
+private var nextMessageId = 0L
+
+private fun addMessage(state: UiState, text: String, type: MessageType): UiState {
+    val newMsg = GameMessage(id = nextMessageId++, text = text, type = type)
+    viewModelScope.launch {
+        delay(2000L)
+        _uiState.update { s -> s.copy(messages = s.messages.filter { it.id != newMsg.id }) }
+    }
+    return state.copy(messages = (state.messages + newMsg).takeLast(5))
+}
+```
+
+### 발생 시점
+
+| 이벤트 | 메시지 | 색상 |
+|--------|--------|------|
+| 몬스터 처치 (EXP 획득) | `+N EXP` | 금색 `0xFFFFD700` |
+| 돈 줍기 | `+N원` | 초록 `0xFF66BB6A` |
+| 스크롤 줍기 | `아이템명 획득` | 파랑 `0xFF64B5F6` |
+| 장비 줍기 | `아이템명 획득` | 파랑 `0xFF64B5F6` |
+
+### MessageLogOverlay 컴포저블
+
+- 위치: `Alignment.BottomEnd`, `padding(end=12.dp, bottom=80.dp)`
+- 각 메시지: 검정 반투명 배경 + RoundedCorner(4.dp) + 13sp Bold 텍스트
+- `messages.isNotEmpty()` 일 때만 렌더링
+
+---
+
+## 궁수 스프라이트 시스템
+
+### 스프라이트시트 구조 (archer_sheet.png)
+
+- 원본: `image/궁수/궁수-Sheet.png`
+- 전체 크기: 4900×109px, 프레임 크기: **140×109px**
+
+| 애니메이션 | 시작 X | 프레임 수 |
+|-----------|--------|----------|
+| Idle      | 0      | 5        |
+| Walk      | 980    | 4        |
+| Attack    | 1960   | 6        |
+| Hurt      | 2940   | 4        |
+| Die       | 4060   | 5        |
+
+### sliceSheet() 헬퍼 (MainActivity)
+
+```kotlin
+private fun sliceSheet(
+    context: android.content.Context,
+    resId: Int,
+    frameW: Int,
+    startX: Int,
+    count: Int
+): List<ImageBitmap> {
+    val full = BitmapFactory.decodeResource(
+        context.resources, resId,
+        BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
+    )
+    return (0 until count).map { i ->
+        Bitmap.createBitmap(full, startX + i * frameW, 0, frameW, full.height).asImageBitmap()
+    }
+}
+```
+
+### 직업별 프레임 선택 (GameCanvas Canvas 블록)
+
+```kotlin
+val isArcher = player.job == PlayerJob.ARCHER
+val pIdle   = if (isArcher) archerIdle   else warriorIdle
+val pWalk   = if (isArcher) archerWalk   else warriorWalk
+val pAttack = if (isArcher) archerAttack else warriorAttack
+val pHurt   = if (isArcher) archerHurt   else warriorHurt
+val pDie    = if (isArcher) archerDie    else warriorDie
+drawPlayer(player, cam, pIdle, pWalk, pAttack, pHurt, pDie, ...)
+```
+
+- `drawPlayer` 함수 시그니처 변경 없음 — 프레임 리스트를 선택해서 전달
+- 애니메이션 타이밍은 전사와 동일 (IDLE 200ms/f, WALK 100ms/f, ATTACK 60ms/f, HURT 100ms/f, DIE 200ms/f)
+
+---
+
+## 저장 시스템
+
+### 저장 내용
+
+| 항목 | 설명 |
+|------|------|
+| 플레이어 | 레벨, EXP, HP, MaxHP, 직업, STR/DEX/INT/LUK, 스탯포인트, 위치(X/Y) |
+| 소지금 | money: Int |
+| 현재 맵 | world.mapType |
+| 퀘스트 | status, killCount, killGoal |
+| 장착 장비 | equipment: Equipment? |
+| 무기 | weapon: Weapon? |
+| 인벤토리 | inventorySlots (32개, ScrollItem/EquipItem/ConsumableItem) |
+
+### 저장되지 않는 것 (세션 임시)
+
+몬스터 위치, 바닥 드랍 아이템, 대화 상태, 투사체, 데미지 숫자 → 앱 재시작 시 초기화
+
+### 파일 구조
+
+**`service/GameSaveData.kt`**
+```kotlin
+data class GameSaveData(
+    val playerLevel: Int = 1, val playerExp: Int = 0,
+    val playerHp: Int = 100,  val playerMaxHp: Int = 100,
+    val playerJob: String = "BEGINNER",
+    val playerStr: Int, val playerDex: Int, val playerInt: Int, val playerLuk: Int,
+    val playerStatPoints: Int, val playerPosX: Float, val playerPosY: Float,
+    val money: Int, val mapType: String, val questStatus: String,
+    val questKillCount: Int, val questKillGoal: Int,
+    val equipment: Equipment?, val weapon: Weapon?,
+    val inventory: List<SavedSlot>
+)
+
+data class SavedSlot(
+    val slotType: String,           // "EMPTY" | "SCROLL" | "EQUIP" | "CONSUMABLE"
+    val scrollType: String? = null,
+    val scrollQty: Int = 0,
+    val equipment: Equipment? = null,
+    val consumableType: String? = null,
+    val consumableQty: Int = 0
+)
+```
+
+**`service/SaveService.kt`** — Gson + SharedPreferences("game_save")
+- `save(state: UiState)` — UiState → GameSaveData → JSON 직렬화
+- `load(): GameSaveData?` — JSON 역직렬화, 실패 시 null 반환
+- `hasSave()` / `deleteSave()`
+
+### 저장 시점 (MainViewModel)
+
+| 시점 | 방법 |
+|------|------|
+| 앱 실행 시 | `init` 블록에서 로드, `_uiState.value` 복원 |
+| 10초마다 | `viewModelScope.launch { while(true) { delay(10_000L); save() } }` |
+| 앱 종료 시 | `onCleared()` 오버라이드에서 즉시 저장 |
+| 새 게임 시작 | `startGame()` 에서 새 상태 즉시 저장 (기존 세이브 덮어씀) |
+
+### 복원 로직 (restoreState)
+
+- enum은 `runCatching { Enum.valueOf(str) }.getOrDefault(기본값)` — 알 수 없는 값 안전 처리
+- HP는 `.coerceAtLeast(1)` — 0HP로 로드되는 버그 방지
+- 인벤토리 슬롯이 32개 미만이면 null로 패딩하여 항상 32개 유지
+- 맵에 맞는 몬스터/포탈/NPC 재스폰 (spawnSkeletons + PortalRegistry + NpcRegistry)
+- `computeDerived(base)` — 로드 후 파생 스탯 재계산
+
+### 의존성
+
+```kotlin
+// app/build.gradle.kts
+implementation("com.google.code.gson:gson:2.10.1")
+```
 
 ---
 

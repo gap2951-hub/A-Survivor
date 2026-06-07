@@ -81,6 +81,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
 import androidx.activity.compose.BackHandler
 import com.a_survivor.app.model.CameraState
+import com.a_survivor.app.model.GameMessage
+import com.a_survivor.app.model.MessageType
 import com.a_survivor.app.model.DamageNumber
 import com.a_survivor.app.model.DerivedStats
 import com.a_survivor.app.model.DialogueSession
@@ -103,6 +105,14 @@ import com.a_survivor.app.model.ScrollType
 import com.a_survivor.app.model.StatType
 import com.a_survivor.app.model.attackRange
 import com.a_survivor.app.model.Weapon
+import com.a_survivor.app.model.ConsumableCatalog
+import com.a_survivor.app.model.ConsumableType
+import com.a_survivor.app.model.ShopInfo
+import com.a_survivor.app.model.ShopItem
+import com.a_survivor.app.model.ShopItemType
+import com.a_survivor.app.model.ShopMode
+import com.a_survivor.app.model.ShopRegistry
+import com.a_survivor.app.model.ShopType
 import com.a_survivor.app.viewmodel.InventorySlot
 import com.a_survivor.app.viewmodel.MainViewModel
 import com.a_survivor.app.viewmodel.UiState
@@ -221,7 +231,12 @@ class MainActivity : ComponentActivity() {
                     onTalkToNpc         = vm::startDialogue,
                     onNextDialoguePage  = vm::nextDialoguePage,
                     onChooseOption      = vm::chooseDialogueOption,
-                    onCloseDialogue     = vm::closeDialogue
+                    onCloseDialogue     = vm::closeDialogue,
+                    onCloseShop         = vm::closeShop,
+                    onBuyItem           = { shopType, itemId, qty -> vm.buyShopItem(shopType, itemId, qty) },
+                    onSellEquipment     = vm::sellEquipmentBySlot,
+                    onSellStackable     = vm::sellStackableItem,
+                    onUsePotion         = vm::usePotion
                 )
             }
         }
@@ -246,7 +261,12 @@ fun MainScreen(
     onTalkToNpc: (Int) -> Unit = {},
     onNextDialoguePage: () -> Unit = {},
     onChooseOption: (Int) -> Unit = {},
-    onCloseDialogue: () -> Unit = {}
+    onCloseDialogue: () -> Unit = {},
+    onCloseShop: () -> Unit = {},
+    onBuyItem: (ShopType, Int, Int) -> Unit = { _, _, _ -> },
+    onSellEquipment: (Int) -> Unit = {},
+    onSellStackable: (String, ShopItemType, Int) -> Unit = { _, _, _ -> },
+    onUsePotion: (ConsumableType) -> Unit = {}
 ) {
     val dragState        = remember { DragDropState() }
     var isEquipmentOpen  by remember { mutableStateOf(false) }
@@ -393,6 +413,7 @@ fun MainScreen(
                     dragState        = dragState,
                     rootWindowOffset = rootWindowOffset,
                     onEquip          = onEquipFromInventory,
+                    onUsePotion      = onUsePotion,
                     onClose          = { isInventoryOpen = false },
                     onDragEnd        = { scrollType, dropPos ->
                         if (isEquipmentOpen &&
@@ -402,7 +423,6 @@ fun MainScreen(
                             onEnhance()
                         }
                     },
-
                     onDrag = { delta -> inventOffset = clampWin(inventOffset + delta) }
                 )
             }
@@ -482,6 +502,61 @@ fun MainScreen(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(start = 12.dp, top = 80.dp)
+            )
+        }
+
+        // ⑬ 상점창
+        state.activeShop?.let { shopInfo ->
+            ShopWindow(
+                shopInfo          = shopInfo,
+                shopItems         = ShopRegistry.itemsFor(shopInfo.shopType),
+                inventorySlots    = state.inventorySlots,
+                money             = state.money,
+                equippedEquipment = state.equipment,
+                onClose           = onCloseShop,
+                onBuy             = { shopType, itemId, qty -> onBuyItem(shopType, itemId, qty) },
+                onSellEquipment   = onSellEquipment,
+                onSellStackable   = onSellStackable
+            )
+        }
+
+        // ⑭ 메시지 로그 (우측 하단 — 최대 5개, 각 2초 후 자동 소멸)
+        if (state.messages.isNotEmpty()) {
+            MessageLogOverlay(
+                messages = state.messages,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 12.dp, bottom = 80.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MessageLogOverlay(
+    messages: List<GameMessage>,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        messages.forEach { msg ->
+            val color = when (msg.type) {
+                MessageType.EXP   -> Color(0xFFFFD700)
+                MessageType.MONEY -> Color(0xFF66BB6A)
+                MessageType.ITEM  -> Color(0xFF64B5F6)
+            }
+            Text(
+                text = msg.text,
+                color = color,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
             )
         }
     }
@@ -728,18 +803,26 @@ private fun GlovesSlot(
     ) {
         when {
             equipment == null -> {
-                Text("장갑", color = TextMuted.copy(alpha = 0.45f), fontSize = 7.sp)
+                Text("장비", color = TextMuted.copy(alpha = 0.45f), fontSize = 7.sp)
             }
             equipment.destroyed -> {
                 Text("✕", color = ColorDestroyed, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
             else -> {
-                Image(
-                    painter = painterResource(id = R.drawable.nogada_glove),
-                    contentDescription = null,
-                    modifier = Modifier.size(42.dp),
-                    contentScale = ContentScale.Fit
-                )
+                val abbr = when (equipment.name) {
+                    "노가다 목장갑"  -> "장갑"
+                    "초보자 검"     -> "초검"
+                    "낡은 전사 상의" -> "전상"
+                    "낡은 마법사 로브" -> "마로"
+                    "낡은 가죽 신발" -> "가신"
+                    else            -> equipment.name.take(2)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(abbr, color = TextGold, fontSize = 10.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                    if (equipment.attackPower > 0) {
+                        Text("+${equipment.attackPower}", color = ColorSuccess, fontSize = 8.sp)
+                    }
+                }
             }
         }
 
@@ -1234,6 +1317,23 @@ private fun loadBitmap(context: android.content.Context, resId: Int, maxSize: In
     return BitmapFactory.decodeResource(context.resources, resId, opts).asImageBitmap()
 }
 
+private fun sliceSheet(
+    context: android.content.Context,
+    resId: Int,
+    frameW: Int,
+    startX: Int,
+    count: Int
+): List<ImageBitmap> {
+    val full = BitmapFactory.decodeResource(
+        context.resources, resId,
+        BitmapFactory.Options().apply { inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888 }
+    )
+    val h = full.height
+    return (0 until count).map { i ->
+        android.graphics.Bitmap.createBitmap(full, startX + i * frameW, 0, frameW, h).asImageBitmap()
+    }
+}
+
 // ── 게임 캔버스 ───────────────────────────────────────────────────────────────
 @Composable
 private fun GameCanvas(
@@ -1344,6 +1444,12 @@ private fun GameCanvas(
     val scroll60Bitmap  = remember { loadBitmap(context, R.drawable.scroll_60,  256) }
     val scroll10Bitmap  = remember { loadBitmap(context, R.drawable.scroll_10,  256) }
     val gloveBitmap       = remember { loadBitmap(context, R.drawable.nogada_glove, 256) }
+    val coinFrames        = remember { listOf(
+        loadBitmap(context, R.drawable.coin_0, 128),
+        loadBitmap(context, R.drawable.coin_1, 128),
+        loadBitmap(context, R.drawable.coin_2, 128),
+        loadBitmap(context, R.drawable.coin_3, 128)
+    ) }
     val energyBolt1       = remember { loadBitmap(context, R.drawable.energy_bolt_1, 128) }
     val energyBolt2       = remember { loadBitmap(context, R.drawable.energy_bolt_2, 128) }
     val energyBolt3       = remember { loadBitmap(context, R.drawable.energy_bolt_3, 128) }
@@ -1384,6 +1490,13 @@ private fun GameCanvas(
         loadBitmap(context, R.drawable.warrior_die_5, 256)
     ) }
 
+    // 궁수 플레이어 스프라이트 프레임 (궁수-Sheet.png: 140×109 per frame)
+    val archerIdle   = remember { sliceSheet(context, R.drawable.archer_sheet, 140, 0,    5) }
+    val archerWalk   = remember { sliceSheet(context, R.drawable.archer_sheet, 140, 980,  4) }
+    val archerAttack = remember { sliceSheet(context, R.drawable.archer_sheet, 140, 1960, 6) }
+    val archerHurt   = remember { sliceSheet(context, R.drawable.archer_sheet, 140, 2940, 4) }
+    val archerDie    = remember { sliceSheet(context, R.drawable.archer_sheet, 140, 4060, 5) }
+
     Canvas(modifier = modifier.fillMaxSize()) {
         val zoom = maxOf(size.width / world.width, size.height / world.height)
         val cam = CameraState(zoom = zoom)
@@ -1391,8 +1504,9 @@ private fun GameCanvas(
             .clampToWorld(world, size.width, size.height)
 
         val currentMapBitmap = if (world.mapType == MapType.TOWN) townBitmap else mapBitmap
+        val nowMs = System.currentTimeMillis()
         drawWorldBackground(cam, world, currentMapBitmap)
-        groundItems.forEach { drawGroundItem(it, cam, scroll100Bitmap, scroll60Bitmap, scroll10Bitmap, gloveBitmap) }
+        groundItems.forEach { drawGroundItem(it, cam, scroll100Bitmap, scroll60Bitmap, scroll10Bitmap, gloveBitmap, coinFrames, nowMs) }
         portals.forEach { drawPortal(it, cam) }
         npcs.forEach { drawNpc(it, cam, npcChuchu) }
         drawAttackRange(player, cam)
@@ -1401,9 +1515,15 @@ private fun GameCanvas(
             drawMonster(m, cam, idle, walk, slash)
         }
         projectiles.forEach { drawProjectile(it, cam, energyBoltFrames) }
+        val isArcher = player.job == PlayerJob.ARCHER
+        val pIdle   = if (isArcher) archerIdle   else warriorIdle
+        val pWalk   = if (isArcher) archerWalk   else warriorWalk
+        val pAttack = if (isArcher) archerAttack else warriorAttack
+        val pHurt   = if (isArcher) archerHurt   else warriorHurt
+        val pDie    = if (isArcher) archerDie    else warriorDie
         drawPlayer(
             player, cam,
-            warriorIdle, warriorWalk, warriorAttack, warriorHurt, warriorDie,
+            pIdle, pWalk, pAttack, pHurt, pDie,
             isMoving, playerAttackAnimStart, playerHurtAnimStart, playerDeathTime
         )
         damageNumbers.forEach { drawDamageNumber(it, cam) }
@@ -1437,7 +1557,9 @@ private fun DrawScope.drawGroundItem(
     scroll100: ImageBitmap,
     scroll60: ImageBitmap,
     scroll10: ImageBitmap,
-    glove: ImageBitmap
+    glove: ImageBitmap,
+    coinFrames: List<ImageBitmap>,
+    now: Long
 ) {
     val pos      = cam.toScreenOffset(item.positionX, item.positionY, size.width, size.height)
     val iconSize = (size.height * 0.048f).toInt().coerceAtLeast(12)
@@ -1446,10 +1568,18 @@ private fun DrawScope.drawGroundItem(
     // 바닥 글로우
     drawCircle(Color(0x44FFEE44), radius = iconSize * 0.75f, center = pos)
 
-    // 아이템 이미지 (돈은 코인 원으로 표현)
+    // 아이템 이미지
     if (item.dropItem is DropItem.MoneyDrop) {
-        drawCircle(Color(0xFFFFCC00), radius = iconSize * 0.45f, center = pos.copy(y = pos.y - iconSize * 0.5f))
-        drawCircle(Color(0xFFFFAA00), radius = iconSize * 0.45f, center = pos.copy(y = pos.y - iconSize * 0.5f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f * size.height / 1080f))
+        val frameIdx = ((now - item.droppedAt) / 150L % 4).toInt().coerceIn(0, 3)
+        drawImage(
+            image         = coinFrames[frameIdx],
+            dstOffset     = androidx.compose.ui.unit.IntOffset(
+                (pos.x - iconSize / 2).toInt(),
+                (pos.y - iconSize).toInt()
+            ),
+            dstSize       = IntSize(iconSize, iconSize),
+            filterQuality = androidx.compose.ui.graphics.FilterQuality.High
+        )
     } else {
         val bitmap = when (val drop = item.dropItem) {
             is DropItem.ScrollDrop -> when (drop.scrollType) {
@@ -2177,6 +2307,14 @@ private fun EquipmentBagItem(
     modifier: Modifier = Modifier
 ) {
     var showInfo by remember { mutableStateOf(false) }
+    val abbr = when (equipment.name) {
+        "노가다 목장갑" -> "장갑"
+        "초보자 검"    -> "초검"
+        "낡은 전사 상의" -> "전상"
+        "낡은 마법사 로브" -> "마로"
+        "낡은 가죽 신발" -> "가신"
+        else -> equipment.name.take(2)
+    }
     Box(
         modifier = modifier
             .aspectRatio(1f)
@@ -2186,15 +2324,27 @@ private fun EquipmentBagItem(
             .pointerInput(equipment) {
                 detectTapGestures(onTap = { showInfo = true })
             }
-            .padding(6.dp),
+            .padding(4.dp),
         contentAlignment = Alignment.Center
     ) {
-        Image(
-            painter = painterResource(id = R.drawable.nogada_glove),
-            contentDescription = equipment.name,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = abbr,
+                color = TextGold,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                maxLines = 1
+            )
+            if (equipment.attackPower > 0) {
+                Text(
+                    text = "+${equipment.attackPower}",
+                    color = ColorSuccess,
+                    fontSize = 9.sp,
+                    maxLines = 1
+                )
+            }
+        }
     }
     if (showInfo) {
         ItemInfoDialog(
@@ -2213,6 +2363,7 @@ fun InventoryWindow(
     rootWindowOffset: Offset,
     onDragEnd: (ScrollType, Offset) -> Unit,
     onEquip: (Equipment) -> Unit = {},
+    onUsePotion: (ConsumableType) -> Unit = {},
     onClose: (() -> Unit)? = null,
     onDrag: ((Offset) -> Unit)? = null
 ) {
@@ -2270,6 +2421,12 @@ fun InventoryWindow(
                                 equipment = slot.equipment,
                                 onEquip   = onEquip,
                                 modifier  = Modifier.weight(1f)
+                            )
+                            is InventorySlot.ConsumableItem -> ConsumableInventoryItem(
+                                consumableType = slot.type,
+                                quantity       = slot.quantity,
+                                onUsePotion    = onUsePotion,
+                                modifier       = Modifier.weight(1f)
                             )
                         }
                     }
@@ -3071,5 +3228,440 @@ private fun QuestTrackerPanel(questState: QuestState, modifier: Modifier = Modif
             color = Color(0xFF9A7D52),
             fontSize = 10.sp
         )
+    }
+}
+
+// ── 소비 아이템 인벤토리 슬롯 ─────────────────────────────────────────────────
+@Composable
+private fun ConsumableInventoryItem(
+    consumableType: ConsumableType,
+    quantity: Int,
+    onUsePotion: (ConsumableType) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val info = ConsumableCatalog.get(consumableType)
+    val bgColor = when (consumableType) {
+        ConsumableType.RED_POTION    -> Color(0xFF3A0010)
+        ConsumableType.ORANGE_POTION -> Color(0xFF3A1A00)
+    }
+    val borderColor = when (consumableType) {
+        ConsumableType.RED_POTION    -> Color(0xFFEF5350)
+        ConsumableType.ORANGE_POTION -> Color(0xFFFF9800)
+    }
+    val label = when (consumableType) {
+        ConsumableType.RED_POTION    -> "빨포"
+        ConsumableType.ORANGE_POTION -> "주포"
+    }
+
+    var showInfo by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = modifier
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(6.dp))
+            .background(bgColor)
+            .border(1.dp, borderColor.copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+            .clickable { showInfo = true }
+            .padding(4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = label,
+                color = borderColor,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "×$quantity",
+                color = TextGold,
+                fontSize = 10.sp
+            )
+        }
+    }
+
+    if (showInfo) {
+        ConsumableInfoDialog(
+            consumableType = consumableType,
+            info           = info,
+            quantity       = quantity,
+            onDismiss      = { showInfo = false },
+            onUse          = {
+                onUsePotion(consumableType)
+                showInfo = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun ConsumableInfoDialog(
+    consumableType: ConsumableType,
+    info: com.a_survivor.app.model.ConsumableInfo,
+    quantity: Int,
+    onDismiss: () -> Unit,
+    onUse: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(TipBg)
+                .border(1.dp, TipBorder, RoundedCornerShape(12.dp))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(info.name, color = TipOrange, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            HorizontalDivider(color = TipLine)
+            Text(info.description, color = TipText, fontSize = 13.sp)
+            Text("소지 수량: ${quantity}개", color = TipMuted, fontSize = 12.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+            ) {
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A2A14))
+                ) { Text("닫기", color = Color.White, fontSize = 12.sp) }
+                Button(
+                    onClick = onUse,
+                    enabled = quantity > 0,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B6914))
+                ) { Text("사용", color = Color.White, fontSize = 12.sp) }
+            }
+        }
+    }
+}
+
+// ── 상점창 ────────────────────────────────────────────────────────────────────
+
+private data class SellEntry(
+    val slotIndex: Int,
+    val name: String,
+    val sellPrice: Int,
+    val maxQuantity: Int,
+    val isStackable: Boolean,
+    val itemId: String,
+    val itemType: ShopItemType
+)
+
+@Composable
+private fun ShopWindow(
+    shopInfo: ShopInfo,
+    shopItems: List<ShopItem>,
+    inventorySlots: List<InventorySlot?>,
+    money: Int,
+    equippedEquipment: Equipment?,
+    onClose: () -> Unit,
+    onBuy: (ShopType, Int, Int) -> Unit,
+    onSellEquipment: (Int) -> Unit,
+    onSellStackable: (String, ShopItemType, Int) -> Unit
+) {
+    var mode by remember { mutableStateOf(ShopMode.BUY) }
+    var selectedBuyId by remember { mutableStateOf<Int?>(null) }
+    var selectedSellEntry by remember { mutableStateOf<SellEntry?>(null) }
+    var quantityInput by remember { mutableStateOf("1") }
+
+    // 판매 탭: 장착 중인 장비 제외하고 인벤토리 전체 아이템
+    val sellEntries: List<SellEntry> = remember(inventorySlots, equippedEquipment) {
+        inventorySlots.mapIndexedNotNull { idx, slot ->
+            when (slot) {
+                is InventorySlot.EquipItem -> SellEntry(
+                    slotIndex    = idx,
+                    name         = slot.equipment.name,
+                    sellPrice    = ShopRegistry.sellPriceForEquipment(slot.equipment.name),
+                    maxQuantity  = 1,
+                    isStackable  = false,
+                    itemId       = slot.equipment.name,
+                    itemType     = ShopItemType.EQUIPMENT
+                )
+                is InventorySlot.ScrollItem -> SellEntry(
+                    slotIndex    = idx,
+                    name         = ScrollCatalog.get(slot.type).name,
+                    sellPrice    = ShopRegistry.sellPriceForScroll(slot.type),
+                    maxQuantity  = slot.quantity,
+                    isStackable  = true,
+                    itemId       = slot.type.name,
+                    itemType     = ShopItemType.SCROLL
+                )
+                is InventorySlot.ConsumableItem -> SellEntry(
+                    slotIndex    = idx,
+                    name         = ConsumableCatalog.get(slot.type).name,
+                    sellPrice    = ShopRegistry.sellPriceForConsumable(slot.type),
+                    maxQuantity  = slot.quantity,
+                    isStackable  = true,
+                    itemId       = ConsumableCatalog.itemId(slot.type),
+                    itemType     = ShopItemType.CONSUMABLE
+                )
+                null -> null
+            }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(PanelBg)
+                .border(1.dp, BorderGold, RoundedCornerShape(12.dp))
+        ) {
+            // 타이틀 바
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(PanelHeader)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "${shopInfo.npcName}의 상점",
+                    color = TextGold,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "소지금: %,d원".format(money),
+                    color = TextGold,
+                    fontSize = 12.sp
+                )
+            }
+            HorizontalDivider(color = BorderGold.copy(alpha = 0.4f))
+
+            // 탭 버튼
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(ShopMode.BUY to "구매", ShopMode.SELL to "판매").forEach { (m, label) ->
+                    Button(
+                        onClick = {
+                            mode = m
+                            selectedBuyId = null
+                            selectedSellEntry = null
+                            quantityInput = "1"
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (mode == m) BorderGold else ColorDisabled
+                        ),
+                        modifier = Modifier.weight(1f)
+                    ) { Text(label, color = Color.White, fontSize = 12.sp) }
+                }
+            }
+            HorizontalDivider(color = BorderGold.copy(alpha = 0.3f))
+
+            // 본문: 아이템 목록(왼쪽) + 상세(오른쪽)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(280.dp)
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // 왼쪽: 아이템 목록
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (mode == ShopMode.BUY) {
+                        shopItems.forEach { item ->
+                            val selected = selectedBuyId == item.id
+                            val canAfford = money >= item.buyPrice
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (selected) BorderGold.copy(alpha = 0.25f) else Color.Transparent)
+                                    .border(1.dp, if (selected) BorderGold else SlotBorder, RoundedCornerShape(6.dp))
+                                    .clickable { selectedBuyId = item.id; quantityInput = "1" }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    item.name,
+                                    color = if (canAfford) TextGold else TextMuted,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    "%,d원".format(item.buyPrice),
+                                    color = if (canAfford) ColorSuccess else ColorFailure,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    } else {
+                        if (sellEntries.isEmpty()) {
+                            Text(
+                                "판매 가능한 아이템이 없습니다.",
+                                color = TextMuted,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                        sellEntries.forEach { entry ->
+                            val selected = selectedSellEntry == entry
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (selected) BorderGold.copy(alpha = 0.25f) else Color.Transparent)
+                                    .border(1.dp, if (selected) BorderGold else SlotBorder, RoundedCornerShape(6.dp))
+                                    .clickable { selectedSellEntry = entry; quantityInput = "1" }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    buildString {
+                                        append(entry.name)
+                                        if (entry.isStackable) append(" ×${entry.maxQuantity}")
+                                    },
+                                    color = TextGold,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    "%,d원".format(entry.sellPrice),
+                                    color = ColorSuccess,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 오른쪽: 상세 패널
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(TipSection)
+                        .border(1.dp, TipBorder, RoundedCornerShape(8.dp))
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (mode == ShopMode.BUY) {
+                        val item = shopItems.find { it.id == selectedBuyId }
+                        if (item == null) {
+                            Text("아이템을 선택하세요.", color = TextMuted, fontSize = 12.sp)
+                        } else {
+                            Text(item.name, color = TipOrange, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(item.description, color = TipText, fontSize = 11.sp)
+                            HorizontalDivider(color = TipLine)
+                            Text("구매가: %,d원".format(item.buyPrice), color = TextGold, fontSize = 12.sp)
+                            if (item.stackable) {
+                                val qty = quantityInput.toIntOrNull()?.coerceAtLeast(1) ?: 1
+                                val total = item.buyPrice * qty
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Button(
+                                        onClick = { quantityInput = ((quantityInput.toIntOrNull() ?: 1) - 1).coerceAtLeast(1).toString() },
+                                        colors = ButtonDefaults.buttonColors(containerColor = ColorDisabled),
+                                        modifier = Modifier.size(28.dp),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                                    ) { Text("−", color = Color.White, fontSize = 14.sp) }
+                                    Text(qty.toString(), color = TextGold, fontSize = 13.sp)
+                                    Button(
+                                        onClick = { quantityInput = ((quantityInput.toIntOrNull() ?: 1) + 1).toString() },
+                                        colors = ButtonDefaults.buttonColors(containerColor = ColorDisabled),
+                                        modifier = Modifier.size(28.dp),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                                    ) { Text("+", color = Color.White, fontSize = 14.sp) }
+                                }
+                                Text("합계: %,d원".format(total), color = if (money >= total) ColorSuccess else ColorFailure, fontSize = 12.sp)
+                            }
+                            Spacer(Modifier.weight(1f))
+                            val qty = if (item.stackable) (quantityInput.toIntOrNull()?.coerceAtLeast(1) ?: 1) else 1
+                            val total = item.buyPrice * qty
+                            Button(
+                                onClick = { onBuy(shopInfo.shopType, item.id, qty) },
+                                enabled = money >= total,
+                                colors = ButtonDefaults.buttonColors(containerColor = BorderGold),
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("구매", color = Color.White, fontSize = 12.sp) }
+                        }
+                    } else {
+                        val entry = selectedSellEntry
+                        if (entry == null) {
+                            Text("아이템을 선택하세요.", color = TextMuted, fontSize = 12.sp)
+                        } else {
+                            Text(entry.name, color = TipOrange, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            HorizontalDivider(color = TipLine)
+                            Text("판매가: %,d원".format(entry.sellPrice), color = ColorSuccess, fontSize = 12.sp)
+                            if (entry.isStackable) {
+                                val qty = (quantityInput.toIntOrNull()?.coerceAtLeast(1) ?: 1).coerceAtMost(entry.maxQuantity)
+                                val total = entry.sellPrice * qty
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Button(
+                                        onClick = { quantityInput = ((quantityInput.toIntOrNull() ?: 1) - 1).coerceAtLeast(1).toString() },
+                                        colors = ButtonDefaults.buttonColors(containerColor = ColorDisabled),
+                                        modifier = Modifier.size(28.dp),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                                    ) { Text("−", color = Color.White, fontSize = 14.sp) }
+                                    Text(qty.toString(), color = TextGold, fontSize = 13.sp)
+                                    Button(
+                                        onClick = { quantityInput = ((quantityInput.toIntOrNull() ?: 1) + 1).coerceAtMost(entry.maxQuantity).toString() },
+                                        colors = ButtonDefaults.buttonColors(containerColor = ColorDisabled),
+                                        modifier = Modifier.size(28.dp),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                                    ) { Text("+", color = Color.White, fontSize = 14.sp) }
+                                }
+                                Text("합계: %,d원".format(total), color = ColorSuccess, fontSize = 12.sp)
+                                Spacer(Modifier.weight(1f))
+                                Button(
+                                    onClick = { onSellStackable(entry.itemId, entry.itemType, qty) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = BorderGold),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("판매", color = Color.White, fontSize = 12.sp) }
+                            } else {
+                                Spacer(Modifier.weight(1f))
+                                Button(
+                                    onClick = { onSellEquipment(entry.slotIndex) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = BorderGold),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("판매", color = Color.White, fontSize = 12.sp) }
+                            }
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider(color = BorderGold.copy(alpha = 0.3f))
+            // 닫기 버튼
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                Button(
+                    onClick = onClose,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A2A14))
+                ) { Text("닫기", color = Color.White, fontSize = 12.sp) }
+            }
+        }
     }
 }
