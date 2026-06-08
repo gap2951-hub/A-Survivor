@@ -42,7 +42,10 @@ import com.a_survivor.app.model.ShopItemType
 import com.a_survivor.app.model.ShopRegistry
 import com.a_survivor.app.model.ShopType
 import com.a_survivor.app.model.StatType
-import com.a_survivor.app.model.dropEntriesFor
+import com.a_survivor.app.model.DropRegistry
+import com.a_survivor.app.model.EquipmentRegistry
+import com.a_survivor.app.model.MonsterRegistry
+import com.a_survivor.app.model.QuestRegistry
 import com.a_survivor.app.model.Weapon
 import com.a_survivor.app.model.attackRange
 import com.a_survivor.app.service.AutoAttackService
@@ -52,7 +55,9 @@ import com.a_survivor.app.service.EnhancementService
 import com.a_survivor.app.service.LevelService
 import com.a_survivor.app.service.MonsterAiService
 import com.a_survivor.app.service.MonsterSpawner
+import com.a_survivor.app.service.GameDataInitializer
 import com.a_survivor.app.service.ProjectileService
+import com.a_survivor.app.service.SoundManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -203,6 +208,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // 저장된 데이터 로드 + 자동 저장
     init {
+        // CSV 기반 게임 데이터 초기화 (최초 1회)
+        GameDataInitializer.initialize(application)
+
         saveService.load()?.let { restoreState(it) }?.let { restored ->
             _uiState.value = restored
             nextMonsterId = (restored.monsters.maxOfOrNull { it.id } ?: 0) + 1
@@ -292,7 +300,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun createInitialState(job: PlayerJob = PlayerJob.BEGINNER): UiState {
         val initialPlayer = Player(job = job, stats = job.initialStats())
-        val initialEquip  = Equipment(
+        val initialEquip  = EquipmentRegistry.get("NOGADA_GLOVE") ?: Equipment(
             name = "노가다 목장갑",
             attackPower = 0,
             maxUpgradeCount = 5,
@@ -301,12 +309,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             destroyed = false,
             description = "노동을 위해 만들어진 낡은 장갑이다.\n강화하면 공격력이 오를 것 같다."
         )
+        val questData = QuestRegistry.questForNpc(1)
         val base = UiState(
-            monsters = spawnSkeletons(DefaultWorld, 5),
-            portals   = PortalRegistry.portalsFor(MapType.BEGINNER_FIELD),
-            weapon    = DefaultWeapon,
-            equipment = initialEquip,
-            player    = initialPlayer
+            monsters   = spawnSkeletons(DefaultWorld, 5),
+            portals    = PortalRegistry.portalsFor(MapType.BEGINNER_FIELD),
+            weapon     = DefaultWeapon,
+            equipment  = initialEquip,
+            player     = initialPlayer,
+            questState = QuestState(killGoal = questData?.targetCount ?: 5)
         )
         return computeDerived(base)
     }
@@ -348,6 +358,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // ── 이동 ──────────────────────────────────────────────────────────────────
 
     fun movePlayer(dirX: Float, dirY: Float) {
+        var teleportedMap: MapType? = null
+        var pickedUp = false
         _uiState.update { state ->
             val p     = state.player
             val world = state.world
@@ -362,6 +374,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val newFacingLeft = if (dirX < 0f) true else if (dirX > 0f) false else p.facingLeft
             val moved = state.copy(player = p.copy(positionX = newX, positionY = newY, facingLeft = newFacingLeft))
             val afterPickup = checkPickup(moved)
+            if (afterPickup.groundItems.size < moved.groundItems.size) pickedUp = true
 
             val now = System.currentTimeMillis()
             if (now - afterPickup.lastTeleportAt < PORTAL_COOLDOWN) return@update afterPickup
@@ -371,29 +384,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val dy = newY - portal.worldY
                 sqrt(dx * dx + dy * dy) <= PORTAL_RANGE
             }
-            if (nearPortal != null) teleportState(afterPickup, nearPortal, now) else afterPickup
+            if (nearPortal != null) {
+                teleportedMap = nearPortal.targetMap
+                teleportState(afterPickup, nearPortal, now)
+            } else afterPickup
+        }
+        if (pickedUp) SoundManager.playSfx(SoundManager.Sfx.ITEM_PICKUP)
+        teleportedMap?.let { map ->
+            SoundManager.playSfx(SoundManager.Sfx.PORTAL)
+            SoundManager.switchBgm(SoundManager.bgmForMap(map))
         }
     }
 
-    private data class SkeletonConfig(
-        val variant: Int, val hp: Int, val expReward: Int,
-        val avoidability: Int, val accuracy: Int, val speed: Float
-    )
-    private fun skeletonConfig(mapType: MapType): SkeletonConfig? = when (mapType) {
-        MapType.BEGINNER_FIELD -> SkeletonConfig(variant=2, hp=20,  expReward=8,  avoidability=5,  accuracy=15, speed=1.0f)
-        MapType.FIELD_2        -> SkeletonConfig(variant=3, hp=60,  expReward=20, avoidability=10, accuracy=20, speed=1.3f)
-        MapType.FIELD_3        -> SkeletonConfig(variant=1, hp=150, expReward=45, avoidability=18, accuracy=28, speed=1.5f)
-        else                   -> null
-    }
-
     private fun spawnSkeletons(world: GameWorld, count: Int): List<Monster> {
-        val cfg = skeletonConfig(world.mapType) ?: return emptyList()
+        val cfg = MonsterRegistry.configForMap(world.mapType) ?: return emptyList()
         return MonsterSpawner().spawnMonsters(
             world        = world,
             count        = count,
+            monsterId    = cfg.monsterId,
             variant      = cfg.variant,
             hp           = cfg.hp,
-            expReward    = cfg.expReward,
+            expReward    = cfg.exp,
             avoidability = cfg.avoidability,
             accuracy     = cfg.accuracy,
             speed        = cfg.speed,
@@ -421,6 +432,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // ── 자동 공격 틱 ───────────────────────────────────────────────────────────
 
     private fun autoAttackTick() {
+        var attacked = false
         _uiState.update { state ->
             val lockedIds = state.projectiles.map { it.targetMonsterId }.toSet()
             val result = autoAttackService.tick(
@@ -436,6 +448,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val now = System.currentTimeMillis()
 
             if (result.targetId == null) return@update state
+            attacked = true
 
             if (result.newProjectile != null) {
                 nextProjectileId++
@@ -461,11 +474,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        if (attacked) SoundManager.playSfx(SoundManager.Sfx.ATTACK)
     }
 
     // ── 대기 중인 공격 데미지 적용 ─────────────────────────────────────────────
 
     private fun pendingAttackTick() {
+        var sfxToPlay: SoundManager.Sfx? = null
         _uiState.update { state ->
             val pending = state.pendingPlayerAttack ?: return@update state
             val now = System.currentTimeMillis()
@@ -490,6 +505,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val newHp         = targetMonster.hp - pending.damage
             val killed        = newHp <= 0
+            sfxToPlay = if (killed) SoundManager.Sfx.MONSTER_DIE else SoundManager.Sfx.MONSTER_HIT
             val updatedMonsters = if (killed) {
                 state.monsters.filter { it.id != pending.targetId }
             } else {
@@ -499,10 +515,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val killedList    = if (killed) listOf(targetMonster) else emptyList()
             val gainedExp     = killedList.sumOf { it.expReward }
             val updatedPlayer = if (gainedExp > 0) levelService.applyExp(state.player, gainedExp) else state.player
+            if (updatedPlayer.level > state.player.level) sfxToPlay = SoundManager.Sfx.LEVEL_UP
 
             val newGroundItems = mutableListOf<GroundItem>()
             killedList.forEach { monster ->
-                val drops = dropService.roll(dropEntriesFor(state.world.mapType))
+                val drops = dropService.roll(
+                    DropRegistry.dropEntriesFor(monster.monsterId, state.world.mapType)
+                )
                 drops.forEachIndexed { index, drop ->
                     val angle  = index * (Math.PI * 2.0 / drops.size.coerceAtLeast(1)).toFloat()
                     val spread = if (drops.size > 1) 20f else 0f
@@ -547,6 +566,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val msgsState = if (gainedExp > 0) addMessage(finalState, "+${gainedExp} EXP", MessageType.EXP) else finalState
             if (gainedExp > 0) computeDerived(msgsState) else msgsState
         }
+        sfxToPlay?.let { SoundManager.playSfx(it) }
     }
 
     // ── 투사체 틱 ──────────────────────────────────────────────────────────────
@@ -589,7 +609,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val newGroundItems = mutableListOf<GroundItem>()
             killed.forEach { monster ->
-                val drops = dropService.roll(dropEntriesFor(state.world.mapType))
+                val drops = dropService.roll(
+                    DropRegistry.dropEntriesFor(monster.monsterId, state.world.mapType)
+                )
                 drops.forEachIndexed { index, drop ->
                     val angle  = index * (Math.PI * 2.0 / drops.size.coerceAtLeast(1)).toFloat()
                     val spread = if (drops.size > 1) 20f else 0f
@@ -652,6 +674,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun monsterAiTick() {
+        var playerHit = false
+        var pickedUp = false
         _uiState.update { state ->
             val now      = System.currentTimeMillis()
             val aiResult = monsterAiService.tick(
@@ -684,6 +708,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val justDied    = wasAlive && newHp == 0
             val newDeathTime  = if (justDied) now else state.playerDeathTime
             val newHurtStart  = if (aiResult.playerDamage > 0 && !justDied) now else state.playerHurtAnimStart
+            if (aiResult.playerDamage > 0) playerHit = true
 
             val newState = state.copy(
                 monsters            = aiResult.updatedMonsters,
@@ -692,8 +717,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 playerHurtAnimStart = newHurtStart,
                 playerDeathTime     = newDeathTime
             )
-            checkPickup(newState)
+            val finalState = checkPickup(newState)
+            if (finalState.groundItems.size < newState.groundItems.size) pickedUp = true
+            finalState
         }
+        if (playerHit) SoundManager.playSfx(SoundManager.Sfx.PLAYER_HIT)
+        if (pickedUp) SoundManager.playSfx(SoundManager.Sfx.ITEM_PICKUP)
     }
 
     private fun checkPickup(state: UiState): UiState {
@@ -796,6 +825,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             newSlots[slotIdx] = if (slot.quantity > 1) slot.copy(quantity = slot.quantity - 1) else null
             computeDerived(s.copy(equipment = newEquipment, inventorySlots = newSlots, lastResult = result))
         }
+        when (result) {
+            is EnhancementResult.Success   -> SoundManager.playSfx(SoundManager.Sfx.SCROLL_SUCCESS)
+            is EnhancementResult.Failure,
+            is EnhancementResult.Destroyed -> SoundManager.playSfx(SoundManager.Sfx.SCROLL_FAIL)
+            else -> {}
+        }
     }
 
     fun unequipEquipment() {
@@ -818,16 +853,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun resetEquipment() {
         _uiState.update { s ->
+            val glove = EquipmentRegistry.get("NOGADA_GLOVE") ?: Equipment(
+                name = "노가다 목장갑",
+                attackPower = 0,
+                maxUpgradeCount = 5,
+                remainingUpgradeCount = 5,
+                failedUpgradeCount = 0,
+                destroyed = false,
+                description = "노동을 위해 만들어진 낡은 장갑이다.\n강화하면 공격력이 오를 것 같다."
+            )
             computeDerived(s.copy(
-                equipment = Equipment(
-                    name = "노가다 목장갑",
-                    attackPower = 0,
-                    maxUpgradeCount = 5,
-                    remainingUpgradeCount = 5,
-                    failedUpgradeCount = 0,
-                    destroyed = false,
-                    description = "노동을 위해 만들어진 낡은 장갑이다.\n강화하면 공격력이 오를 것 같다."
-                ),
+                equipment = glove,
                 selectedScrollType = null,
                 lastResult = null
             ))
@@ -934,12 +970,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             state.copy(activeDialogue = DialogueSession(pages = newPages, npcId = dlg.npcId))
                         }
                         quest.status == QuestStatus.READY_TO_COMPLETE -> {
-                            val rewarded = levelService.applyExp(state.player, 50)
-                            val newSlots = addScrollToSlots(state.inventorySlots, ScrollType.GLOVE_ATK_100)
+                            val questData  = dlg.npcId?.let { QuestRegistry.questForNpc(it) }
+                            val rewardExp  = questData?.rewardExp ?: 50
+                            val rewardItem = questData?.rewardItemId?.let {
+                                runCatching { ScrollType.valueOf(it) }.getOrNull()
+                            } ?: ScrollType.GLOVE_ATK_100
+                            val rewarded  = levelService.applyExp(state.player, rewardExp)
+                            val newSlots  = addScrollToSlots(state.inventorySlots, rewardItem)
                             computeDerived(state.copy(
-                                player = rewarded,
+                                player         = rewarded,
                                 inventorySlots = newSlots,
-                                questState = quest.copy(status = QuestStatus.COMPLETED),
+                                questState     = quest.copy(status = QuestStatus.COMPLETED),
                                 activeDialogue = null
                             ))
                         }

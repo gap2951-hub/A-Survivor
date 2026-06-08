@@ -37,6 +37,9 @@ android {
     buildFeatures {
         compose = true
     }
+    androidResources {
+        noCompress += listOf("flac", "ogg", "mp3", "wav")
+    }
 }
 
 dependencies {

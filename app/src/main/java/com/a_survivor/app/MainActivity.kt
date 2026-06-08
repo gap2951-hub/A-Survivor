@@ -113,6 +113,7 @@ import com.a_survivor.app.model.ShopItemType
 import com.a_survivor.app.model.ShopMode
 import com.a_survivor.app.model.ShopRegistry
 import com.a_survivor.app.model.ShopType
+import com.a_survivor.app.service.SoundManager
 import com.a_survivor.app.viewmodel.InventorySlot
 import com.a_survivor.app.viewmodel.MainViewModel
 import com.a_survivor.app.viewmodel.UiState
@@ -189,6 +190,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SoundManager.init(this)
         // 풀스크린 몰입 모드 (상태바·내비게이션바 숨김)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
@@ -206,6 +208,7 @@ class MainActivity : ComponentActivity() {
                     onStart = {
                         vm.startGame()
                         currentScreen = AppScreen.Game
+                        SoundManager.switchBgm(SoundManager.Bgm.BATTLE)
                     }
                 )
                 AppScreen.JobSelect -> JobSelectScreen(
@@ -241,6 +244,21 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        SoundManager.onResume()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        SoundManager.onPause()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        SoundManager.release()
+    }
 }
 
 // ── 메인 화면 ─────────────────────────────────────────────────────────────────
@@ -272,6 +290,8 @@ fun MainScreen(
     var isEquipmentOpen  by remember { mutableStateOf(false) }
     var isInventoryOpen  by remember { mutableStateOf(false) }
     var isStatOpen       by remember { mutableStateOf(false) }
+    var bgmMuted         by remember { mutableStateOf(SoundManager.bgmMuted) }
+    var sfxMuted         by remember { mutableStateOf(SoundManager.sfxMuted) }
     var equipSlotBounds  by remember { mutableStateOf<Rect?>(null) }
     var rootWindowOffset by remember { mutableStateOf(Offset.Zero) }
 
@@ -441,6 +461,24 @@ fun MainScreen(
             HudButton(label = "인벤", isActive = isInventoryOpen)  { isInventoryOpen = !isInventoryOpen }
         }
 
+        // ⑧ 우측 상단 사운드 버튼
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = 12.dp, top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            HudButton(label = if (bgmMuted) "BGM✗" else "BGM", isActive = !bgmMuted) {
+                bgmMuted = !bgmMuted
+                SoundManager.bgmMuted = bgmMuted
+            }
+            HudButton(label = if (sfxMuted) "SFX✗" else "SFX", isActive = !sfxMuted) {
+                sfxMuted = !sfxMuted
+                SoundManager.sfxMuted = sfxMuted
+            }
+        }
+
         // ⑦ 가상 조이스틱 (왼쪽 하단 고정)
         JoystickControl(
             modifier = Modifier
@@ -458,7 +496,6 @@ fun MainScreen(
                 scrollType = dragState.scrollType!!,
                 windowPosition = dragState.position,
                 rootOffset = rootWindowOffset
-
             )
         }
 
@@ -2292,7 +2329,12 @@ private fun ScrollInfoDialog(scrollType: ScrollType, quantity: Int, onDismiss: (
                     if (scroll.isWhiteScroll) {
                         WeaponReqRow("효과", "업그레이드 실패 횟수 복구")
                     } else {
-                        WeaponReqRow("공격력 보너스", "+${scroll.attackBonus}")
+                        if (scroll.attackBonus > 0) WeaponReqRow("공격력", "+${scroll.attackBonus}")
+                        if (scroll.magicBonus  > 0) WeaponReqRow("마력",   "+${scroll.magicBonus}")
+                        if (scroll.strBonus    > 0) WeaponReqRow("힘",     "+${scroll.strBonus}")
+                        if (scroll.dexBonus    > 0) WeaponReqRow("민첩",   "+${scroll.dexBonus}")
+                        if (scroll.intBonus    > 0) WeaponReqRow("지력",   "+${scroll.intBonus}")
+                        if (scroll.lukBonus    > 0) WeaponReqRow("행운",   "+${scroll.lukBonus}")
                     }
                 }
             }

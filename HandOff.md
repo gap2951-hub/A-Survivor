@@ -18,17 +18,23 @@
 com.a_survivor.app/
 ├── MainActivity.kt               (+ dispatchKeyEvent PC 방향키/WASD 지원)
 ├── model/
-│   ├── Equipment.kt              (+ 스탯 보정 필드 + 전투 능력치 보정 필드)
+│   ├── Equipment.kt              (+ itemId/slot/requiredLevel/buyPrice/sellPrice 필드 추가)
+│   ├── EquipmentRegistry.kt      (CSV 기반 조회 전용 — EquipmentRegistry.get(itemId))
+│   ├── Monster.kt                (+ monsterId: String 필드 추가)
+│   ├── MonsterRegistry.kt        (CSV 기반 — MonsterConfig + configForMap(MapType))
+│   ├── DropTable.kt              (DropItem sealed class + DropEntry — 데이터 제거, 모델만 유지)
+│   ├── DropRegistry.kt           (CSV 기반 드랍 조회 — dropEntriesFor(monsterId, mapType))
+│   ├── QuestRegistry.kt          (CSV 기반 — QuestData + questForNpc(npcId))
+│   ├── Npc.kt                    (NpcRegistry — CSV 기반 로드로 전환)
+│   ├── ShopRegistry.kt           (CSV 기반 로드로 전환, EquipmentRegistry 연동)
 │   ├── Scroll.kt / EnhancementResult.kt
 │   ├── Player.kt                 (+ facingLeft: Boolean)
 │   ├── PlayerJob.kt              (+ attackType/attackRange/projectileType/projectileSpeed 확장함수)
 │   ├── PlayerStats.kt            (+ StatType enum)
 │   ├── Weapon.kt                 (+ DefaultWeapon)
 │   ├── GameWorld.kt              (1024×572 + MapType enum)
-│   ├── Monster.kt                (+ skeletonWarrior() + distanceTo() + MonsterState + avoidability/accuracy + facingLeft + variant)
 │   ├── MonsterState.kt           (IDLE / AGGRO / ATTACKING)
 │   ├── CameraState.kt            (좌표 변환 / 추적)
-│   ├── DropTable.kt              (DropItem + SlimeDropTable)
 │   ├── GroundItem.kt             (바닥 드랍 아이템 + droppedAt 타임스탬프)
 │   ├── DamageNumber.kt           (데미지 숫자 floating 표시 + isMiss 필드)
 │   ├── DerivedStats.kt           (전투 파생 능력치 모델)
@@ -36,24 +42,46 @@ com.a_survivor.app/
 │   ├── AttackType.kt             (MELEE / PROJECTILE)
 │   ├── ProjectileType.kt         (ENERGY_BOLT / ARROW / THROWING_STAR / BULLET)
 │   ├── Projectile.kt             (투사체 모델 + traveledDistance / maxTravelDistance)
-│   ├── Npc.kt                    (Npc 데이터 클래스 + NpcRegistry)
 │   ├── QuestState.kt             (QuestStatus enum + QuestState)
 │   ├── DialogueState.kt          (DialoguePage + DialogueSession)
 │   └── GameMessage.kt            (MessageType enum + GameMessage 데이터 클래스)
 ├── service/
-│   ├── EnhancementService.kt
+│   ├── DataLoader.kt             (CSV 파싱 유틸 — loadCsv(context, fileName) → List<Map<String,String>>)
+│   ├── GameDataInitializer.kt    (앱 시작 시 모든 CSV 로드 — initialize(context))
+│   ├── EnhancementService.kt     (+ 슬롯 검증 + strBonus/dexBonus/intBonus/lukBonus 적용)
 │   ├── CombatStatCalculator.kt   (레거시, 미사용)
 │   ├── DerivedStatsCalculator.kt (직업별 스탯→전투 능력치 계산)
-│   ├── MonsterSpawner.kt         (spawnMonsters — variant/hp/exp/avoidability/accuracy/speed 파라미터)
+│   ├── MonsterSpawner.kt         (+ monsterId 파라미터 추가)
 │   ├── AutoAttackService.kt      (근접/원거리 분기 + 직업별 공격 범위)
 │   ├── ProjectileService.kt      (투사체 이동 + 충돌 판정)
 │   ├── MonsterAiService.kt       (추적 / 공격 / 어그로 해제 + 회피 판정)
 │   ├── LevelService.kt
 │   ├── DropService.kt
+│   ├── SoundManager.kt           (BGM/SFX 관리 — SoundPool + MediaPlayer 이중 경로, 캐시 복사 방식)
 │   ├── GameSaveData.kt           (GameSaveData + SavedSlot 직렬화 데이터 클래스)
 │   └── SaveService.kt            (Gson 직렬화 + SharedPreferences 저장/로드)
 ├── viewmodel/
-│   └── MainViewModel.kt          (AndroidViewModel — 충돌 비트맵 + AI/투사체 틱 루프 + DerivedStats + PendingPlayerAttack + pendingAttackTick + 자동 저장)
+│   └── MainViewModel.kt          (GameDataInitializer 호출 + MonsterRegistry/DropRegistry/QuestRegistry 연동)
+├── assets/data/                  ← 게임 데이터 CSV (엑셀 편집 → CSV 저장 → 자동 반영)
+│   ├── equipment.csv             (itemId,name,slot,requiredLevel,attackPower,...,buyPrice,sellPrice,description)
+│   ├── monster.csv               (monsterId,name,mapId,variant,level,hp,exp,...,count,moneyMin,moneyMax)
+│   ├── drop.csv                  (monsterId,itemId,dropRate)
+│   ├── npc.csv                   (npcId,name,role,mapId,x,y)
+│   ├── shop.csv                  (shopType,itemId,buyPrice,sellPrice)
+│   └── quest.csv                 (questId,name,npcId,targetMonsterId,targetCount,rewardExp,rewardMoney,rewardItemId)
+├── assets/sounds/                ← 오디오 파일 배치 폴더 (없어도 정상 실행)
+│   ├── README.txt                (파일 네이밍 가이드)
+│   ├── bgm_town.*                (마을 BGM)
+│   ├── bgm_battle.*              (전투 BGM)
+│   ├── sfx_attack.*              (플레이어 공격)
+│   ├── sfx_monster_hit.*         (몬스터 피격)
+│   ├── sfx_monster_die.*         (몬스터 사망)
+│   ├── sfx_player_hit.*          (플레이어 피격)
+│   ├── sfx_level_up.*            (레벨업)
+│   ├── sfx_item_pickup.*         (아이템 획득)
+│   ├── sfx_scroll_success.*      (주문서 성공)
+│   ├── sfx_scroll_fail.*         (주문서 실패)
+│   └── sfx_portal.*              (포탈 이동)
 └── res/drawable/
     ├── map_beginner.jpg           ← 초보자 사냥터 맵 (1024×572)
     ├── map_town.jpg               ← 마을 맵 (1024×572)
@@ -844,12 +872,115 @@ private fun scrollDrawableRes(scrollType: ScrollType): Int? = when (scrollType) 
 
 ## 주문서 강화 시스템
 
+### 장갑 공격력 계열
+
 | 주문서 | 성공률 | 성공 시 |
 |--------|--------|---------|
 | 100% | 100% | 공격력 +1 |
 | 60%  | 60%  | 공격력 +2 |
 | 10%  | 10%  | 공격력 +3 |
 | 백의 1%/3% | 1%/3% | 실패 횟수 -1 / 실패 시 파괴 |
+
+### 장비 슬롯별 스탯 주문서 (GLOVE / TOP / HAT / SHOES)
+
+각 슬롯마다 STR·DEX·INT·LUK × 10%/60%/100% = 슬롯4 × 스탯4 × 등급3 = **48종**
+
+| 등급 | 성공률 | 성공 시 보너스 |
+|------|--------|--------------|
+| 100% | 100% | 해당 스탯 +1 |
+| 60%  | 60%  | 해당 스탯 +2 |
+| 10%  | 10%  | 해당 스탯 +3 |
+
+- `targetSlot` 필드로 슬롯 검증 — 불일치 시 강화 거절
+- `Scroll` 데이터 클래스에 `strBonus/dexBonus/intBonus/lukBonus` 필드 추가
+- `EnhancementService`가 성공 시 해당 `Equipment` 스탯 필드에 보너스 가산
+
+### 무기 주문서
+
+| 주문서 | 대상 무기 | 성공률 | 성공 시 |
+|--------|----------|--------|---------|
+| 검 공격력 10%/60%/100% | SWORD (targetSlot="SWORD") | 10/60/100% | 공격력 +3/+2/+1 |
+| 표창 공격력 10%/60%/100% | STAR (targetSlot="STAR") | 10/60/100% | 공격력 +3/+2/+1 |
+| 완드 마력 10%/60%/100% | WAND (targetSlot="WAND") | 10/60/100% | 마력 +3/+2/+1 |
+| 스태프 마력 10%/60%/100% | STAFF (targetSlot="STAFF") | 10/60/100% | 마력 +3/+2/+1 |
+
+### ScrollType enum (model/Scroll.kt)
+
+62+ 종 — 장갑 공격력 3종 + 백의 2종 + 슬롯4×스탯4×등급3(48종) + 무기4×등급3(12종) + ...
+
+---
+
+## 사운드 시스템 (SoundManager)
+
+### 구조
+
+```kotlin
+object SoundManager {
+    enum class Bgm { NONE, TOWN, BATTLE }
+    enum class Sfx { ATTACK, MONSTER_HIT, MONSTER_DIE, PLAYER_HIT, LEVEL_UP,
+                     ITEM_PICKUP, SCROLL_SUCCESS, SCROLL_FAIL, PORTAL }
+
+    var bgmMuted: Boolean   // setter → bgmPlayer 일시정지/재개
+    var sfxMuted: Boolean
+
+    fun init(context: Context)          // SoundPool + MediaPlayer 폴백 초기화
+    fun playSfx(sfx: Sfx)               // SoundPool(저지연) 우선, 실패 시 MediaPlayer 폴백
+    fun switchBgm(bgm: Bgm)             // 현재 BGM 교체 (루프 재생)
+    fun bgmForMap(mapType: MapType): Bgm
+    fun onPause() / onResume() / release()
+}
+```
+
+### 오디오 파일 로딩 방식 (cacheAsset)
+
+1. `assets.open()` 스트림으로 파일 존재 확인 (APK 압축 여부 무관)
+2. `context.cacheDir/snd_파일명.확장자` 로 복사 (이미 있으면 재사용)
+3. 절대 경로를 `SoundPool.load()` / `MediaPlayer.setDataSource()` 에 전달
+
+→ aapt2의 FLAC/OGG 압축으로 `openFd()` 실패하는 문제를 근본 해결
+
+### APK 압축 방지 (build.gradle.kts)
+
+```kotlin
+androidResources {
+    noCompress += listOf("flac", "ogg", "mp3", "wav")
+}
+```
+
+### 사운드 트리거 위치 (MainViewModel)
+
+| 이벤트 | 함수 | SFX |
+|--------|------|-----|
+| 플레이어 자동 공격 | `autoAttackTick` | ATTACK |
+| 몬스터 피격 | `pendingAttackTick` | MONSTER_HIT |
+| 몬스터 사망 | `pendingAttackTick` | MONSTER_DIE |
+| 레벨업 | `pendingAttackTick` / `projectileTick` | LEVEL_UP |
+| 플레이어 피격 | `monsterAiTick` | PLAYER_HIT |
+| 아이템 픽업 | `monsterAiTick` / `movePlayer` | ITEM_PICKUP |
+| 포탈 이동 | `movePlayer` | PORTAL + switchBgm |
+| 주문서 성공 | `useSelectedScroll` | SCROLL_SUCCESS |
+| 주문서 실패 | `useSelectedScroll` | SCROLL_FAIL |
+
+### BGM 전환
+
+| 맵 | BGM |
+|----|-----|
+| TOWN | bgm_town.* |
+| 그 외 (전투 맵) | bgm_battle.* |
+
+### 생명주기 (MainActivity)
+
+```kotlin
+SoundManager.init(this)         // onCreate
+SoundManager.onPause()          // onPause
+SoundManager.onResume()         // onResume
+SoundManager.release()          // onDestroy
+```
+
+### 음소거 버튼 (MainScreen HUD)
+
+- 우상단 "BGM"/"BGM✗" + "SFX"/"SFX✗" HudButton 2개
+- `SoundManager.bgmMuted` / `sfxMuted` 토글
 
 ---
 
@@ -986,6 +1117,29 @@ private fun scrollDrawableRes(scrollType: ScrollType): Int? = when (scrollType) 
 | 127 | 궁수 스프라이트 시스템 추가 — archer_sheet.png (4900×109, 프레임 140×109) + sliceSheet() 헬퍼 구현 | ✅ |
 | 128 | 직업별 플레이어 스프라이트 분기 — player.job == ARCHER 일 때 궁수 프레임 선택, 나머지는 전사 프레임 | ✅ |
 | 129 | 게임 데이터 저장 시스템 구현 — GameSaveData/SaveService (Gson+SharedPreferences), 10초 자동 저장 + 종료 시 저장 + 시작 시 로드 | ✅ |
+| 130 | DataLoader 구현 — assets/data/ CSV 파싱 유틸 (따옴표 필드 지원, 컬럼 불일치 안전 처리) | ✅ |
+| 131 | GameDataInitializer 구현 — 앱 시작 시 모든 CSV 로드 (장비→몬스터→드랍→NPC→상점→퀘스트 순서 보장) | ✅ |
+| 132 | EquipmentRegistry 구현 — equipment.csv 기반 조회 전용, Equipment에 itemId/slot/requiredLevel/buyPrice/sellPrice 필드 추가 | ✅ |
+| 133 | MonsterRegistry 구현 — monster.csv 기반, MonsterConfig(맵별 스폰 설정) + configForMap(MapType) | ✅ |
+| 134 | DropRegistry 구현 — drop.csv 기반, 몬스터별 아이템 드랍 + MonsterRegistry에서 돈 범위 읽기 | ✅ |
+| 135 | QuestRegistry 구현 — quest.csv 기반, QuestData(보상/목표 설정) + questForNpc(npcId) | ✅ |
+| 136 | NpcRegistry CSV 전환 — 하드코딩 제거, npc.csv 로드 방식으로 전환 | ✅ |
+| 137 | ShopRegistry CSV 전환 — 하드코딩 제거, shop.csv + EquipmentRegistry/ScrollCatalog/ConsumableCatalog 연동 | ✅ |
+| 138 | DropTable.kt 정리 — 하드코딩 데이터 제거, DropItem/DropEntry 모델만 유지 | ✅ |
+| 139 | Monster.monsterId 필드 추가 — 드랍 테이블 조회용 식별자, MonsterSpawner에 monsterId 파라미터 추가 | ✅ |
+| 140 | MainViewModel 데이터 테이블 연동 — skeletonConfig 제거 후 MonsterRegistry 사용, dropEntriesFor → DropRegistry, 퀘스트 보상 → QuestRegistry | ✅ |
+| 141 | assets/data/ CSV 6종 생성 — equipment/monster/drop/npc/shop/quest (엑셀 편집→CSV 저장→자동 반영) | ✅ |
+| 142 | ScrollType enum 확장 — 장비 슬롯4(GLOVE/TOP/HAT/SHOES) × 스탯4(STR/DEX/INT/LUK) × 등급3(10/60/100%) = 48종 추가 | ✅ |
+| 143 | 무기 주문서 추가 — SWORD/STAR 공격력 × 3등급, WAND/STAFF 마력 × 3등급 (12종) | ✅ |
+| 144 | Scroll 데이터 클래스 확장 — strBonus/dexBonus/intBonus/lukBonus/magicBonus/targetSlot 필드 추가 | ✅ |
+| 145 | EnhancementService 업데이트 — targetSlot 슬롯 검증 + 전 스탯 보너스 적용 로직 | ✅ |
+| 146 | shop.csv 주문서 항목 확장 — 슬롯별·스탯별·무기별 주문서 ~40종 추가 | ✅ |
+| 147 | SoundManager 구현 — SoundPool(저지연) + MediaPlayer(폴백) 이중 경로, cacheAsset() 캐시 복사 방식 | ✅ |
+| 148 | APK 오디오 압축 방지 — build.gradle.kts androidResources.noCompress += flac/ogg/mp3/wav | ✅ |
+| 149 | MainViewModel 사운드 트리거 추가 — 공격/피격/사망/레벨업/픽업/포탈/주문서 성공실패 SFX | ✅ |
+| 150 | MainActivity 사운드 생명주기 연동 — init/onPause/onResume/release + 맵별 BGM 전환 | ✅ |
+| 151 | HUD 음소거 버튼 추가 — 우상단 BGM/SFX 토글 버튼 (MainScreen) | ✅ |
+| 152 | assets/sounds/README.txt 생성 — 사운드 파일 배치 가이드 (BGM·SFX 파일명 규칙, 추천 무료 소스) | ✅ |
 
 ---
 
@@ -1251,9 +1405,11 @@ implementation("com.google.code.gson:gson:2.10.1")
 
 ## 다음 작업 후보 (우선순위 순)
 
+- [ ] 사운드 파일 실제 배치 — bgm_town/bgm_battle + sfx_* (freesound.org 등 CC0 소스)
 - [ ] 투사체 PNG 리소스 교체 (에너지볼트/화살/표창/총알 이미지)
-- [ ] NPC 퀘스트 2차 — 다양한 퀘스트 / 퀘스트 목록 UI
+- [ ] NPC 퀘스트 2차 — quest.csv에 퀘스트 추가만으로 확장 가능
 - [ ] 무기 강화 시스템
 - [ ] 장비 창고
 - [ ] 애니메이션 (공격 이펙트, 레벨업 연출)
 - [ ] 직업별 스킬 시스템
+- [ ] skill.csv / map.csv / portal.csv / dialogue.csv / monster_spawn.csv / equipment_set.csv 추가 예정

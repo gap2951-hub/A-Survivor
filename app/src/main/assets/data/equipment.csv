@@ -1,0 +1,8 @@
+itemId,name,slot,requiredLevel,attackPower,magicPower,maxUpgradeCount,strBonus,dexBonus,intBonus,lukBonus,physicalDefense,magicDefense,accuracy,avoidability,buyPrice,sellPrice,description
+NOGADA_GLOVE,노가다 목장갑,GLOVE,1,0,0,5,0,0,0,0,0,0,0,0,0,0,"노동을 위해 만들어진 낡은 장갑이다.\n강화하면 공격력이 오를 것 같다."
+BEGINNER_SWORD,초보자 검,WEAPON,1,5,0,0,0,0,0,0,0,0,0,0,300,90,초보 모험가를 위한 기본 검.
+OLD_WARRIOR_TOP,낡은 전사 상의,TOP,1,0,0,0,2,1,0,0,5,0,0,0,500,150,낡고 헤진 전사용 상의.
+OLD_MAGE_ROBE,낡은 마법사 로브,TOP,1,0,0,0,0,0,2,1,0,5,0,0,500,150,낡고 헤진 마법사용 로브.
+OLD_LEATHER_SHOES,낡은 가죽 신발,SHOES,1,0,0,0,0,1,0,1,0,0,0,1,400,120,낡고 헤진 가죽 신발.
+E00000001,날이 선 검,WEAPON,3,10,0,5,5,3,0,0,0,0,0,0,1000,600,날이 선 검이다.
+E00000002,다크니스 검,WEAPON,5,15,0,5,10,6,0,0,0,0,0,0,2000,1200,어둠의 힘이 느껴지는 검이다.

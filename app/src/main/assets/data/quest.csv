@@ -1,0 +1,2 @@
+questId,name,npcId,targetMonsterId,targetCount,rewardExp,rewardMoney,rewardItemId
+QUEST_001,스켈레톤 소탕 작전,1,SKELETON_BEGINNER,5,50,0,GLOVE_ATK_100

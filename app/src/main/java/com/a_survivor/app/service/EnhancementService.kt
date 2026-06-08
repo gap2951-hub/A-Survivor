@@ -19,27 +19,50 @@ class EnhancementService {
         equipment: Equipment,
         scroll: Scroll
     ): Pair<Equipment, EnhancementResult> {
+        if (scroll.targetSlot.isNotEmpty() && equipment.slot != scroll.targetSlot) {
+            val slotKo = slotName(scroll.targetSlot)
+            return equipment to EnhancementResult.Error("이 주문서는 $slotKo 전용입니다.")
+        }
         if (equipment.remainingUpgradeCount <= 0) {
             return equipment to EnhancementResult.Error("업그레이드 가능 횟수가 부족합니다.")
         }
         val roll = Random.nextInt(1, 101)
         return if (roll <= scroll.successRate) {
             val updated = equipment.copy(
-                attackPower = equipment.attackPower + scroll.attackBonus,
+                attackPower           = equipment.attackPower + scroll.attackBonus,
+                magicPower            = equipment.magicPower  + scroll.magicBonus,
+                strBonus              = equipment.strBonus    + scroll.strBonus,
+                dexBonus              = equipment.dexBonus    + scroll.dexBonus,
+                intBonus              = equipment.intBonus    + scroll.intBonus,
+                lukBonus              = equipment.lukBonus    + scroll.lukBonus,
                 remainingUpgradeCount = equipment.remainingUpgradeCount - 1
             )
-            updated to EnhancementResult.Success(
-                "${scroll.name} 성공!\n공격력 +${scroll.attackBonus} 증가"
-            )
+            updated to EnhancementResult.Success("${scroll.name} 성공!\n${effectDesc(scroll)}")
         } else {
             val updated = equipment.copy(
                 remainingUpgradeCount = equipment.remainingUpgradeCount - 1,
-                failedUpgradeCount = equipment.failedUpgradeCount + 1
+                failedUpgradeCount    = equipment.failedUpgradeCount + 1
             )
-            updated to EnhancementResult.Failure(
-                "${scroll.name} 실패!\n공격력은 증가하지 않았습니다."
-            )
+            updated to EnhancementResult.Failure("${scroll.name} 실패!")
         }
+    }
+
+    private fun effectDesc(scroll: Scroll): String = buildString {
+        if (scroll.attackBonus > 0) appendLine("공격력 +${scroll.attackBonus}")
+        if (scroll.magicBonus  > 0) appendLine("마력 +${scroll.magicBonus}")
+        if (scroll.strBonus    > 0) appendLine("힘 +${scroll.strBonus}")
+        if (scroll.dexBonus    > 0) appendLine("민첩 +${scroll.dexBonus}")
+        if (scroll.intBonus    > 0) appendLine("지력 +${scroll.intBonus}")
+        if (scroll.lukBonus    > 0) appendLine("행운 +${scroll.lukBonus}")
+    }.trimEnd()
+
+    private fun slotName(slot: String) = when (slot) {
+        "GLOVE"  -> "장갑"
+        "TOP"    -> "상의"
+        "HAT"    -> "모자"
+        "SHOES"  -> "신발"
+        "WEAPON" -> "무기"
+        else     -> slot
     }
 
     private fun applyWhiteScroll(

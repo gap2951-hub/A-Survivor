@@ -1,105 +1,121 @@
 package com.a_survivor.app.model
 
+import android.util.Log
+
 object ShopRegistry {
 
-    private val equipmentShopItems = listOf(
-        ShopItem(
-            id = 1, name = "초보자 검",
-            description = "초보 모험가를 위한 기본 검.\n공격력 +5",
-            buyPrice = 300, sellPrice = 90,
-            itemType = ShopItemType.EQUIPMENT, itemId = "beginner_sword", stackable = false
-        ),
-        ShopItem(
-            id = 2, name = "낡은 전사 상의",
-            description = "낡고 헤진 전사용 상의.\nSTR +2, DEX +1, 물리방어력 +5",
-            buyPrice = 500, sellPrice = 150,
-            itemType = ShopItemType.EQUIPMENT, itemId = "old_warrior_top", stackable = false
-        ),
-        ShopItem(
-            id = 3, name = "낡은 마법사 로브",
-            description = "낡고 헤진 마법사용 로브.\nINT +2, LUK +1, 마법방어력 +5",
-            buyPrice = 500, sellPrice = 150,
-            itemType = ShopItemType.EQUIPMENT, itemId = "old_mage_robe", stackable = false
-        ),
-        ShopItem(
-            id = 4, name = "낡은 가죽 신발",
-            description = "낡고 헤진 가죽 신발.\nDEX +1, LUK +1, 회피율 +1",
-            buyPrice = 400, sellPrice = 120,
-            itemType = ShopItemType.EQUIPMENT, itemId = "old_leather_shoes", stackable = false
-        )
-    )
+    private const val TAG = "ShopRegistry"
+    private val shopItems = mutableMapOf<ShopType, MutableList<ShopItem>>()
+    private var nextId = 1
 
-    private val consumableShopItems = listOf(
-        ShopItem(
-            id = 10, name = "빨간 포션",
-            description = "HP 30 회복",
-            buyPrice = 50, sellPrice = 15,
-            itemType = ShopItemType.CONSUMABLE, itemId = "red_potion", stackable = true
-        ),
-        ShopItem(
-            id = 11, name = "주황 포션",
-            description = "HP 80 회복",
-            buyPrice = 120, sellPrice = 36,
-            itemType = ShopItemType.CONSUMABLE, itemId = "orange_potion", stackable = true
-        ),
-        ShopItem(
-            id = 20, name = "장갑 공격력 주문서 100%",
-            description = "장갑의 공격력을 1 올려준다.\n성공률 100%",
-            buyPrice = 300, sellPrice = 90,
-            itemType = ShopItemType.SCROLL, itemId = ScrollType.GLOVE_ATK_100.name, stackable = true
-        ),
-        ShopItem(
-            id = 21, name = "장갑 공격력 주문서 60%",
-            description = "장갑의 공격력을 2 올려준다.\n성공률 60%",
-            buyPrice = 700, sellPrice = 210,
-            itemType = ShopItemType.SCROLL, itemId = ScrollType.GLOVE_ATK_60.name, stackable = true
-        ),
-        ShopItem(
-            id = 22, name = "장갑 공격력 주문서 10%",
-            description = "장갑의 공격력을 3 올려준다.\n성공률 10%",
-            buyPrice = 1500, sellPrice = 450,
-            itemType = ShopItemType.SCROLL, itemId = ScrollType.GLOVE_ATK_10.name, stackable = true
-        )
-    )
+    internal fun load(rows: List<Map<String, String>>) {
+        shopItems.clear()
+        nextId = 1
+        for (row in rows) {
+            try {
+                val shopType = runCatching { ShopType.valueOf(row["shopType"] ?: "") }.getOrNull() ?: run {
+                    Log.w(TAG, "shopType 파싱 실패, 스킵: $row"); continue
+                }
+                val itemId   = row["itemId"]?.takeIf { it.isNotBlank() } ?: run {
+                    Log.w(TAG, "itemId 누락, 스킵: $row"); continue
+                }
+                val buyPrice  = row["buyPrice"]?.toIntOrNull() ?: 0
+                val sellPrice = row["sellPrice"]?.toIntOrNull() ?: 0
 
-    fun itemsFor(shopType: ShopType): List<ShopItem> = when (shopType) {
-        ShopType.EQUIPMENT  -> equipmentShopItems
-        ShopType.CONSUMABLE -> consumableShopItems
+                val (name, desc, itemType, stackable) = resolveItemMeta(shopType, itemId) ?: run {
+                    Log.w(TAG, "알 수 없는 itemId '$itemId', 스킵"); continue
+                }
+
+                shopItems.getOrPut(shopType) { mutableListOf() }.add(
+                    ShopItem(
+                        id        = nextId++,
+                        name      = name,
+                        description = desc,
+                        buyPrice  = buyPrice,
+                        sellPrice = sellPrice,
+                        itemType  = itemType,
+                        itemId    = itemId,
+                        stackable = stackable
+                    )
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "행 파싱 실패, 스킵: $row — ${e.message}")
+            }
+        }
+        Log.d(TAG, "상점 아이템 ${shopItems.values.sumOf { it.size }}개 로드")
     }
 
-    fun sellPriceForEquipment(name: String): Int =
-        equipmentShopItems.find { it.name == name }?.sellPrice ?: 30
+    private data class ItemMeta(val name: String, val desc: String, val itemType: ShopItemType, val stackable: Boolean)
+
+    private fun resolveItemMeta(shopType: ShopType, itemId: String): ItemMeta? {
+        return when (shopType) {
+            ShopType.EQUIPMENT -> {
+                val equip = EquipmentRegistry.get(itemId) ?: return null
+                ItemMeta(equip.name, equip.description, ShopItemType.EQUIPMENT, false)
+            }
+            ShopType.CONSUMABLE -> {
+                // 소비 아이템: 포션 or 주문서
+                val scroll = runCatching { ScrollType.valueOf(itemId) }.getOrNull()
+                if (scroll != null) {
+                    val s = ScrollCatalog.get(scroll)
+                    ItemMeta(s.name, scrollDesc(s), ShopItemType.SCROLL, true)
+                } else {
+                    val consumable = ConsumableCatalog.fromItemId(itemId) ?: return null
+                    val info = ConsumableCatalog.get(consumable)
+                    ItemMeta(info.name, info.description, ShopItemType.CONSUMABLE, true)
+                }
+            }
+        }
+    }
+
+    private fun scrollDesc(s: Scroll): String = buildString {
+        if (s.isWhiteScroll) {
+            append("업그레이드 실패 횟수 복구.\n성공률 ${s.successRate}%")
+        } else {
+            val slotKo = when (s.targetSlot) {
+                "GLOVE" -> "장갑"; "TOP" -> "상의"; "HAT" -> "모자"
+                "SHOES" -> "신발"; "WEAPON" -> "무기"; else -> s.targetSlot
+            }
+            if (slotKo.isNotBlank()) append("[$slotKo 전용] ")
+            val effects = buildList {
+                if (s.attackBonus > 0) add("공격력 +${s.attackBonus}")
+                if (s.magicBonus  > 0) add("마력 +${s.magicBonus}")
+                if (s.strBonus    > 0) add("힘 +${s.strBonus}")
+                if (s.dexBonus    > 0) add("민첩 +${s.dexBonus}")
+                if (s.intBonus    > 0) add("지력 +${s.intBonus}")
+                if (s.lukBonus    > 0) add("행운 +${s.lukBonus}")
+            }
+            append(effects.joinToString(", "))
+            append("\n성공률 ${s.successRate}%")
+        }
+    }
+
+    fun itemsFor(shopType: ShopType): List<ShopItem> = shopItems[shopType] ?: emptyList()
+
+    /** ShopType.CONSUMABLE 목록에서 SCROLL 타입도 반환 (기존 API 유지) */
+    fun scrollItemsIn(shopType: ShopType): List<ShopItem> =
+        itemsFor(shopType).filter { it.itemType == ShopItemType.SCROLL }
+
+    fun sellPriceForEquipment(nameOrId: String): Int {
+        // itemId 우선 조회, 없으면 name으로 폴백
+        EquipmentRegistry.get(nameOrId)?.sellPrice?.takeIf { it > 0 }?.let { return it }
+        return shopItems.values.flatten()
+            .filter { it.itemType == ShopItemType.EQUIPMENT }
+            .find { it.name == nameOrId || it.itemId == nameOrId }
+            ?.sellPrice ?: 30
+    }
 
     fun sellPriceForScroll(scrollType: ScrollType): Int =
-        consumableShopItems.find { it.itemType == ShopItemType.SCROLL && it.itemId == scrollType.name }?.sellPrice ?: 10
+        shopItems[ShopType.CONSUMABLE]
+            ?.find { it.itemType == ShopItemType.SCROLL && it.itemId == scrollType.name }
+            ?.sellPrice ?: 10
 
-    fun sellPriceForConsumable(consumableType: ConsumableType): Int =
-        consumableShopItems.find { it.itemId == ConsumableCatalog.itemId(consumableType) }?.sellPrice ?: 5
-
-    fun createEquipment(itemId: String): Equipment? = when (itemId) {
-        "beginner_sword" -> Equipment(
-            name = "초보자 검", attackPower = 5,
-            maxUpgradeCount = 0, remainingUpgradeCount = 0, failedUpgradeCount = 0, destroyed = false,
-            description = "초보 모험가를 위한 기본 검."
-        )
-        "old_warrior_top" -> Equipment(
-            name = "낡은 전사 상의", attackPower = 0,
-            maxUpgradeCount = 0, remainingUpgradeCount = 0, failedUpgradeCount = 0, destroyed = false,
-            strBonus = 2, dexBonus = 1, physicalDefense = 5,
-            description = "낡고 헤진 전사용 상의."
-        )
-        "old_mage_robe" -> Equipment(
-            name = "낡은 마법사 로브", attackPower = 0,
-            maxUpgradeCount = 0, remainingUpgradeCount = 0, failedUpgradeCount = 0, destroyed = false,
-            intBonus = 2, lukBonus = 1, magicDefense = 5,
-            description = "낡고 헤진 마법사용 로브."
-        )
-        "old_leather_shoes" -> Equipment(
-            name = "낡은 가죽 신발", attackPower = 0,
-            maxUpgradeCount = 0, remainingUpgradeCount = 0, failedUpgradeCount = 0, destroyed = false,
-            dexBonus = 1, lukBonus = 1, avoidability = 1,
-            description = "낡고 헤진 가죽 신발."
-        )
-        else -> null
+    fun sellPriceForConsumable(consumableType: ConsumableType): Int {
+        val itemId = ConsumableCatalog.itemId(consumableType)
+        return shopItems[ShopType.CONSUMABLE]
+            ?.find { it.itemType == ShopItemType.CONSUMABLE && it.itemId == itemId }
+            ?.sellPrice ?: 5
     }
+
+    fun createEquipment(itemId: String): Equipment? = EquipmentRegistry.get(itemId)
 }
