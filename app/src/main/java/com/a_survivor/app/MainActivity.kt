@@ -254,6 +254,7 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         SoundManager.onPause()
+        moveVm.saveNow()
     }
 
     override fun onDestroy() {
@@ -504,6 +505,8 @@ fun MainScreen(
         if (state.jobAdvancementPending) {
             JobAdvancementDialog(onAdvance = onAdvanceJob)
         }
+
+
 
         // ⑩ NPC 근접 감지 및 [대화하기] 버튼
         val nearbyNpc = state.npcs.firstOrNull { npc ->
@@ -1774,8 +1777,8 @@ private fun DrawScope.drawPlayer(
     playerDeathTime: Long
 ) {
     val c    = cam.toScreenOffset(player.positionX, player.positionY, size.width, size.height)
-    val imgH = (size.height * 0.11f).toInt().coerceAtLeast(24)
     val isArcher = player.job == PlayerJob.ARCHER
+    val imgH = (size.height * (if (isArcher) 0.15f else 0.11f)).toInt().coerceAtLeast(24)
     val imgW = imgH
     // archer 개별 프레임(203×203): 캐릭터 발이 ~95% 높이에 위치
     val vertRatio = if (isArcher) 0.95f else 0.75f

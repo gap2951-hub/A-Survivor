@@ -211,10 +211,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // CSV 기반 게임 데이터 초기화 (최초 1회)
         GameDataInitializer.initialize(application)
 
-        saveService.load()?.let { restoreState(it) }?.let { restored ->
-            _uiState.value = restored
-            nextMonsterId = (restored.monsters.maxOfOrNull { it.id } ?: 0) + 1
-        }
+        val initial = saveService.load()?.let { restoreState(it) } ?: createInitialState()
+        _uiState.value = initial
+        nextMonsterId = (initial.monsters.maxOfOrNull { it.id } ?: 0) + 1
         viewModelScope.launch {
             while (true) {
                 delay(10_000L)
@@ -222,6 +221,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    fun saveNow() = saveService.save(_uiState.value)
 
     override fun onCleared() {
         super.onCleared()
