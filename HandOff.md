@@ -101,7 +101,11 @@ com.a_survivor.app/
     ├── warrior_hurt_0~2.png       ← 전사 Hurt 3프레임 (100ms/frame)
     ├── warrior_die_0~5.png        ← 전사 Die 6프레임 (200ms/frame)
     ├── coin_0~3.png               ← 동전 애니메이션 4프레임 (150ms 순환)
-    └── archer_sheet.png           ← 궁수 스프라이트시트 (4900×109, 140px/frame)
+    ├── archer_idle_0~4.png        ← 궁수 Idle 5프레임 (203×203, 투명 배경)
+    ├── archer_walk_0~3.png        ← 궁수 Walk 4프레임 (203×203)
+    ├── archer_attack_0~5.png      ← 궁수 Attack 6프레임 (203×203)
+    ├── archer_hurt_0~3.png        ← 궁수 Hurt 4프레임 (203×203)
+    └── archer_die_0~4.png         ← 궁수 Die 5프레임 (203×203)
 ```
 
 ---
@@ -157,6 +161,7 @@ Box (게임 화면)
 | 대상 | 표현 방식 | 크기 |
 |------|-----------|------|
 | 플레이어 (전사) | 스프라이트 애니메이션 (IDLE 4f / WALK 4f / ATTACK 5f / HURT 3f / DIE 6f) | `size.height * 0.11f` (정사각형) |
+| 플레이어 (궁수) | 스프라이트 애니메이션 (IDLE 5f / WALK 4f / ATTACK 6f / HURT 4f / DIE 5f) | `size.height * 0.15f` (정사각형, vertRatio=0.95f) |
 | 스켈레톤 (IDLE) | Idle 애니메이션 6프레임 + 초록 HP 바 | `size.height * 0.15f` |
 | 스켈레톤 (AGGRO) | Walk 애니메이션 8프레임 + 주황 HP 바 + "!" | `size.height * 0.15f` |
 | 스켈레톤 (ATTACKING) | Slash 애니메이션 6프레임 + 주황 HP 바 + "!" | `size.height * 0.15f` |
@@ -1140,6 +1145,11 @@ SoundManager.release()          // onDestroy
 | 150 | MainActivity 사운드 생명주기 연동 — init/onPause/onResume/release + 맵별 BGM 전환 | ✅ |
 | 151 | HUD 음소거 버튼 추가 — 우상단 BGM/SFX 토글 버튼 (MainScreen) | ✅ |
 | 152 | assets/sounds/README.txt 생성 — 사운드 파일 배치 가이드 (BGM·SFX 파일명 규칙, 추천 무료 소스) | ✅ |
+| 153 | 궁수 스프라이트 개별 프레임 전환 — archer_sheet sliceSheet 방식 → loadBitmap 개별 PNG 24장 (idle5/walk4/attack6/hurt4/die5) | ✅ |
+| 154 | sliceSheet / thresholdAlpha 함수 제거 — 미사용으로 삭제 | ✅ |
+| 155 | drawPlayer 궁수 크기·정렬 수정 — imgW=imgH(정방형), vertRatio=0.95f, size.height*0.15f | ✅ |
+| 156 | onPause 즉시 저장 추가 — moveVm.saveNow() 호출로 강제종료 시에도 데이터 보존 | ✅ |
+| 157 | init 블록 몬스터 스폰 버그 수정 — CSV 로드 전 createInitialState() 호출로 MonsterRegistry 비어있던 문제, 로드 후 재설정 | ✅ |
 
 ---
 
@@ -1278,37 +1288,26 @@ private fun addMessage(state: UiState, text: String, type: MessageType): UiState
 
 ## 궁수 스프라이트 시스템
 
-### 스프라이트시트 구조 (archer_sheet.png)
+### 개별 프레임 파일 구조
 
-- 원본: `image/궁수/궁수-Sheet.png`
-- 전체 크기: 4900×109px, 프레임 크기: **140×109px**
+- 원본 그리드 이미지(`image/궁수/`) → Python PIL로 자동 커팅 → 개별 203×203 PNG 24장
+- 배경 제거: `R>200 & G>200 & B>200 & saturation≤30` → alpha=0
 
-| 애니메이션 | 시작 X | 프레임 수 |
-|-----------|--------|----------|
-| Idle      | 0      | 5        |
-| Walk      | 980    | 4        |
-| Attack    | 1960   | 6        |
-| Hurt      | 2940   | 4        |
-| Die       | 4060   | 5        |
+| 애니메이션 | 파일 | 프레임 수 |
+|-----------|------|----------|
+| Idle      | `archer_idle_0~4.png`   | 5 |
+| Walk      | `archer_walk_0~3.png`   | 4 |
+| Attack    | `archer_attack_0~5.png` | 6 |
+| Hurt      | `archer_hurt_0~3.png`   | 4 |
+| Die       | `archer_die_0~4.png`    | 5 |
 
-### sliceSheet() 헬퍼 (MainActivity)
+### 로딩 방식 (GameCanvas 내부)
 
 ```kotlin
-private fun sliceSheet(
-    context: android.content.Context,
-    resId: Int,
-    frameW: Int,
-    startX: Int,
-    count: Int
-): List<ImageBitmap> {
-    val full = BitmapFactory.decodeResource(
-        context.resources, resId,
-        BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
-    )
-    return (0 until count).map { i ->
-        Bitmap.createBitmap(full, startX + i * frameW, 0, frameW, full.height).asImageBitmap()
-    }
-}
+val archerIdle   = remember { listOf(
+    loadBitmap(context, R.drawable.archer_idle_0, 256), ...
+) }
+// Walk / Attack / Hurt / Die 동일 패턴
 ```
 
 ### 직업별 프레임 선택 (GameCanvas Canvas 블록)
@@ -1316,14 +1315,18 @@ private fun sliceSheet(
 ```kotlin
 val isArcher = player.job == PlayerJob.ARCHER
 val pIdle   = if (isArcher) archerIdle   else warriorIdle
-val pWalk   = if (isArcher) archerWalk   else warriorWalk
-val pAttack = if (isArcher) archerAttack else warriorAttack
-val pHurt   = if (isArcher) archerHurt   else warriorHurt
-val pDie    = if (isArcher) archerDie    else warriorDie
+// Walk / Attack / Hurt / Die 동일
 drawPlayer(player, cam, pIdle, pWalk, pAttack, pHurt, pDie, ...)
 ```
 
-- `drawPlayer` 함수 시그니처 변경 없음 — 프레임 리스트를 선택해서 전달
+### drawPlayer 궁수 전용 파라미터
+
+```kotlin
+val imgH = (size.height * (if (isArcher) 0.15f else 0.11f)).toInt()
+val imgW = imgH   // 203×203 정사각형
+val vertRatio = if (isArcher) 0.95f else 0.75f  // 발 위치 95% 높이
+```
+
 - 애니메이션 타이밍은 전사와 동일 (IDLE 200ms/f, WALK 100ms/f, ATTACK 60ms/f, HURT 100ms/f, DIE 200ms/f)
 
 ---
@@ -1381,9 +1384,10 @@ data class SavedSlot(
 
 | 시점 | 방법 |
 |------|------|
-| 앱 실행 시 | `init` 블록에서 로드, `_uiState.value` 복원 |
+| 앱 실행 시 | `init` 블록 — `GameDataInitializer.initialize()` 후 저장 데이터 복원, 없으면 신규 시작 |
 | 10초마다 | `viewModelScope.launch { while(true) { delay(10_000L); save() } }` |
-| 앱 종료 시 | `onCleared()` 오버라이드에서 즉시 저장 |
+| 앱 백그라운드/종료 | `onPause()` → `moveVm.saveNow()` 즉시 저장 (강제종료 대응) |
+| ViewModel 소멸 | `onCleared()` 오버라이드에서 즉시 저장 |
 | 새 게임 시작 | `startGame()` 에서 새 상태 즉시 저장 (기존 세이브 덮어씀) |
 
 ### 복원 로직 (restoreState)
