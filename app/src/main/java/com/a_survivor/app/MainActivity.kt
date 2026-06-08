@@ -44,6 +44,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -242,8 +243,8 @@ class MainActivity : ComponentActivity() {
                     onSellEquipment      = vm::sellEquipmentBySlot,
                     onSellStackable      = vm::sellStackableItem,
                     onUsePotion          = vm::usePotion,
-                    onAssignQuickSlot    = vm::assignQuickSlot,
-                    onUseQuickSlotPotion = vm::useQuickSlotPotion
+                    onAssignQuickSlot    = { idx, type -> vm.assignQuickSlot(idx, type) },
+                    onUseQuickSlotPotion = { idx -> vm.useQuickSlotPotion(idx) }
                 )
             }
         }
@@ -290,8 +291,8 @@ fun MainScreen(
     onSellEquipment: (Int) -> Unit = {},
     onSellStackable: (String, ShopItemType, Int) -> Unit = { _, _, _ -> },
     onUsePotion: (ConsumableType) -> Unit = {},
-    onAssignQuickSlot: (ConsumableType) -> Unit = {},
-    onUseQuickSlotPotion: () -> Unit = {}
+    onAssignQuickSlot: (Int, ConsumableType) -> Unit = { _, _ -> },
+    onUseQuickSlotPotion: (Int) -> Unit = {}
 ) {
     val dragState        = remember { DragDropState() }
     var isEquipmentOpen  by remember { mutableStateOf(false) }
@@ -300,7 +301,7 @@ fun MainScreen(
     var bgmMuted         by remember { mutableStateOf(SoundManager.bgmMuted) }
     var sfxMuted         by remember { mutableStateOf(SoundManager.sfxMuted) }
     var equipSlotBounds  by remember { mutableStateOf<Rect?>(null) }
-    var quickSlotBounds  by remember { mutableStateOf<Rect?>(null) }
+    val quickSlotBounds  = remember { mutableStateListOf<Rect?>(null, null, null) }
     var rootWindowOffset by remember { mutableStateOf(Offset.Zero) }
 
     var joystickDirX by remember { mutableStateOf(0f) }
@@ -452,9 +453,8 @@ fun MainScreen(
                         }
                     },
                     onConsumableDragEnd = { ct, dropPos ->
-                        if (quickSlotBounds?.contains(dropPos) == true) {
-                            onAssignQuickSlot(ct)
-                        }
+                        val idx = quickSlotBounds.indexOfFirst { it?.contains(dropPos) == true }
+                        if (idx >= 0) onAssignQuickSlot(idx, ct)
                     },
                     onDrag = { delta -> inventOffset = clampWin(inventOffset + delta) }
                 )
@@ -492,13 +492,13 @@ fun MainScreen(
             }
         }
 
-        // ⑦ 포션 퀵슬롯 (하단 중앙)
-        PotionQuickSlot(
-            quickSlotItem  = state.quickSlotItem,
+        // ⑦ 포션 퀵슬롯 (하단 중앙, 3칸)
+        PotionQuickSlotRow(
+            quickSlots     = state.quickSlots,
             inventorySlots = state.inventorySlots,
             dragState      = dragState,
-            onUse          = onUseQuickSlotPotion,
-            onPositioned   = { quickSlotBounds = it },
+            onUse          = { idx -> onUseQuickSlotPotion(idx) },
+            onSlotPositioned = { idx, rect -> quickSlotBounds[idx] = rect },
             modifier       = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 20.dp)
@@ -529,6 +529,7 @@ fun MainScreen(
                 rootOffset = rootWindowOffset
             )
         }
+
 
         // ⑨ 전직 팝업
         if (state.jobAdvancementPending) {
@@ -2779,44 +2780,67 @@ private fun ConsumableDragGhost(
     }
 }
 
-// ── 포션 퀵슬롯 ───────────────────────────────────────────────────────────────
+// ── 포션 퀵슬롯 (3칸 행) ────────────────────────────────────────────────────
+@Composable
+private fun PotionQuickSlotRow(
+    quickSlots: List<ConsumableType?>,
+    inventorySlots: List<InventorySlot?>,
+    dragState: DragDropState,
+    onUse: (Int) -> Unit,
+    onSlotPositioned: (Int, androidx.compose.ui.geometry.Rect) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        quickSlots.forEachIndexed { index, slotItem ->
+            PotionQuickSlot(
+                slotItem       = slotItem,
+                inventorySlots = inventorySlots,
+                dragState      = dragState,
+                onUse          = { onUse(index) },
+                onPositioned   = { rect -> onSlotPositioned(index, rect) }
+            )
+        }
+    }
+}
+
 @Composable
 private fun PotionQuickSlot(
-    quickSlotItem: ConsumableType?,
+    slotItem: ConsumableType?,
     inventorySlots: List<InventorySlot?>,
     dragState: DragDropState,
     onUse: () -> Unit,
-    onPositioned: (androidx.compose.ui.geometry.Rect) -> Unit,
-    modifier: Modifier = Modifier
+    onPositioned: (androidx.compose.ui.geometry.Rect) -> Unit
 ) {
-    val quantity = if (quickSlotItem != null)
+    val quantity = if (slotItem != null)
         inventorySlots.filterIsInstance<InventorySlot.ConsumableItem>()
-            .firstOrNull { it.type == quickSlotItem }?.quantity ?: 0
+            .firstOrNull { it.type == slotItem }?.quantity ?: 0
     else 0
 
     val isDropTarget = dragState.consumableType != null
-    val borderColor = when (quickSlotItem) {
+    val borderColor = when (slotItem) {
         ConsumableType.RED_POTION    -> Color(0xFFEF5350)
         ConsumableType.ORANGE_POTION -> Color(0xFFFF9800)
         null -> if (isDropTarget) Color(0xFF88CCFF) else Color(0xFF445566)
     }
-    val bgColor = when (quickSlotItem) {
+    val bgColor = when (slotItem) {
         ConsumableType.RED_POTION    -> Color(0xCC3A0010)
         ConsumableType.ORANGE_POTION -> Color(0xCC3A1A00)
         null -> Color(0xCC0A1525)
     }
-    val label = when (quickSlotItem) {
+    val label = when (slotItem) {
         ConsumableType.RED_POTION    -> "빨포"
         ConsumableType.ORANGE_POTION -> "주포"
         null -> "포션"
     }
 
     Box(
-        modifier = modifier
+        modifier = Modifier
             .size(56.dp)
-            .onGloballyPositioned { coords ->
-                onPositioned(coords.boundsInWindow())
-            }
+            .onGloballyPositioned { coords -> onPositioned(coords.boundsInWindow()) }
             .clip(RoundedCornerShape(8.dp))
             .background(bgColor)
             .border(
@@ -2824,7 +2848,7 @@ private fun PotionQuickSlot(
                 color = borderColor,
                 shape = RoundedCornerShape(8.dp)
             )
-            .clickable(enabled = quickSlotItem != null && quantity > 0) { onUse() }
+            .clickable(enabled = slotItem != null && quantity > 0) { onUse() }
             .padding(4.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -2834,12 +2858,12 @@ private fun PotionQuickSlot(
         ) {
             Text(
                 text = label,
-                color = if (quickSlotItem != null) borderColor else Color(0xFF667788),
+                color = if (slotItem != null) borderColor else Color(0xFF667788),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
-            if (quickSlotItem != null) {
+            if (slotItem != null) {
                 Text(
                     text = "×$quantity",
                     color = if (quantity > 0) TextGold else Color(0xFF886644),
