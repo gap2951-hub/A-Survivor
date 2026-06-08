@@ -224,6 +224,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveNow() = saveService.save(_uiState.value)
+    fun hasSave(): Boolean = saveService.hasSave()
 
     override fun onCleared() {
         super.onCleared()

@@ -208,10 +208,13 @@ class MainActivity : ComponentActivity() {
 
             when (currentScreen) {
                 AppScreen.Title -> TitleScreen(
-                    onStart = {
-                        vm.startGame()
+                    hasSave = vm.hasSave(),
+                    onContinue = {
                         currentScreen = AppScreen.Game
                         SoundManager.switchBgm(SoundManager.Bgm.BATTLE)
+                    },
+                    onNewGame = {
+                        currentScreen = AppScreen.JobSelect
                     }
                 )
                 AppScreen.JobSelect -> JobSelectScreen(
@@ -2877,7 +2880,11 @@ private fun PotionQuickSlot(
 
 // ── 타이틀 화면 ───────────────────────────────────────────────────────────────
 @Composable
-fun TitleScreen(onStart: () -> Unit) {
+fun TitleScreen(
+    hasSave: Boolean,
+    onContinue: () -> Unit,
+    onNewGame: () -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -2907,26 +2914,36 @@ fun TitleScreen(onStart: () -> Unit) {
                     .width(220.dp)
                     .padding(vertical = 8.dp)
             )
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF241500))
-                    .border(1.dp, BorderGold, RoundedCornerShape(6.dp))
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { onStart() }
-                    .padding(horizontal = 52.dp, vertical = 14.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "게임 시작",
-                    color = TextGold,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
+            if (hasSave) {
+                TitleButton(text = "이어하기", onClick = onContinue)
+                TitleButton(text = "새 게임", onClick = onNewGame)
+            } else {
+                TitleButton(text = "게임 시작", onClick = onNewGame)
             }
         }
+    }
+}
+
+@Composable
+private fun TitleButton(text: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFF241500))
+            .border(1.dp, BorderGold, RoundedCornerShape(6.dp))
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onClick() }
+            .padding(horizontal = 52.dp, vertical = 14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = TextGold,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
