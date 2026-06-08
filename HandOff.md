@@ -126,6 +126,7 @@ Box (게임 화면)
  ├── DragGhost
  ├── JobAdvancementDialog  ← jobAdvancementPending=true 일 때만 표시 (전직 팝업 오버레이)
  ├── MessageLogOverlay (우하단) ← EXP/돈/아이템 획득 메시지 (최대 5개, 2초 자동 소멸)
+ ├── PotionQuickSlotRow (하단 중앙) ← 물약 퀵슬롯 3개 행 (padding bottom=20.dp)
  ├── [대화하기] Button (하단 중앙) ← NPC 근접 시만 표시 (activeDialogue==null)
  └── DialogueWindow (zIndex 20, 하단 전체폭) ← activeDialogue != null 시 표시
 ```
@@ -400,9 +401,13 @@ data class DamageNumber(
 ## 화면 흐름 (AppScreen)
 
 ```
-AppScreen.Title    → "게임 시작" 클릭 → vm.startGame() → AppScreen.Game
-AppScreen.Game     → 초보자(BEGINNER)로 시작, 레벨 3 도달 시 JobAdvancementDialog 자동 표시
-AppScreen.JobSelect → NPC 전직 연동용으로 코드 유지 (현재 미사용)
+AppScreen.Title
+  ├── 세이브 있음 → "이어하기" 클릭 → AppScreen.Game (startGame() 호출 없음 — 로드된 상태 유지)
+  │               "새 게임" 클릭  → AppScreen.JobSelect
+  └── 세이브 없음 → "게임 시작" 클릭 → AppScreen.JobSelect
+
+AppScreen.JobSelect → 직업 선택 후 "전직하기" → vm.startGame(job) → AppScreen.Game
+AppScreen.Game      → 초보자(BEGINNER)로 시작, 레벨 3 도달 시 JobAdvancementDialog 자동 표시
 ```
 
 ---
@@ -794,11 +799,13 @@ val inventorySlots: List<InventorySlot?> = List(32) { null },  // 4열 × 8행
 sealed class InventorySlot {
     data class ScrollItem(val type: ScrollType, val quantity: Int) : InventorySlot()
     data class EquipItem(val equipment: Equipment) : InventorySlot()
+    data class ConsumableItem(val type: ConsumableType, val quantity: Int) : InventorySlot()
 }
 ```
 
 - 같은 종류 스크롤은 동일 슬롯에 스택 (`addScrollToSlots`)
 - 장비는 개별 슬롯 점유 (`addEquipToSlots`)
+- 같은 ConsumableType 소비 아이템은 동일 슬롯에 스택
 
 ### 장비 해제 → 인벤토리 이동
 
@@ -1152,6 +1159,11 @@ SoundManager.release()          // onDestroy
 | 157 | init 블록 몬스터 스폰 버그 수정 — CSV 로드 전 createInitialState() 호출로 MonsterRegistry 비어있던 문제, 로드 후 재설정 | ✅ |
 | 158 | 아이템 픽업 범위 축소 — PICKUP_RANGE 150f → 30f (캐릭터가 아이템 위에 올라가야 획득) | ✅ |
 | 159 | 투사체 범위 외 몬스터 피격 버그 수정 — ProjectileService 충돌 판정을 targetMonsterId 일치 몬스터만으로 제한 | ✅ |
+| 160 | ConsumableType/ConsumableCatalog 모델 추가 + InventorySlot.ConsumableItem 추가 — 소비 아이템(물약) 인벤토리 슬롯 타입 및 카탈로그 | ✅ |
+| 161 | DragDropState consumableType 확장 — 소비 아이템 드래그 지원, ConsumableDragGhost 렌더링 | ✅ |
+| 162 | 물약 퀵슬롯 3개 구현 — 하단 중앙 PotionQuickSlotRow, 인벤토리 꾹 눌러 드래그 등록, 클릭으로 사용 | ✅ |
+| 163 | mutableStateListOf import 누락 빌드 오류 수정 — quickSlotBounds 3슬롯 List 선언에 필요한 import 추가 | ✅ |
+| 164 | 앱 재시작 시 세이브 데이터 초기화 버그 수정 — 타이틀 이어하기/새 게임 버튼 분리, 이어하기는 startGame() 호출 없이 로드된 상태 유지 | ✅ |
 
 ---
 
@@ -1392,6 +1404,15 @@ data class SavedSlot(
 | ViewModel 소멸 | `onCleared()` 오버라이드에서 즉시 저장 |
 | 새 게임 시작 | `startGame()` 에서 새 상태 즉시 저장 (기존 세이브 덮어씀) |
 
+### 이어하기 흐름
+
+1. ViewModel `init` → `saveService.load()` → `_uiState.value = restoreState(data)` (세이브 로드)
+2. 타이틀 "이어하기" 클릭 → `currentScreen = AppScreen.Game` **(`startGame()` 호출 없음)**
+3. 로드된 상태 그대로 게임 진입 (레벨·인벤토리·소지금·맵 모두 유지)
+
+> **주의**: 타이틀에서 `startGame()`을 호출하면 `createInitialState()`로 초기화되어 세이브가 덮어씌워짐.
+> 이어하기는 반드시 `startGame()` 없이 화면 전환만 수행해야 함.
+
 ### 복원 로직 (restoreState)
 
 - enum은 `runCatching { Enum.valueOf(str) }.getOrDefault(기본값)` — 알 수 없는 값 안전 처리
@@ -1405,6 +1426,61 @@ data class SavedSlot(
 ```kotlin
 // app/build.gradle.kts
 implementation("com.google.code.gson:gson:2.10.1")
+```
+
+---
+
+## 포션 퀵슬롯 시스템
+
+### UiState 추가 필드
+
+```kotlin
+val quickSlots: List<ConsumableType?> = List(3) { null }
+```
+
+### ViewModel 함수
+
+| 함수 | 동작 |
+|------|------|
+| `assignQuickSlot(index, type)` | quickSlots[index] = type (인벤토리에서 드래그 등록) |
+| `useQuickSlotPotion(index)` | quickSlots[index] 포션 사용 (usePotion 호출) |
+
+### 드래그 플로우
+
+```
+인벤토리 ConsumableItem 꾹 누르기
+  → dragState.consumableType = ConsumableType
+  → ConsumableDragGhost 렌더링 (손가락 위치 추적)
+  → 손 뗌 → onConsumableDragEnd(ct, dropPos)
+     → quickSlotBounds.indexOfFirst { it?.contains(dropPos) == true }
+     → 일치 슬롯 있으면 onAssignQuickSlot(idx, ct)
+```
+
+### DragDropState 확장
+
+```kotlin
+class DragDropState {
+    var scrollType     by mutableStateOf<ScrollType?>(null)
+    var consumableType by mutableStateOf<ConsumableType?>(null)
+    var position       by mutableStateOf(Offset.Zero)
+    val isDragging     get() = scrollType != null || consumableType != null
+}
+```
+
+### 퀵슬롯 UI 컴포저블
+
+| 컴포저블 | 역할 |
+|---------|------|
+| `PotionQuickSlotRow` | 3개 슬롯 Row, 하단 중앙 (`Alignment.BottomCenter`, padding bottom=20.dp) |
+| `PotionQuickSlot` | 단일 슬롯 — 등록된 포션 이미지/이름 표시, 클릭 시 사용, `onGloballyPositioned`로 bounds 등록 |
+| `ConsumableDragGhost` | 드래그 중 손가락 위치에 포션 이미지 표시 |
+
+### 슬롯 위치 추적 (드롭 판정용)
+
+```kotlin
+val quickSlotBounds = remember { mutableStateListOf<Rect?>(null, null, null) }
+// 각 슬롯이 onSlotPositioned { idx, rect -> quickSlotBounds[idx] = rect } 호출
+// import androidx.compose.runtime.mutableStateListOf 필요
 ```
 
 ---
