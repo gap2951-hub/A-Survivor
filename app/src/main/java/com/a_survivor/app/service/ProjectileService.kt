@@ -36,9 +36,8 @@ class ProjectileService {
             if (newTraveled >= proj.maxTravelDistance) continue
 
             val hit = monsters.firstOrNull { m ->
-                val mdx = m.positionX - newX
-                val mdy = m.positionY - newY
-                sqrt(mdx * mdx + mdy * mdy) <= COLLISION_RADIUS
+                m.id == proj.targetMonsterId &&
+                sqrt((m.positionX - newX) * (m.positionX - newX) + (m.positionY - newY) * (m.positionY - newY)) <= COLLISION_RADIUS
             }
 
             if (hit != null) {

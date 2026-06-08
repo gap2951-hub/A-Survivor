@@ -158,7 +158,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val RESPAWN_DELAY         = 5000L
         private const val RESPAWN_CHECK_INTERVAL = 1000L
         private const val DAMAGE_NUMBER_DURATION = 800L
-        private const val PICKUP_RANGE          = 150f
+        private const val PICKUP_RANGE          = 30f
         private const val PICKUP_DELAY          = 2000L
         private const val COLLISION_RADIUS      = 10f
         private const val LUMINANCE_THRESHOLD   = 80f

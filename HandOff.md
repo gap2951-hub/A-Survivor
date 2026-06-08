@@ -609,7 +609,7 @@ COLLISION_RADIUS = 16f  // 몬스터 중심과의 거리
 | 장갑 공격력 10% | 3% | 3% | 3% |
 | 백의 주문서 1% | 1% | 1% | 1% |
 
-- **MoneyDrop**: ground item으로 바닥에 드랍 → `coin_0~3.png` 4프레임 애니메이션(150ms 순환) Canvas 렌더링 → PICKUP_DELAY(2000ms) 경과 후 PICKUP_RANGE(150f) 내 자동 습득 → `UiState.money` 가산
+- **MoneyDrop**: ground item으로 바닥에 드랍 → `coin_0~3.png` 4프레임 애니메이션(150ms 순환) Canvas 렌더링 → PICKUP_DELAY(2000ms) 경과 후 PICKUP_RANGE(30f) 내 자동 습득 → `UiState.money` 가산
   - 프레임 인덱스: `((now - item.droppedAt) / 150L % 4).toInt()` — 드랍 시점 기준 개별 타이머
 - **스크롤/장비**: ground item으로 바닥에 드랍 → PICKUP_DELAY(2000ms) 후 PICKUP_RANGE(150f) 내 자동 습득
 - 포탈 이동 시 바닥 아이템 초기화
@@ -691,7 +691,7 @@ AI_TICK_INTERVAL       = 16ms
 RESPAWN_DELAY          = 5000ms
 RESPAWN_CHECK_INTERVAL = 1000ms
 DAMAGE_NUMBER_DURATION = 800ms
-PICKUP_RANGE           = 150f
+PICKUP_RANGE           = 30f
 PICKUP_DELAY           = 2000ms
 COLLISION_RADIUS       = 10f
 LUMINANCE_THRESHOLD    = 80f
@@ -1150,6 +1150,8 @@ SoundManager.release()          // onDestroy
 | 155 | drawPlayer 궁수 크기·정렬 수정 — imgW=imgH(정방형), vertRatio=0.95f, size.height*0.15f | ✅ |
 | 156 | onPause 즉시 저장 추가 — moveVm.saveNow() 호출로 강제종료 시에도 데이터 보존 | ✅ |
 | 157 | init 블록 몬스터 스폰 버그 수정 — CSV 로드 전 createInitialState() 호출로 MonsterRegistry 비어있던 문제, 로드 후 재설정 | ✅ |
+| 158 | 아이템 픽업 범위 축소 — PICKUP_RANGE 150f → 30f (캐릭터가 아이템 위에 올라가야 획득) | ✅ |
+| 159 | 투사체 범위 외 몬스터 피격 버그 수정 — ProjectileService 충돌 판정을 targetMonsterId 일치 몬스터만으로 제한 | ✅ |
 
 ---
 
