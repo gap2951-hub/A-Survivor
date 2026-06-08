@@ -151,9 +151,10 @@ private val TipLine    = Color(0xFF3A3A4A)
 
 // ── 드래그 상태 ───────────────────────────────────────────────────────────────
 class DragDropState {
-    var scrollType by mutableStateOf<ScrollType?>(null)
-    var position   by mutableStateOf(Offset.Zero)
-    val isDragging get() = scrollType != null
+    var scrollType     by mutableStateOf<ScrollType?>(null)
+    var consumableType by mutableStateOf<ConsumableType?>(null)
+    var position       by mutableStateOf(Offset.Zero)
+    val isDragging     get() = scrollType != null || consumableType != null
 }
 
 // ── 화면 상태 ─────────────────────────────────────────────────────────────────
@@ -238,9 +239,11 @@ class MainActivity : ComponentActivity() {
                     onCloseDialogue     = vm::closeDialogue,
                     onCloseShop         = vm::closeShop,
                     onBuyItem           = { shopType, itemId, qty -> vm.buyShopItem(shopType, itemId, qty) },
-                    onSellEquipment     = vm::sellEquipmentBySlot,
-                    onSellStackable     = vm::sellStackableItem,
-                    onUsePotion         = vm::usePotion
+                    onSellEquipment      = vm::sellEquipmentBySlot,
+                    onSellStackable      = vm::sellStackableItem,
+                    onUsePotion          = vm::usePotion,
+                    onAssignQuickSlot    = vm::assignQuickSlot,
+                    onUseQuickSlotPotion = vm::useQuickSlotPotion
                 )
             }
         }
@@ -286,7 +289,9 @@ fun MainScreen(
     onBuyItem: (ShopType, Int, Int) -> Unit = { _, _, _ -> },
     onSellEquipment: (Int) -> Unit = {},
     onSellStackable: (String, ShopItemType, Int) -> Unit = { _, _, _ -> },
-    onUsePotion: (ConsumableType) -> Unit = {}
+    onUsePotion: (ConsumableType) -> Unit = {},
+    onAssignQuickSlot: (ConsumableType) -> Unit = {},
+    onUseQuickSlotPotion: () -> Unit = {}
 ) {
     val dragState        = remember { DragDropState() }
     var isEquipmentOpen  by remember { mutableStateOf(false) }
@@ -295,6 +300,7 @@ fun MainScreen(
     var bgmMuted         by remember { mutableStateOf(SoundManager.bgmMuted) }
     var sfxMuted         by remember { mutableStateOf(SoundManager.sfxMuted) }
     var equipSlotBounds  by remember { mutableStateOf<Rect?>(null) }
+    var quickSlotBounds  by remember { mutableStateOf<Rect?>(null) }
     var rootWindowOffset by remember { mutableStateOf(Offset.Zero) }
 
     var joystickDirX by remember { mutableStateOf(0f) }
@@ -430,19 +436,24 @@ fun MainScreen(
                     .width(280.dp)
             ) {
                 InventoryWindow(
-                    slots            = state.inventorySlots,
-                    money            = state.money,
-                    dragState        = dragState,
-                    rootWindowOffset = rootWindowOffset,
-                    onEquip          = onEquipFromInventory,
-                    onUsePotion      = onUsePotion,
-                    onClose          = { isInventoryOpen = false },
-                    onDragEnd        = { scrollType, dropPos ->
+                    slots               = state.inventorySlots,
+                    money               = state.money,
+                    dragState           = dragState,
+                    rootWindowOffset    = rootWindowOffset,
+                    onEquip             = onEquipFromInventory,
+                    onUsePotion         = onUsePotion,
+                    onClose             = { isInventoryOpen = false },
+                    onDragEnd           = { scrollType, dropPos ->
                         if (isEquipmentOpen &&
                             equipSlotBounds?.contains(dropPos) == true &&
                             state.equipment != null && !state.equipment.destroyed) {
                             onScrollSelected(scrollType)
                             onEnhance()
+                        }
+                    },
+                    onConsumableDragEnd = { ct, dropPos ->
+                        if (quickSlotBounds?.contains(dropPos) == true) {
+                            onAssignQuickSlot(ct)
                         }
                     },
                     onDrag = { delta -> inventOffset = clampWin(inventOffset + delta) }
@@ -481,7 +492,19 @@ fun MainScreen(
             }
         }
 
-        // ⑦ 가상 조이스틱 (왼쪽 하단 고정)
+        // ⑦ 포션 퀵슬롯 (하단 중앙)
+        PotionQuickSlot(
+            quickSlotItem  = state.quickSlotItem,
+            inventorySlots = state.inventorySlots,
+            dragState      = dragState,
+            onUse          = onUseQuickSlotPotion,
+            onPositioned   = { quickSlotBounds = it },
+            modifier       = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 20.dp)
+        )
+
+        // ⑧ 가상 조이스틱 (왼쪽 하단 고정)
         JoystickControl(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -493,9 +516,15 @@ fun MainScreen(
         )
 
         // ⑧ 드래그 중인 아이템 고스트
-        if (dragState.isDragging) {
+        if (dragState.scrollType != null) {
             DragGhost(
                 scrollType = dragState.scrollType!!,
+                windowPosition = dragState.position,
+                rootOffset = rootWindowOffset
+            )
+        } else if (dragState.consumableType != null) {
+            ConsumableDragGhost(
+                consumableType = dragState.consumableType!!,
                 windowPosition = dragState.position,
                 rootOffset = rootWindowOffset
             )
@@ -2424,6 +2453,7 @@ fun InventoryWindow(
     dragState: DragDropState,
     rootWindowOffset: Offset,
     onDragEnd: (ScrollType, Offset) -> Unit,
+    onConsumableDragEnd: (ConsumableType, Offset) -> Unit = { _, _ -> },
     onEquip: (Equipment) -> Unit = {},
     onUsePotion: (ConsumableType) -> Unit = {},
     onClose: (() -> Unit)? = null,
@@ -2485,10 +2515,13 @@ fun InventoryWindow(
                                 modifier  = Modifier.weight(1f)
                             )
                             is InventorySlot.ConsumableItem -> ConsumableInventoryItem(
-                                consumableType = slot.type,
-                                quantity       = slot.quantity,
-                                onUsePotion    = onUsePotion,
-                                modifier       = Modifier.weight(1f)
+                                consumableType      = slot.type,
+                                quantity            = slot.quantity,
+                                onUsePotion         = onUsePotion,
+                                dragState           = dragState,
+                                rootWindowOffset    = rootWindowOffset,
+                                onConsumableDragEnd = onConsumableDragEnd,
+                                modifier            = Modifier.weight(1f)
                             )
                         }
                     }
@@ -2699,6 +2732,120 @@ private fun DragGhost(
                     fontSize = 20.sp, fontWeight = FontWeight.Bold
                 )
                 Text("주문서", color = TextGold.copy(alpha = 0.7f), fontSize = 9.sp)
+            }
+        }
+    }
+}
+
+// ── 소비 아이템 드래그 고스트 ─────────────────────────────────────────────────
+@Composable
+private fun ConsumableDragGhost(
+    consumableType: ConsumableType,
+    windowPosition: Offset,
+    rootOffset: Offset
+) {
+    val localPos  = windowPosition - rootOffset
+    val ghostSize = 72.dp
+    val borderColor = when (consumableType) {
+        ConsumableType.RED_POTION    -> Color(0xFFEF5350)
+        ConsumableType.ORANGE_POTION -> Color(0xFFFF9800)
+    }
+    val bgColor = when (consumableType) {
+        ConsumableType.RED_POTION    -> Color(0xDD3A0010)
+        ConsumableType.ORANGE_POTION -> Color(0xDD3A1A00)
+    }
+    val label = when (consumableType) {
+        ConsumableType.RED_POTION    -> "빨포"
+        ConsumableType.ORANGE_POTION -> "주포"
+    }
+
+    Box(
+        modifier = Modifier
+            .offset {
+                IntOffset(
+                    (localPos.x - ghostSize.toPx() / 2).roundToInt(),
+                    (localPos.y - ghostSize.toPx() / 2).roundToInt()
+                )
+            }
+            .size(ghostSize)
+            .zIndex(100f)
+            .clip(RoundedCornerShape(8.dp))
+            .background(bgColor)
+            .border(2.dp, borderColor, RoundedCornerShape(8.dp))
+            .padding(8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(label, color = borderColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+// ── 포션 퀵슬롯 ───────────────────────────────────────────────────────────────
+@Composable
+private fun PotionQuickSlot(
+    quickSlotItem: ConsumableType?,
+    inventorySlots: List<InventorySlot?>,
+    dragState: DragDropState,
+    onUse: () -> Unit,
+    onPositioned: (androidx.compose.ui.geometry.Rect) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val quantity = if (quickSlotItem != null)
+        inventorySlots.filterIsInstance<InventorySlot.ConsumableItem>()
+            .firstOrNull { it.type == quickSlotItem }?.quantity ?: 0
+    else 0
+
+    val isDropTarget = dragState.consumableType != null
+    val borderColor = when (quickSlotItem) {
+        ConsumableType.RED_POTION    -> Color(0xFFEF5350)
+        ConsumableType.ORANGE_POTION -> Color(0xFFFF9800)
+        null -> if (isDropTarget) Color(0xFF88CCFF) else Color(0xFF445566)
+    }
+    val bgColor = when (quickSlotItem) {
+        ConsumableType.RED_POTION    -> Color(0xCC3A0010)
+        ConsumableType.ORANGE_POTION -> Color(0xCC3A1A00)
+        null -> Color(0xCC0A1525)
+    }
+    val label = when (quickSlotItem) {
+        ConsumableType.RED_POTION    -> "빨포"
+        ConsumableType.ORANGE_POTION -> "주포"
+        null -> "포션"
+    }
+
+    Box(
+        modifier = modifier
+            .size(56.dp)
+            .onGloballyPositioned { coords ->
+                onPositioned(coords.boundsInWindow())
+            }
+            .clip(RoundedCornerShape(8.dp))
+            .background(bgColor)
+            .border(
+                width = if (isDropTarget) 2.dp else 1.dp,
+                color = borderColor,
+                shape = RoundedCornerShape(8.dp)
+            )
+            .clickable(enabled = quickSlotItem != null && quantity > 0) { onUse() }
+            .padding(4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = label,
+                color = if (quickSlotItem != null) borderColor else Color(0xFF667788),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            if (quickSlotItem != null) {
+                Text(
+                    text = "×$quantity",
+                    color = if (quantity > 0) TextGold else Color(0xFF886644),
+                    fontSize = 10.sp,
+                    textAlign = TextAlign.Center
+                )
             }
         }
     }
@@ -3299,6 +3446,9 @@ private fun ConsumableInventoryItem(
     consumableType: ConsumableType,
     quantity: Int,
     onUsePotion: (ConsumableType) -> Unit,
+    dragState: DragDropState,
+    rootWindowOffset: Offset,
+    onConsumableDragEnd: (ConsumableType, Offset) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val info = ConsumableCatalog.get(consumableType)
@@ -3316,6 +3466,8 @@ private fun ConsumableInventoryItem(
     }
 
     var showInfo by remember { mutableStateOf(false) }
+    var itemWindowPos by remember { mutableStateOf(Offset.Zero) }
+    val isBeingDragged = dragState.consumableType == consumableType
 
     Box(
         modifier = modifier
@@ -3323,7 +3475,27 @@ private fun ConsumableInventoryItem(
             .clip(RoundedCornerShape(6.dp))
             .background(bgColor)
             .border(1.dp, borderColor.copy(alpha = 0.7f), RoundedCornerShape(6.dp))
-            .clickable { showInfo = true }
+            .alpha(if (isBeingDragged) 0.25f else 1f)
+            .onGloballyPositioned { itemWindowPos = it.positionInWindow() }
+            .pointerInput(consumableType) {
+                detectTapGestures(onTap = { showInfo = true })
+            }
+            .pointerInput(consumableType) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { localOffset ->
+                        dragState.consumableType = consumableType
+                        dragState.position = itemWindowPos + localOffset - rootWindowOffset
+                    },
+                    onDrag = { _, delta -> dragState.position += delta },
+                    onDragEnd = {
+                        val finalPos = dragState.position + rootWindowOffset
+                        val ct = dragState.consumableType
+                        dragState.consumableType = null
+                        if (ct != null) onConsumableDragEnd(ct, finalPos)
+                    },
+                    onDragCancel = { dragState.consumableType = null }
+                )
+            }
             .padding(4.dp),
         contentAlignment = Alignment.Center
     ) {

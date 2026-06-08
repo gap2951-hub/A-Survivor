@@ -109,7 +109,8 @@ data class UiState(
     val pendingPlayerAttack: PendingPlayerAttack? = null,
     val playerDeathTime: Long = 0L,
     val activeShop: ShopInfo? = null,
-    val messages: List<GameMessage> = emptyList()
+    val messages: List<GameMessage> = emptyList(),
+    val quickSlotItem: ConsumableType? = null
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -1118,5 +1119,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 inventorySlots = newSlots
             )
         }
+    }
+
+    fun assignQuickSlot(type: ConsumableType) {
+        _uiState.update { it.copy(quickSlotItem = type) }
+    }
+
+    fun useQuickSlotPotion() {
+        val type = _uiState.value.quickSlotItem ?: return
+        usePotion(type)
     }
 }
