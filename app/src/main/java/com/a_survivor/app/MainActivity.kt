@@ -1527,12 +1527,12 @@ private fun GameCanvas(
         loadBitmap(context, R.drawable.warrior_die_5, 256)
     ) }
 
-    // 궁수 플레이어 스프라이트 프레임 (궁수-Sheet.png: 140×109 per frame)
-    val archerIdle   = remember { sliceSheet(context, R.drawable.archer_sheet, 140, 0,    5) }
-    val archerWalk   = remember { sliceSheet(context, R.drawable.archer_sheet, 140, 980,  4) }
-    val archerAttack = remember { sliceSheet(context, R.drawable.archer_sheet, 140, 1960, 6) }
-    val archerHurt   = remember { sliceSheet(context, R.drawable.archer_sheet, 140, 2940, 4) }
-    val archerDie    = remember { sliceSheet(context, R.drawable.archer_sheet, 140, 4060, 5) }
+    // 궁수 플레이어 스프라이트 프레임 (궁수-Sheet.png: 2400×53, 프레임 폭 68px)
+    val archerIdle   = remember { sliceSheet(context, R.drawable.archer_sheet, 68, 0,    5) }
+    val archerWalk   = remember { sliceSheet(context, R.drawable.archer_sheet, 68, 480,  4) }
+    val archerAttack = remember { sliceSheet(context, R.drawable.archer_sheet, 68, 960,  6) }
+    val archerHurt   = remember { sliceSheet(context, R.drawable.archer_sheet, 68, 1440, 4) }
+    val archerDie    = remember { sliceSheet(context, R.drawable.archer_sheet, 68, 1983, 5) }
 
     Canvas(modifier = modifier.fillMaxSize()) {
         val zoom = maxOf(size.width / world.width, size.height / world.height)
