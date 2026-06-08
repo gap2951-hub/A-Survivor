@@ -110,7 +110,7 @@ data class UiState(
     val playerDeathTime: Long = 0L,
     val activeShop: ShopInfo? = null,
     val messages: List<GameMessage> = emptyList(),
-    val quickSlotItem: ConsumableType? = null
+    val quickSlots: List<ConsumableType?> = List(3) { null }
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -1121,12 +1121,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun assignQuickSlot(type: ConsumableType) {
-        _uiState.update { it.copy(quickSlotItem = type) }
+    fun assignQuickSlot(index: Int, type: ConsumableType) {
+        _uiState.update { state ->
+            val updated = state.quickSlots.toMutableList().also { it[index] = type }
+            state.copy(quickSlots = updated)
+        }
     }
 
-    fun useQuickSlotPotion() {
-        val type = _uiState.value.quickSlotItem ?: return
+    fun useQuickSlotPotion(index: Int) {
+        val type = _uiState.value.quickSlots.getOrNull(index) ?: return
         usePotion(type)
     }
 }
