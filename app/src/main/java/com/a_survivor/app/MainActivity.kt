@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.nativeCanvas
@@ -1363,12 +1364,30 @@ private fun sliceSheet(
 ): List<ImageBitmap> {
     val full = BitmapFactory.decodeResource(
         context.resources, resId,
-        BitmapFactory.Options().apply { inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888 }
+        BitmapFactory.Options().apply {
+            inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
+            inScaled = false  // DPI 스케일 방지 — 원본 픽셀 좌표 그대로 유지
+        }
     )
     val h = full.height
     return (0 until count).map { i ->
-        android.graphics.Bitmap.createBitmap(full, startX + i * frameW, 0, frameW, h).asImageBitmap()
+        val raw = android.graphics.Bitmap.createBitmap(full, startX + i * frameW, 0, frameW, h)
+        thresholdAlpha(raw).asImageBitmap()
     }
+}
+
+// 배경 제거 PNG의 반투명 픽셀을 불투명/투명으로 이진화
+private fun thresholdAlpha(bmp: android.graphics.Bitmap, threshold: Int = 30): android.graphics.Bitmap {
+    val w = bmp.width; val h = bmp.height
+    val pixels = IntArray(w * h)
+    bmp.getPixels(pixels, 0, w, 0, 0, w, h)
+    for (i in pixels.indices) {
+        val a = (pixels[i] ushr 24) and 0xFF
+        pixels[i] = if (a >= threshold) (pixels[i] or (0xFF shl 24).toInt()) else 0
+    }
+    val out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+    out.setPixels(pixels, 0, w, 0, 0, w, h)
+    return out
 }
 
 // ── 게임 캔버스 ───────────────────────────────────────────────────────────────
@@ -1762,7 +1781,11 @@ private fun DrawScope.drawPlayer(
 ) {
     val c    = cam.toScreenOffset(player.positionX, player.positionY, size.width, size.height)
     val imgH = (size.height * 0.11f).toInt().coerceAtLeast(24)
-    val imgW = imgH
+    // archer 프레임은 68×53 비정방형 — 가로 비율 보정
+    val isArcher = player.job == PlayerJob.ARCHER
+    val imgW = if (isArcher) (imgH * 68f / 53f).toInt() else imgH
+    // archer 프레임에서 캐릭터 발이 ~90% 높이에 위치 → 정렬 보정
+    val vertRatio = if (isArcher) 0.90f else 0.75f
     val now  = System.currentTimeMillis()
 
     val isDead      = player.hp <= 0
@@ -1792,9 +1815,10 @@ private fun DrawScope.drawPlayer(
         if (player.facingLeft) scale(-1f, 1f, pivot = c)
     }) {
         drawImage(
-            image     = bitmap,
-            dstOffset = IntOffset((c.x - imgW / 2f).toInt(), (c.y - imgH * 0.75f).toInt()),
-            dstSize   = IntSize(imgW, imgH)
+            image         = bitmap,
+            dstOffset     = IntOffset((c.x - imgW / 2f).toInt(), (c.y - imgH * vertRatio).toInt()),
+            dstSize       = IntSize(imgW, imgH),
+            filterQuality = FilterQuality.None
         )
     }
 }
