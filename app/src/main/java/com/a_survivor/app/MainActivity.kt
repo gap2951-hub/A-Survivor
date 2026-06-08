@@ -1355,41 +1355,6 @@ private fun loadBitmap(context: android.content.Context, resId: Int, maxSize: In
     return BitmapFactory.decodeResource(context.resources, resId, opts).asImageBitmap()
 }
 
-private fun sliceSheet(
-    context: android.content.Context,
-    resId: Int,
-    frameW: Int,
-    startX: Int,
-    count: Int
-): List<ImageBitmap> {
-    val full = BitmapFactory.decodeResource(
-        context.resources, resId,
-        BitmapFactory.Options().apply {
-            inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
-            inScaled = false  // DPI 스케일 방지 — 원본 픽셀 좌표 그대로 유지
-        }
-    )
-    val h = full.height
-    return (0 until count).map { i ->
-        val raw = android.graphics.Bitmap.createBitmap(full, startX + i * frameW, 0, frameW, h)
-        thresholdAlpha(raw).asImageBitmap()
-    }
-}
-
-// 배경 제거 PNG의 반투명 픽셀을 불투명/투명으로 이진화
-private fun thresholdAlpha(bmp: android.graphics.Bitmap, threshold: Int = 30): android.graphics.Bitmap {
-    val w = bmp.width; val h = bmp.height
-    val pixels = IntArray(w * h)
-    bmp.getPixels(pixels, 0, w, 0, 0, w, h)
-    for (i in pixels.indices) {
-        val a = (pixels[i] ushr 24) and 0xFF
-        pixels[i] = if (a >= threshold) (pixels[i] or (0xFF shl 24).toInt()) else 0
-    }
-    val out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
-    out.setPixels(pixels, 0, w, 0, 0, w, h)
-    return out
-}
-
 // ── 게임 캔버스 ───────────────────────────────────────────────────────────────
 @Composable
 private fun GameCanvas(
@@ -1546,12 +1511,41 @@ private fun GameCanvas(
         loadBitmap(context, R.drawable.warrior_die_5, 256)
     ) }
 
-    // 궁수 플레이어 스프라이트 프레임 (궁수-Sheet.png: 2400×53, 프레임 폭 68px)
-    val archerIdle   = remember { sliceSheet(context, R.drawable.archer_sheet, 68, 0,    5) }
-    val archerWalk   = remember { sliceSheet(context, R.drawable.archer_sheet, 68, 480,  4) }
-    val archerAttack = remember { sliceSheet(context, R.drawable.archer_sheet, 68, 960,  6) }
-    val archerHurt   = remember { sliceSheet(context, R.drawable.archer_sheet, 68, 1440, 4) }
-    val archerDie    = remember { sliceSheet(context, R.drawable.archer_sheet, 68, 1983, 5) }
+    // 궁수 플레이어 스프라이트 프레임
+    val archerIdle   = remember { listOf(
+        loadBitmap(context, R.drawable.archer_idle_0, 256),
+        loadBitmap(context, R.drawable.archer_idle_1, 256),
+        loadBitmap(context, R.drawable.archer_idle_2, 256),
+        loadBitmap(context, R.drawable.archer_idle_3, 256),
+        loadBitmap(context, R.drawable.archer_idle_4, 256)
+    ) }
+    val archerWalk   = remember { listOf(
+        loadBitmap(context, R.drawable.archer_walk_0, 256),
+        loadBitmap(context, R.drawable.archer_walk_1, 256),
+        loadBitmap(context, R.drawable.archer_walk_2, 256),
+        loadBitmap(context, R.drawable.archer_walk_3, 256)
+    ) }
+    val archerAttack = remember { listOf(
+        loadBitmap(context, R.drawable.archer_attack_0, 256),
+        loadBitmap(context, R.drawable.archer_attack_1, 256),
+        loadBitmap(context, R.drawable.archer_attack_2, 256),
+        loadBitmap(context, R.drawable.archer_attack_3, 256),
+        loadBitmap(context, R.drawable.archer_attack_4, 256),
+        loadBitmap(context, R.drawable.archer_attack_5, 256)
+    ) }
+    val archerHurt   = remember { listOf(
+        loadBitmap(context, R.drawable.archer_hurt_0, 256),
+        loadBitmap(context, R.drawable.archer_hurt_1, 256),
+        loadBitmap(context, R.drawable.archer_hurt_2, 256),
+        loadBitmap(context, R.drawable.archer_hurt_3, 256)
+    ) }
+    val archerDie    = remember { listOf(
+        loadBitmap(context, R.drawable.archer_die_0, 256),
+        loadBitmap(context, R.drawable.archer_die_1, 256),
+        loadBitmap(context, R.drawable.archer_die_2, 256),
+        loadBitmap(context, R.drawable.archer_die_3, 256),
+        loadBitmap(context, R.drawable.archer_die_4, 256)
+    ) }
 
     Canvas(modifier = modifier.fillMaxSize()) {
         val zoom = maxOf(size.width / world.width, size.height / world.height)
@@ -1781,11 +1775,10 @@ private fun DrawScope.drawPlayer(
 ) {
     val c    = cam.toScreenOffset(player.positionX, player.positionY, size.width, size.height)
     val imgH = (size.height * 0.11f).toInt().coerceAtLeast(24)
-    // archer 프레임은 68×53 비정방형 — 가로 비율 보정
     val isArcher = player.job == PlayerJob.ARCHER
-    val imgW = if (isArcher) (imgH * 68f / 53f).toInt() else imgH
-    // archer 프레임에서 캐릭터 발이 ~90% 높이에 위치 → 정렬 보정
-    val vertRatio = if (isArcher) 0.90f else 0.75f
+    val imgW = imgH
+    // archer 개별 프레임(203×203): 캐릭터 발이 ~95% 높이에 위치
+    val vertRatio = if (isArcher) 0.95f else 0.75f
     val now  = System.currentTimeMillis()
 
     val isDead      = player.hp <= 0
