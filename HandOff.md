@@ -485,7 +485,7 @@ val advancePending = state.jobAdvancementPending || (
 | 항목 | 값 |
 |------|-----|
 | 공격 범위 | 직업별 상이 (아래 공격 방식 참조) |
-| 공격 주기 | 1초 (autoAttackEnabled=true 시에만 자동 발동) |
+| 공격 주기 | `derivedStats.attackIntervalMs` (무기 속도 기준, 장비 보너스 차감) — autoAttackEnabled=true 시에만 자동 발동 |
 | 타겟 | 범위 내 최근접 몬스터 |
 | 명중 판정 | `accuracy / (accuracy + monster.avoidability)` 확률로 HIT |
 | MISS 처리 | 명중 실패 시 MISS 텍스트, 투사체 미생성 |
@@ -653,17 +653,30 @@ COLLISION_RADIUS = 16f  // 몬스터 중심과의 거리
 
 ```kotlin
 data class DerivedStats(
-    val attackPower: Int = 0,    // 스탯 성장
-    val magicPower: Int = 0,     // 스탯 성장
-    val accuracy: Int = 0,       // 스탯 성장
-    val avoidability: Int = 0,   // 스탯 성장
-    val physicalDefense: Int = 0, // 장비 전용
-    val magicDefense: Int = 0,   // 장비 전용
-    val criticalRate: Float = 0f, // 장비 전용
-    val moveSpeed: Float = 0f,   // 장비 전용
-    val attackSpeed: Float = 0f  // 장비 전용
+    val attackPower: Int = 0,         // 스탯 성장
+    val magicPower: Int = 0,          // 스탯 성장
+    val accuracy: Int = 0,            // 스탯 성장
+    val avoidability: Int = 0,        // 스탯 성장
+    val physicalDefense: Int = 0,     // 장비 전용
+    val magicDefense: Int = 0,        // 장비 전용
+    val criticalRate: Float = 0f,     // 장비 전용
+    val moveSpeed: Float = 0f,        // 장비 전용
+    val attackSpeed: Float = 0f,      // 장비 보너스 (ms 감소량)
+    val attackIntervalMs: Long = 900L // 실제 공격 주기 = 무기 기준값 − attackSpeed 보너스
 )
 ```
+
+### 무기 공격속도 → 기준 주기 (Weapon.attackIntervalMs())
+
+| 공격속도 문자열 | 기준 주기 |
+|--------------|---------|
+| 매우빠름 | 600ms |
+| 빠름     | 750ms |
+| 보통     | 900ms |
+| 느림     | 1050ms |
+| 매우느림  | 1200ms |
+
+`attackIntervalMs = (weapon.attackIntervalMs() - equipment.attackSpeed).coerceAtLeast(300L)`
 
 ### Equipment 확장 필드 (모두 기본값 0)
 
@@ -698,9 +711,9 @@ criticalRate, moveSpeed, attackSpeed: Float
 ## MainViewModel — 주요 상수
 
 ```kotlin
-MOVE_SPEED             = 2f
-AUTO_ATTACK_INTERVAL   = 1000ms
-AI_TICK_INTERVAL       = 16ms
+MOVE_SPEED                  = 2f
+AUTO_ATTACK_CHECK_INTERVAL  = 100ms  // 공격 루프 체크 빈도 (실제 간격은 derivedStats.attackIntervalMs)
+AI_TICK_INTERVAL            = 16ms
 RESPAWN_DELAY          = 5000ms
 RESPAWN_CHECK_INTERVAL = 1000ms
 DAMAGE_NUMBER_DURATION = 800ms
@@ -1193,6 +1206,8 @@ SoundManager.release()          // onDestroy
 | 181 | UiState.autoAttackEnabled 추가 — autoAttackTick은 false 시 스킵, executeAttack()으로 로직 분리 | ✅ |
 | 182 | toggleAutoAttack() / manualAttack() ViewModel 함수 추가 — AttackButton 콜백 연결 | ✅ |
 | 183 | MessageLogOverlay bottom 조정 — 170.dp → 110.dp (HudButton 제거 후 여백 축소) | ✅ |
+| 184 | 수동 공격 연타 방지 — executeAttack()에 AUTO_ATTACK_INTERVAL 쿨다운 체크 추가 | ✅ |
+| 185 | 무기 공격속도 데이터 기반 공격 주기 적용 — Weapon.attackIntervalMs() 추가, DerivedStats.attackIntervalMs 필드, DerivedStatsCalculator 계산, 루프 100ms 전환 | ✅ |
 
 ---
 
@@ -1516,9 +1531,10 @@ val autoAttackEnabled: Boolean = true  // 세이브에 미포함, 세션마다 t
 |------|------|
 | `toggleAutoAttack()` | autoAttackEnabled 반전 |
 | `manualAttack()` | executeAttack() 직접 호출 (1회) |
-| `executeAttack()` | 기존 autoAttackTick 로직 분리 — 플레이어 hp>0 체크, 투사체/근접 분기 |
+| `executeAttack()` | hp>0 체크 → `derivedStats.attackIntervalMs` 쿨다운 체크 → 투사체/근접 분기 |
 
 - `autoAttackTick()`: `!autoAttackEnabled` 시 즉시 return, 아니면 `executeAttack()` 호출
+- 자동·수동 모두 `executeAttack()` 공유 → 동일한 `attackIntervalMs` 쿨다운 적용, 연타 불가
 
 ---
 
