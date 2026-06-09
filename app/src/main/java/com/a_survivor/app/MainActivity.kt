@@ -47,6 +47,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -254,7 +255,9 @@ class MainActivity : ComponentActivity() {
                     onUsePotion          = vm::usePotion,
                     onAssignQuickSlot    = { idx, type -> vm.assignQuickSlot(idx, type) },
                     onUseQuickSlotPotion = { idx -> vm.useQuickSlotPotion(idx) },
-                    onUseSkill           = vm::useSkill
+                    onUseSkill           = vm::useSkill,
+                    onToggleAutoAttack   = vm::toggleAutoAttack,
+                    onManualAttack       = vm::manualAttack
                 )
             }
         }
@@ -303,12 +306,15 @@ fun MainScreen(
     onUsePotion: (ConsumableType) -> Unit = {},
     onAssignQuickSlot: (Int, ConsumableType) -> Unit = { _, _ -> },
     onUseQuickSlotPotion: (Int) -> Unit = {},
-    onUseSkill: () -> Unit = {}
+    onUseSkill: () -> Unit = {},
+    onToggleAutoAttack: () -> Unit = {},
+    onManualAttack: () -> Unit = {}
 ) {
     val dragState        = remember { DragDropState() }
     var isEquipmentOpen  by remember { mutableStateOf(false) }
     var isInventoryOpen  by remember { mutableStateOf(false) }
     var isStatOpen       by remember { mutableStateOf(false) }
+    var isMenuOpen       by remember { mutableStateOf(false) }
     var bgmMuted         by remember { mutableStateOf(SoundManager.bgmMuted) }
     var sfxMuted         by remember { mutableStateOf(SoundManager.sfxMuted) }
     var equipSlotBounds  by remember { mutableStateOf<Rect?>(null) }
@@ -473,46 +479,136 @@ fun MainScreen(
             }
         }
 
-        // ⑦ 오른쪽 하단: 스킬 버튼 + HUD 버튼
-        Column(
+        // ⑦ 오른쪽 하단: 스킬 버튼 + 기본 공격 버튼
+        Row(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 16.dp, bottom = 20.dp),
-            horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Bottom
         ) {
             val skill = SkillRegistry.skillFor(state.player.job)
             SkillButton(
-                skill          = skill,
-                cooldownUntil  = state.skillCooldownUntil[skill.id] ?: 0L,
-                playerJob      = state.player.job,
-                onUse          = onUseSkill
+                skill         = skill,
+                cooldownUntil = state.skillCooldownUntil[skill.id] ?: 0L,
+                playerJob     = state.player.job,
+                onUse         = onUseSkill
             )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment     = Alignment.CenterVertically
-            ) {
-                HudButton(label = "스탯", isActive = isStatOpen)       { isStatOpen = !isStatOpen }
-                HudButton(label = "장비", isActive = isEquipmentOpen)  { isEquipmentOpen = !isEquipmentOpen }
-                HudButton(label = "인벤", isActive = isInventoryOpen)  { isInventoryOpen = !isInventoryOpen }
-            }
+            AttackButton(
+                autoAttackEnabled = state.autoAttackEnabled,
+                onToggle          = onToggleAutoAttack,
+                onManualAttack    = onManualAttack
+            )
         }
 
-        // ⑧ 우측 상단 사운드 버튼
-        Row(
+        // ⑧ 우측 상단 메뉴 버튼
+        Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(end = 12.dp, top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(end = 12.dp, top = 8.dp)
+                .zIndex(30f)
         ) {
-            HudButton(label = if (bgmMuted) "BGM✗" else "BGM", isActive = !bgmMuted) {
-                bgmMuted = !bgmMuted
-                SoundManager.bgmMuted = bgmMuted
+            // 메뉴 토글 버튼
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isMenuOpen) Color(0xFF3A2800) else Color(0xFF1A1008))
+                    .border(
+                        width = if (isMenuOpen) 1.5.dp else 1.dp,
+                        color = if (isMenuOpen) BorderGold else BorderGold.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { isMenuOpen = !isMenuOpen },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("≡", color = if (isMenuOpen) TextGold else TextMuted, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             }
-            HudButton(label = if (sfxMuted) "SFX✗" else "SFX", isActive = !sfxMuted) {
-                sfxMuted = !sfxMuted
-                SoundManager.sfxMuted = sfxMuted
+
+            // 메뉴 패널
+            if (isMenuOpen) {
+                Column(
+                    modifier = Modifier
+                        .offset(y = 52.dp)
+                        .width(170.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xF01A1008))
+                        .border(1.dp, BorderGold.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    // 음향 설정
+                    Text(
+                        "음향 설정",
+                        color = TextMuted,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 2.dp)
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (!bgmMuted) Color(0xFF3A2800) else Color(0xFF110A00))
+                                .border(
+                                    1.dp,
+                                    if (!bgmMuted) BorderGold else BorderGold.copy(alpha = 0.3f),
+                                    RoundedCornerShape(6.dp)
+                                )
+                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                    bgmMuted = !bgmMuted
+                                    SoundManager.bgmMuted = bgmMuted
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("BGM", color = if (!bgmMuted) TextGold else TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text(if (!bgmMuted) "ON" else "OFF", color = if (!bgmMuted) Color(0xFF66BB6A) else Color(0xFFEF5350), fontSize = 8.sp)
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (!sfxMuted) Color(0xFF3A2800) else Color(0xFF110A00))
+                                .border(
+                                    1.dp,
+                                    if (!sfxMuted) BorderGold else BorderGold.copy(alpha = 0.3f),
+                                    RoundedCornerShape(6.dp)
+                                )
+                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                    sfxMuted = !sfxMuted
+                                    SoundManager.sfxMuted = sfxMuted
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("SFX", color = if (!sfxMuted) TextGold else TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text(if (!sfxMuted) "ON" else "OFF", color = if (!sfxMuted) Color(0xFF66BB6A) else Color(0xFFEF5350), fontSize = 8.sp)
+                            }
+                        }
+                    }
+                    HorizontalDivider(color = BorderGold.copy(alpha = 0.3f), thickness = 0.5.dp)
+                    // 창 버튼들
+                    GameMenuButton(label = "스탯", isActive = isStatOpen) {
+                        isStatOpen = !isStatOpen
+                        isMenuOpen = false
+                    }
+                    GameMenuButton(label = "장비", isActive = isEquipmentOpen) {
+                        isEquipmentOpen = !isEquipmentOpen
+                        isMenuOpen = false
+                    }
+                    GameMenuButton(label = "인벤", isActive = isInventoryOpen) {
+                        isInventoryOpen = !isInventoryOpen
+                        isMenuOpen = false
+                    }
+                }
             }
         }
 
@@ -553,6 +649,7 @@ fun MainScreen(
                 rootOffset = rootWindowOffset
             )
         }
+
 
 
         // ⑨ 전직 팝업
@@ -621,7 +718,7 @@ fun MainScreen(
                 messages = state.messages,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 12.dp, bottom = 170.dp)
+                    .padding(end = 12.dp, bottom = 110.dp)
             )
         }
     }
@@ -2194,6 +2291,116 @@ private fun SkillButton(
                 Text("준비", color = accent, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
         }
+    }
+}
+
+// ── 기본 공격 버튼 ───────────────────────────────────────────────────────────
+@Composable
+private fun AttackButton(
+    autoAttackEnabled: Boolean,
+    onToggle: () -> Unit,
+    onManualAttack: () -> Unit
+) {
+    val isAutoRef        = rememberUpdatedState(autoAttackEnabled)
+    val onToggleRef      = rememberUpdatedState(onToggle)
+    val onManualAttackRef = rememberUpdatedState(onManualAttack)
+
+    val accent = if (autoAttackEnabled) Color(0xFFFFD700) else Color(0xFF6699AA)
+
+    Box(
+        modifier = Modifier
+            .size(72.dp)
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        // DOWN 이벤트 대기 (pressed=true, previousPressed=false)
+                        val downEvent = awaitPointerEvent()
+                        val down = downEvent.changes.firstOrNull { it.pressed && !it.previousPressed } ?: continue
+                        val startY = down.position.y
+                        var didToggle = false
+                        down.consume()
+                        // 손가락 추적
+                        while (true) {
+                            val moveEvent = awaitPointerEvent()
+                            val change = moveEvent.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) {
+                                if (!didToggle && !isAutoRef.value) onManualAttackRef.value()
+                                change.consume()
+                                break
+                            }
+                            val dy = change.position.y - startY
+                            if (dy < -50f && !didToggle) {
+                                didToggle = true
+                                onToggleRef.value()
+                            }
+                            change.consume()
+                        }
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val r = size.minDimension / 2f
+            drawCircle(Color(0xFF1A2533), radius = r)
+            drawCircle(accent.copy(alpha = if (autoAttackEnabled) 0.28f else 0.10f), radius = r * 0.88f)
+            drawCircle(
+                color  = accent,
+                radius = r,
+                style  = Stroke(width = (if (autoAttackEnabled) 2.5f else 1.5f) * density)
+            )
+            if (autoAttackEnabled) {
+                drawCircle(accent.copy(alpha = 0.12f), radius = r * 1.15f)
+            }
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                "공격",
+                color      = if (autoAttackEnabled) Color.White else Color.White.copy(alpha = 0.7f),
+                fontSize   = 11.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign  = TextAlign.Center
+            )
+            Text(
+                if (autoAttackEnabled) "자동" else "수동",
+                color      = accent,
+                fontSize   = 9.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+// ── 메뉴 버튼 (메뉴 패널 내부) ───────────────────────────────────────────────
+@Composable
+private fun GameMenuButton(
+    label: String,
+    isActive: Boolean = false,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(36.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (isActive) Color(0xFF3A2800) else Color(0xFF110A00))
+            .border(
+                width = if (isActive) 1.5.dp else 1.dp,
+                color = if (isActive) BorderGold else BorderGold.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(6.dp)
+            )
+            .clickable(
+                indication        = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text       = label,
+            color      = if (isActive) TextGold else TextMuted,
+            fontSize   = 12.sp,
+            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+        )
     }
 }
 

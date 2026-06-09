@@ -116,7 +116,8 @@ data class UiState(
     val messages: List<GameMessage> = emptyList(),
     val quickSlots: List<ConsumableType?> = List(3) { null },
     val skillCooldownUntil: Map<String, Long> = emptyMap(),
-    val skillEffects: List<SkillEffect> = emptyList()
+    val skillEffects: List<SkillEffect> = emptyList(),
+    val autoAttackEnabled: Boolean = true
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -453,8 +454,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // ── 자동 공격 틱 ───────────────────────────────────────────────────────────
 
     private fun autoAttackTick() {
+        if (!_uiState.value.autoAttackEnabled) return
+        executeAttack()
+    }
+
+    fun manualAttack() = executeAttack()
+
+    fun toggleAutoAttack() {
+        _uiState.update { it.copy(autoAttackEnabled = !it.autoAttackEnabled) }
+    }
+
+    private fun executeAttack() {
         var attacked = false
         _uiState.update { state ->
+            if (state.player.hp <= 0) return@update state
             val lockedIds = state.projectiles.map { it.targetMonsterId }.toSet()
             val result = autoAttackService.tick(
                 player           = state.player,
