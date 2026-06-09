@@ -44,7 +44,9 @@ com.a_survivor.app/
 │   ├── Projectile.kt             (투사체 모델 + traveledDistance / maxTravelDistance)
 │   ├── QuestState.kt             (QuestStatus enum + QuestState)
 │   ├── DialogueState.kt          (DialoguePage + DialogueSession)
-│   └── GameMessage.kt            (MessageType enum + GameMessage 데이터 클래스)
+│   ├── GameMessage.kt            (MessageType enum + GameMessage 데이터 클래스)
+│   ├── Skill.kt                  (SkillType enum + Skill 데이터 클래스 + SkillRegistry)
+│   └── SkillEffect.kt            (SkillEffectType enum + SkillEffect 데이터 클래스)
 ├── service/
 │   ├── DataLoader.kt             (CSV 파싱 유틸 — loadCsv(context, fileName) → List<Map<String,String>>)
 │   ├── GameDataInitializer.kt    (앱 시작 시 모든 CSV 로드 — initialize(context))
@@ -54,6 +56,7 @@ com.a_survivor.app/
 │   ├── MonsterSpawner.kt         (+ monsterId 파라미터 추가)
 │   ├── AutoAttackService.kt      (근접/원거리 분기 + 직업별 공격 범위)
 │   ├── ProjectileService.kt      (투사체 이동 + 충돌 판정)
+│   ├── SkillService.kt           (SkillHit/SkillResult + MELEE_BURST/AOE/MULTI_SHOT 실행 로직)
 │   ├── MonsterAiService.kt       (추적 / 공격 / 어그로 해제 + 회피 판정)
 │   ├── LevelService.kt
 │   ├── DropService.kt
@@ -121,11 +124,12 @@ Box (게임 화면)
  ├── Column + zIndex(10) > EquipmentWindow  ← 플로팅 드래그 창
  ├── Column + zIndex(10) > StatWindow       ← 플로팅 드래그 창
  ├── Column + zIndex(10) > InventoryWindow  ← 플로팅 드래그 창
+ ├── SkillButton (우하단, HudButton 위) ← 직업별 스킬 1개, 72dp 원형, 쿨다운 파이 오버레이
  ├── HudButton ×3 (우하단)   ← 스탯 / 장비 / 인벤
  ├── JoystickControl (좌하단)
  ├── DragGhost
  ├── JobAdvancementDialog  ← jobAdvancementPending=true 일 때만 표시 (전직 팝업 오버레이)
- ├── MessageLogOverlay (우하단) ← EXP/돈/아이템 획득 메시지 (최대 5개, 2초 자동 소멸)
+ ├── MessageLogOverlay (우하단, bottom=170.dp) ← EXP/돈/아이템 획득 메시지 (최대 5개, 2초 자동 소멸)
  ├── PotionQuickSlotRow (하단 중앙) ← 물약 퀵슬롯 3개 행 (padding bottom=20.dp)
  ├── [대화하기] Button (하단 중앙) ← NPC 근접 시만 표시 (activeDialogue==null)
  └── DialogueWindow (zIndex 20, 하단 전체폭) ← activeDialogue != null 시 표시
@@ -155,6 +159,7 @@ Box (게임 화면)
 | 6 | `drawMonster` × N — 스켈레톤 애니메이션(variant별 프레임) → HP 바 → 어그로 "!" |
 | 7 | `drawProjectile` × N — 직업별 투사체 (임시 도형) |
 | 8 | `drawPlayer` — 전사 스프라이트 (IDLE/WALK/ATTACK/HURT/DIE 상태별 애니메이션, facingLeft 수평 반전) |
+| 8.5 | `drawSkillEffects` × N — 스킬 이펙트 (SLASH_BURST 흰 링+선 / EXPLOSION 오렌지 링, 500ms 지속) |
 | 9 | `drawDamageNumber` × N — 데미지 숫자 (노랑: 플→몬, 빨강: 몬→플) |
 
 ### 시각 사양 (화면 비례 크기)
@@ -1169,6 +1174,15 @@ SoundManager.release()          // onDestroy
 | 165 | 캐릭터·몬스터 발밑 그림자 제거 — drawPlayer / drawMonster의 그림자 drawCircle 삭제 | ✅ |
 | 166 | 공격 시 타겟 방향으로 facingLeft 갱신 — autoAttackTick에서 타겟 X < 플레이어 X 비교, 근접·원거리 모두 적용 | ✅ |
 | 167 | 공격 애니메이션 중 이동 방향에 의한 facingLeft 덮어쓰기 방지 — movePlayer에서 ATTACK_ANIM_DURATION(300ms) 동안 facingLeft 고정 | ✅ |
+| 168 | Skill.kt 추가 — SkillType enum + Skill 데이터 클래스 + SkillRegistry (직업별 스킬 6종 정의) | ✅ |
+| 169 | SkillEffect.kt 추가 — SkillEffectType enum (SLASH_BURST/EXPLOSION) + SkillEffect 데이터 클래스 (500ms 지속) | ✅ |
+| 170 | SkillService.kt 추가 — MELEE_BURST/AOE/MULTI_SHOT 실행 로직 (SkillHit/SkillResult 반환, projectileType import 명시) | ✅ |
+| 171 | UiState 스킬 필드 추가 — skillCooldownUntil: Map<String, Long> + skillEffects: List<SkillEffect> | ✅ |
+| 172 | useSkill() ViewModel 함수 추가 — 쿨다운 체크, SkillService.execute(), MELEE_BURST/AOE 즉시 피해+킬처리, MULTI_SHOT 투사체 추가 | ✅ |
+| 173 | skillEffectTick() 코루틴 추가 — 16ms 루프, 만료(500ms) SkillEffect 제거 | ✅ |
+| 174 | drawSkillEffects Canvas 렌더 추가 — SLASH_BURST(흰 링+선) / EXPLOSION(오렌지 링) 이펙트, drawPlayer 직후 렌더 | ✅ |
+| 175 | SkillButton 컴포저블 추가 — 72dp 원형, 쿨다운 파이 오버레이, 준비/Xs 텍스트, HUD 버튼 위 우하단 배치 | ✅ |
+| 176 | MessageLogOverlay bottom 조정 — 80.dp → 170.dp (SkillButton 겹침 방지) | ✅ |
 
 ---
 
@@ -1299,7 +1313,7 @@ private fun addMessage(state: UiState, text: String, type: MessageType): UiState
 
 ### MessageLogOverlay 컴포저블
 
-- 위치: `Alignment.BottomEnd`, `padding(end=12.dp, bottom=80.dp)`
+- 위치: `Alignment.BottomEnd`, `padding(end=12.dp, bottom=170.dp)` (SkillButton 겹침 방지)
 - 각 메시지: 검정 반투명 배경 + RoundedCorner(4.dp) + 13sp Bold 텍스트
 - `messages.isNotEmpty()` 일 때만 렌더링
 
@@ -1347,6 +1361,116 @@ val vertRatio = if (isArcher) 0.95f else 0.75f  // 발 위치 95% 높이
 ```
 
 - 애니메이션 타이밍은 전사와 동일 (IDLE 200ms/f, WALK 100ms/f, ATTACK 60ms/f, HURT 100ms/f, DIE 200ms/f)
+
+---
+
+## 스킬 시스템
+
+### 모델 (model/Skill.kt)
+
+```kotlin
+enum class SkillType { MELEE_BURST, AOE, MULTI_SHOT }
+
+data class Skill(
+    val id: String,
+    val name: String,
+    val type: SkillType,
+    val cooldownMs: Long,
+    val range: Float,
+    val damageMultiplier: Float,
+    val aoeRadius: Float = 0f,
+    val shotCount: Int = 1
+)
+
+object SkillRegistry {
+    fun skillFor(job: PlayerJob): Skill = when (job) { ... }
+}
+```
+
+### 직업별 스킬 (SkillRegistry)
+
+| 직업 | 스킬 ID | 이름 | 타입 | 쿨다운 | 범위 | 배율 | 비고 |
+|------|---------|------|------|--------|------|------|------|
+| WARRIOR  | warrior_skill  | 강타   | MELEE_BURST | 8초 | 70f  | 3.0× | — |
+| MAGE     | mage_skill     | 파이어볼 | AOE        | 6초 | 150f | 3.0× | aoeRadius=80f |
+| ARCHER   | archer_skill   | 연사   | MULTI_SHOT  | 5초 | 220f | 2.0× | shotCount=3 |
+| THIEF    | thief_skill    | 연속표창 | MULTI_SHOT  | 4초 | 180f | 1.5× | shotCount=3 |
+| PIRATE   | pirate_skill   | 폭발탄 | AOE         | 7초 | 190f | 2.5× | aoeRadius=70f |
+| BEGINNER | beginner_skill | 기합   | MELEE_BURST | 5초 | 60f  | 1.5× | — |
+
+### 스킬 이펙트 모델 (model/SkillEffect.kt)
+
+```kotlin
+enum class SkillEffectType { SLASH_BURST, EXPLOSION }
+
+data class SkillEffect(
+    val id: Int,
+    val type: SkillEffectType,
+    val worldX: Float, val worldY: Float,
+    val radius: Float,
+    val startedAt: Long
+) {
+    companion object { const val DURATION = 500L }
+    fun isExpired(now: Long) = now - startedAt > DURATION
+    fun progress(now: Long) = ((now - startedAt).toFloat() / DURATION).coerceIn(0f, 1f)
+}
+```
+
+### SkillService (service/SkillService.kt)
+
+```kotlin
+data class SkillHit(val monsterId: Int, val damage: Int)
+data class SkillResult(val hits: List<SkillHit>, val newProjectiles: List<Projectile>, val effect: SkillEffect?)
+
+class SkillService {
+    fun execute(skill, player, monsters, derivedStats, nextProjectileId, nextEffectId): SkillResult
+}
+```
+
+| 타입 | 동작 | 이펙트 위치 |
+|------|------|-----------|
+| MELEE_BURST | 범위 내 모든 몬스터 즉시 피해 | 플레이어 위치에 SLASH_BURST |
+| AOE | 최근접 타겟 이후 aoeRadius 내 모든 몬스터 피해 | 타겟 위치에 EXPLOSION |
+| MULTI_SHOT | 가장 가까운 N마리에 각각 투사체 생성 | 플레이어 위치에 SLASH_BURST (35f) |
+
+> **참고**: `projectileType()` / `projectileSpeed()`는 `model/PlayerJob.kt`의 extension 함수 — `SkillService.kt`에서 명시적 import 필요
+> ```kotlin
+> import com.a_survivor.app.model.projectileSpeed
+> import com.a_survivor.app.model.projectileType
+> ```
+
+### UiState 추가 필드
+
+```kotlin
+val skillCooldownUntil: Map<String, Long> = emptyMap(),  // key = skill.id
+val skillEffects: List<SkillEffect> = emptyList()
+```
+
+### ViewModel 함수
+
+| 함수 | 동작 |
+|------|------|
+| `useSkill()` | 쿨다운 확인 → SkillService.execute() → hits 처리 (즉사/EXP/드랍/킬 전체) + MULTI_SHOT은 projectiles 추가 + effect 추가 + cooldownUntil 갱신 |
+| `skillEffectTick()` | 16ms 루프, 만료된 SkillEffect 제거 (`isExpired(now)`) |
+
+### drawSkillEffects (MainActivity Canvas)
+
+```kotlin
+private fun DrawScope.drawSkillEffects(effects: List<SkillEffect>, cam: CameraState)
+```
+
+| 이펙트 타입 | 렌더링 |
+|------------|--------|
+| SLASH_BURST | 흰 확장 링 + 내부 금색 링 + 45°/135°/225°/315° 방향 짧은 선 (alpha = 1-progress) |
+| EXPLOSION | 오렌지 반투명 채움 원 + 적색 링 + 황색 내부 링 (alpha = 1-progress) |
+
+### SkillButton 컴포저블
+
+- **크기**: 72dp 원형
+- **배치**: `Alignment.BottomEnd`, `padding(end=16.dp, bottom=20.dp)` + Column에서 HUD 버튼 위
+- **쿨다운 UI**: 100ms tick(`LaunchedEffect`), 파이 오버레이(`drawArc`, startAngle=-90f, sweepAngle=fraction×360f, useCenter=true)
+- **텍스트**: 쿨다운 중 "Xs" (초 단위 올림) / 준비 시 "준비" (직업 accent color)
+- **경계**: 준비 시 accent color 2.5dp 링 + 외부 글로우, 쿨다운 시 어두운 1.5dp 링
 
 ---
 
@@ -1497,6 +1621,6 @@ val quickSlotBounds = remember { mutableStateListOf<Rect?>(null, null, null) }
 - [ ] NPC 퀘스트 2차 — quest.csv에 퀘스트 추가만으로 확장 가능
 - [ ] 무기 강화 시스템
 - [ ] 장비 창고
-- [ ] 애니메이션 (공격 이펙트, 레벨업 연출)
-- [ ] 직업별 스킬 시스템
-- [ ] skill.csv / map.csv / portal.csv / dialogue.csv / monster_spawn.csv / equipment_set.csv 추가 예정
+- [ ] 레벨업 연출 (파티클/메시지 이펙트)
+- [ ] 스킬 강화 / 스킬 트리 확장
+- [ ] map.csv / portal.csv / dialogue.csv / monster_spawn.csv / equipment_set.csv 추가 예정

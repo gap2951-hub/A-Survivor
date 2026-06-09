@@ -46,9 +46,13 @@ import com.a_survivor.app.model.DropRegistry
 import com.a_survivor.app.model.EquipmentRegistry
 import com.a_survivor.app.model.MonsterRegistry
 import com.a_survivor.app.model.QuestRegistry
+import com.a_survivor.app.model.Skill
+import com.a_survivor.app.model.SkillEffect
+import com.a_survivor.app.model.SkillRegistry
 import com.a_survivor.app.model.Weapon
 import com.a_survivor.app.model.attackRange
 import com.a_survivor.app.service.AutoAttackService
+import com.a_survivor.app.service.SkillService
 import com.a_survivor.app.service.DerivedStatsCalculator
 import com.a_survivor.app.service.DropService
 import com.a_survivor.app.service.EnhancementService
@@ -110,7 +114,9 @@ data class UiState(
     val playerDeathTime: Long = 0L,
     val activeShop: ShopInfo? = null,
     val messages: List<GameMessage> = emptyList(),
-    val quickSlots: List<ConsumableType?> = List(3) { null }
+    val quickSlots: List<ConsumableType?> = List(3) { null },
+    val skillCooldownUntil: Map<String, Long> = emptyMap(),
+    val skillEffects: List<SkillEffect> = emptyList()
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -122,10 +128,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val dropService            = DropService()
     private val derivedStatsCalculator = DerivedStatsCalculator()
     private val projectileService      = ProjectileService()
+    private val skillService           = SkillService()
     private val saveService            = com.a_survivor.app.service.SaveService(application.applicationContext)
 
     private var nextGroundItemId    = 0
     private var nextProjectileId    = 0
+    private var nextEffectId        = 0
     private var nextMessageId       = 0L
 
     private fun addMessage(state: UiState, text: String, type: MessageType): UiState {
@@ -197,6 +205,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             while (true) {
                 delay(AI_TICK_INTERVAL)
                 pendingAttackTick()
+            }
+        }
+        viewModelScope.launch {
+            while (true) {
+                delay(AI_TICK_INTERVAL)
+                skillEffectTick()
             }
         }
     }
@@ -579,6 +593,117 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (gainedExp > 0) computeDerived(msgsState) else msgsState
         }
         sfxToPlay?.let { SoundManager.playSfx(it) }
+    }
+
+    // ── 스킬 사용 ──────────────────────────────────────────────────────────────
+
+    fun useSkill() {
+        var sfxToPlay: SoundManager.Sfx? = null
+        _uiState.update { state ->
+            if (state.player.hp <= 0) return@update state
+            val skill = SkillRegistry.skillFor(state.player.job)
+            val now = System.currentTimeMillis()
+            if (now < (state.skillCooldownUntil[skill.id] ?: 0L)) return@update state
+
+            val result = skillService.execute(
+                skill, state.player, state.monsters, state.derivedStats,
+                nextProjectileId, nextEffectId
+            )
+            if (result.hits.isEmpty() && result.newProjectiles.isEmpty()) return@update state
+
+            sfxToPlay = SoundManager.Sfx.ATTACK
+            if (result.effect != null) nextEffectId++
+
+            val newCooldowns = state.skillCooldownUntil + (skill.id to now + skill.cooldownMs)
+            val newEffects   = state.skillEffects + listOfNotNull(result.effect)
+
+            val firstTargetX = result.newProjectiles.firstOrNull()?.targetX
+                ?: state.monsters.find { it.id == result.hits.firstOrNull()?.monsterId }?.positionX
+            val newFacingLeft = firstTargetX?.let { it < state.player.positionX } ?: state.player.facingLeft
+
+            // MULTI_SHOT: 투사체만 생성, 데미지는 projectileTick이 처리
+            if (result.newProjectiles.isNotEmpty()) {
+                nextProjectileId += result.newProjectiles.size
+                return@update state.copy(
+                    skillCooldownUntil   = newCooldowns,
+                    skillEffects         = newEffects,
+                    projectiles          = state.projectiles + result.newProjectiles,
+                    playerAttackAnimStart = now,
+                    player               = state.player.copy(facingLeft = newFacingLeft)
+                )
+            }
+
+            // MELEE_BURST / AOE: 즉시 데미지 처리
+            val hitMap = result.hits.groupBy { it.monsterId }
+            val killed = mutableListOf<Monster>()
+            val updatedMonsters = state.monsters.mapNotNull { m ->
+                val totalDmg = hitMap[m.id]?.sumOf { it.damage } ?: 0
+                if (totalDmg == 0) return@mapNotNull m
+                val newHp = m.hp - totalDmg
+                if (newHp <= 0) { killed.add(m); null } else m.copy(hp = newHp)
+            }
+
+            val gainedExp     = killed.sumOf { it.expReward }
+            val updatedPlayer = (if (gainedExp > 0) levelService.applyExp(state.player, gainedExp) else state.player)
+                .copy(facingLeft = newFacingLeft)
+            if (updatedPlayer.level > state.player.level) sfxToPlay = SoundManager.Sfx.LEVEL_UP
+
+            val newGroundItems = mutableListOf<GroundItem>()
+            killed.forEach { monster ->
+                val drops = dropService.roll(DropRegistry.dropEntriesFor(monster.monsterId, state.world.mapType))
+                drops.forEachIndexed { i, drop ->
+                    val angle  = i * (Math.PI * 2.0 / drops.size.coerceAtLeast(1)).toFloat()
+                    val spread = if (drops.size > 1) 20f else 0f
+                    newGroundItems.add(GroundItem(nextGroundItemId++,
+                        monster.positionX + cos(angle) * spread,
+                        monster.positionY + sin(angle) * spread,
+                        drop, now))
+                }
+            }
+
+            val dmgNums = result.hits.mapNotNull { hit ->
+                val m = state.monsters.find { it.id == hit.monsterId } ?: return@mapNotNull null
+                DamageNumber(nextDamageNumberId++, hit.damage, m.positionX, m.positionY, now, false)
+            }
+
+            val questKillAdd   = if (state.questState.status == QuestStatus.IN_PROGRESS) killed.size else 0
+            val newKillCount   = (state.questState.killCount + questKillAdd).coerceAtMost(state.questState.killGoal)
+            val newQuestStatus = if (state.questState.status == QuestStatus.IN_PROGRESS && newKillCount >= state.questState.killGoal)
+                QuestStatus.READY_TO_COMPLETE else state.questState.status
+
+            val advancePending = state.jobAdvancementPending || (
+                gainedExp > 0 && updatedPlayer.job == PlayerJob.BEGINNER &&
+                updatedPlayer.level >= 3 && state.player.level < 3
+            )
+
+            val base = state.copy(
+                skillCooldownUntil    = newCooldowns,
+                skillEffects          = newEffects,
+                monsters              = updatedMonsters,
+                player                = updatedPlayer,
+                groundItems           = state.groundItems + newGroundItems,
+                pendingRespawns       = state.pendingRespawns + killed.map { PendingRespawn(it.id, now) },
+                damageNumbers         = state.damageNumbers + dmgNums,
+                questState            = state.questState.copy(killCount = newKillCount, status = newQuestStatus),
+                jobAdvancementPending = advancePending,
+                playerAttackAnimStart = now
+            )
+            val msgsState = if (gainedExp > 0) addMessage(base, "+${gainedExp} EXP", MessageType.EXP) else base
+            if (gainedExp > 0) computeDerived(msgsState) else msgsState
+        }
+        sfxToPlay?.let { SoundManager.playSfx(it) }
+    }
+
+    // ── 스킬 이펙트 정리 ──────────────────────────────────────────────────────
+
+    private fun skillEffectTick() {
+        _uiState.update { state ->
+            if (state.skillEffects.isEmpty()) return@update state
+            val now = System.currentTimeMillis()
+            val remaining = state.skillEffects.filter { !it.isExpired(now) }
+            if (remaining.size == state.skillEffects.size) return@update state
+            state.copy(skillEffects = remaining)
+        }
     }
 
     // ── 투사체 틱 ──────────────────────────────────────────────────────────────

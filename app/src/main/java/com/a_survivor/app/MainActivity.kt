@@ -115,11 +115,17 @@ import com.a_survivor.app.model.ShopItemType
 import com.a_survivor.app.model.ShopMode
 import com.a_survivor.app.model.ShopRegistry
 import com.a_survivor.app.model.ShopType
+import com.a_survivor.app.model.Skill
+import com.a_survivor.app.model.SkillEffect
+import com.a_survivor.app.model.SkillEffectType
+import com.a_survivor.app.model.SkillRegistry
 import com.a_survivor.app.service.SoundManager
 import com.a_survivor.app.viewmodel.InventorySlot
 import com.a_survivor.app.viewmodel.MainViewModel
 import com.a_survivor.app.viewmodel.UiState
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 // ── 색상 ──────────────────────────────────────────────────────────────────────
 private val BgDark         = Color(0xFF0C0802)
@@ -247,7 +253,8 @@ class MainActivity : ComponentActivity() {
                     onSellStackable      = vm::sellStackableItem,
                     onUsePotion          = vm::usePotion,
                     onAssignQuickSlot    = { idx, type -> vm.assignQuickSlot(idx, type) },
-                    onUseQuickSlotPotion = { idx -> vm.useQuickSlotPotion(idx) }
+                    onUseQuickSlotPotion = { idx -> vm.useQuickSlotPotion(idx) },
+                    onUseSkill           = vm::useSkill
                 )
             }
         }
@@ -295,7 +302,8 @@ fun MainScreen(
     onSellStackable: (String, ShopItemType, Int) -> Unit = { _, _, _ -> },
     onUsePotion: (ConsumableType) -> Unit = {},
     onAssignQuickSlot: (Int, ConsumableType) -> Unit = { _, _ -> },
-    onUseQuickSlotPotion: (Int) -> Unit = {}
+    onUseQuickSlotPotion: (Int) -> Unit = {},
+    onUseSkill: () -> Unit = {}
 ) {
     val dragState        = remember { DragDropState() }
     var isEquipmentOpen  by remember { mutableStateOf(false) }
@@ -360,6 +368,7 @@ fun MainScreen(
             portals               = state.portals,
             projectiles           = state.projectiles,
             npcs                  = state.npcs,
+            skillEffects          = state.skillEffects,
             isMoving              = joystickDirX != 0f || joystickDirY != 0f,
             playerAttackAnimStart  = state.playerAttackAnimStart,
             playerHurtAnimStart   = state.playerHurtAnimStart,
@@ -464,17 +473,29 @@ fun MainScreen(
             }
         }
 
-        // ⑦ 오른쪽 하단 HUD 버튼
-        Row(
+        // ⑦ 오른쪽 하단: 스킬 버튼 + HUD 버튼
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 16.dp, bottom = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            HudButton(label = "스탯", isActive = isStatOpen)       { isStatOpen = !isStatOpen }
-            HudButton(label = "장비", isActive = isEquipmentOpen)  { isEquipmentOpen = !isEquipmentOpen }
-            HudButton(label = "인벤", isActive = isInventoryOpen)  { isInventoryOpen = !isInventoryOpen }
+            val skill = SkillRegistry.skillFor(state.player.job)
+            SkillButton(
+                skill          = skill,
+                cooldownUntil  = state.skillCooldownUntil[skill.id] ?: 0L,
+                playerJob      = state.player.job,
+                onUse          = onUseSkill
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment     = Alignment.CenterVertically
+            ) {
+                HudButton(label = "스탯", isActive = isStatOpen)       { isStatOpen = !isStatOpen }
+                HudButton(label = "장비", isActive = isEquipmentOpen)  { isEquipmentOpen = !isEquipmentOpen }
+                HudButton(label = "인벤", isActive = isInventoryOpen)  { isInventoryOpen = !isInventoryOpen }
+            }
         }
 
         // ⑧ 우측 상단 사운드 버튼
@@ -600,7 +621,7 @@ fun MainScreen(
                 messages = state.messages,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 12.dp, bottom = 80.dp)
+                    .padding(end = 12.dp, bottom = 170.dp)
             )
         }
     }
@@ -1402,6 +1423,7 @@ private fun GameCanvas(
     portals: List<Portal>,
     projectiles: List<com.a_survivor.app.model.Projectile> = emptyList(),
     npcs: List<Npc> = emptyList(),
+    skillEffects: List<SkillEffect> = emptyList(),
     isMoving: Boolean = false,
     playerAttackAnimStart: Long = 0L,
     playerHurtAnimStart: Long = 0L,
@@ -1612,6 +1634,7 @@ private fun GameCanvas(
             pIdle, pWalk, pAttack, pHurt, pDie,
             isMoving, playerAttackAnimStart, playerHurtAnimStart, playerDeathTime
         )
+        drawSkillEffects(skillEffects, cam)
         damageNumbers.forEach { drawDamageNumber(it, cam) }
     }
 }
@@ -1792,6 +1815,42 @@ private fun DrawScope.drawProjectile(
         com.a_survivor.app.model.ProjectileType.BULLET -> {
             drawCircle(Color(0xFF555555), radius = 4f * sp, center = c)
             drawCircle(Color(0xFFAAAAAA), radius = 2f * sp, center = c)
+        }
+    }
+}
+
+private fun DrawScope.drawSkillEffects(effects: List<SkillEffect>, cam: CameraState) {
+    val now = System.currentTimeMillis()
+    effects.forEach { effect ->
+        val p = effect.progress(now)
+        val c = cam.toScreenOffset(effect.worldX, effect.worldY, size.width, size.height)
+        val r = effect.radius * cam.zoom
+        when (effect.type) {
+            SkillEffectType.SLASH_BURST -> {
+                val alpha = (1f - p) * 0.9f
+                drawCircle(Color.White.copy(alpha = alpha), radius = r * p, center = c,
+                    style = Stroke(width = 3f))
+                drawCircle(Color(0xFFFFDD44).copy(alpha = alpha * 0.7f), radius = r * p * 0.65f, center = c,
+                    style = Stroke(width = 2f))
+                val lineLen   = r * p * 0.4f
+                val lineStart = r * p * 0.2f
+                val lineAlpha = (1f - p) * 0.85f
+                for (angleDeg in listOf(45f, 135f, 225f, 315f)) {
+                    val rad = Math.toRadians(angleDeg.toDouble()).toFloat()
+                    drawLine(Color.White.copy(alpha = lineAlpha),
+                        start = Offset(c.x + cos(rad) * lineStart,            c.y + sin(rad) * lineStart),
+                        end   = Offset(c.x + cos(rad) * (lineStart + lineLen), c.y + sin(rad) * (lineStart + lineLen)),
+                        strokeWidth = 3f)
+                }
+            }
+            SkillEffectType.EXPLOSION -> {
+                val alpha = (1f - p) * 0.85f
+                drawCircle(Color(0xFFFF6600).copy(alpha = alpha * 0.5f), radius = r * p, center = c)
+                drawCircle(Color(0xFFFF3300).copy(alpha = alpha), radius = r * (0.3f + p * 0.9f), center = c,
+                    style = Stroke(width = 4f))
+                drawCircle(Color(0xFFFFCC00).copy(alpha = alpha * 0.6f), radius = r * p * 0.5f, center = c,
+                    style = Stroke(width = 2f))
+            }
         }
     }
 }
@@ -2069,6 +2128,73 @@ private fun PlayerJob.advanceLabel() = when (this) {
     PlayerJob.THIEF    -> "도적으로 전직하기"
     PlayerJob.PIRATE   -> "해적으로 전직하기"
     PlayerJob.BEGINNER -> "초보자로 전직하기"
+}
+
+// ── 스킬 버튼 ────────────────────────────────────────────────────────────────
+@Composable
+private fun SkillButton(
+    skill: Skill,
+    cooldownUntil: Long,
+    playerJob: PlayerJob,
+    onUse: () -> Unit
+) {
+    var tick by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(100L)
+            tick = System.currentTimeMillis()
+        }
+    }
+    val remaining       = (cooldownUntil - tick).coerceAtLeast(0L)
+    val isReady         = remaining <= 0L
+    val cooldownFraction = if (isReady) 0f else remaining.toFloat() / skill.cooldownMs
+    val accent          = playerJob.accentColor()
+
+    Box(
+        modifier = Modifier
+            .size(72.dp)
+            .pointerInput(isReady) { detectTapGestures { if (isReady) onUse() } },
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val r = size.minDimension / 2f
+            drawCircle(Color(0xFF1A2533), radius = r)
+            drawCircle(accent.copy(alpha = if (isReady) 0.30f else 0.12f), radius = r * 0.88f)
+            drawCircle(
+                color  = if (isReady) accent else Color(0xFF334455),
+                radius = r,
+                style  = Stroke(width = (if (isReady) 2.5f else 1.5f) * density)
+            )
+            if (!isReady) {
+                drawArc(
+                    color       = Color.Black.copy(alpha = 0.72f),
+                    startAngle  = -90f,
+                    sweepAngle  = cooldownFraction * 360f,
+                    useCenter   = true
+                )
+            }
+            if (isReady) {
+                drawCircle(accent.copy(alpha = 0.15f), radius = r * 1.15f)
+            }
+        }
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text       = skill.name,
+                color      = if (isReady) Color.White else Color.White.copy(alpha = 0.45f),
+                fontSize   = 11.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign  = TextAlign.Center
+            )
+            if (!isReady) {
+                Text("${remaining / 1000L + 1}s", color = Color.White.copy(alpha = 0.6f), fontSize = 9.sp)
+            } else {
+                Text("준비", color = accent, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
 }
 
 // ── HUD 버튼 ─────────────────────────────────────────────────────────────────
