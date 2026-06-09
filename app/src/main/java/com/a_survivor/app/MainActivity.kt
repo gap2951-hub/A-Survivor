@@ -90,6 +90,8 @@ import com.a_survivor.app.model.DamageNumber
 import com.a_survivor.app.model.DerivedStats
 import com.a_survivor.app.model.DialogueSession
 import com.a_survivor.app.model.DropItem
+import com.a_survivor.app.model.MaterialCatalog
+import com.a_survivor.app.model.MaterialType
 import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
 import com.a_survivor.app.model.GameWorld
@@ -1702,10 +1704,12 @@ private fun GameCanvas(
         Triple(minoIdle2, minoWalk2, minoSlash2),
         Triple(minoIdle3, minoWalk3, minoSlash3)
     ) }
-    val scroll100Bitmap = remember { loadBitmap(context, R.drawable.scroll_100, 256) }
-    val scroll60Bitmap  = remember { loadBitmap(context, R.drawable.scroll_60,  256) }
-    val scroll10Bitmap  = remember { loadBitmap(context, R.drawable.scroll_10,  256) }
-    val gloveBitmap       = remember { loadBitmap(context, R.drawable.nogada_glove, 256) }
+    val scroll100Bitmap   = remember { loadBitmap(context, R.drawable.scroll_100,    256) }
+    val scroll60Bitmap    = remember { loadBitmap(context, R.drawable.scroll_60,     256) }
+    val scroll10Bitmap    = remember { loadBitmap(context, R.drawable.scroll_10,     256) }
+    val gloveBitmap       = remember { loadBitmap(context, R.drawable.nogada_glove,  256) }
+    val skeletonBoneBitmap = remember { loadBitmap(context, R.drawable.skeleton_bone, 256) }
+    val beefBitmap         = remember { loadBitmap(context, R.drawable.beef,          256) }
     val coinFrames        = remember { listOf(
         loadBitmap(context, R.drawable.coin_0, 128),
         loadBitmap(context, R.drawable.coin_1, 128),
@@ -1797,7 +1801,7 @@ private fun GameCanvas(
         val currentMapBitmap = if (world.mapType == MapType.TOWN) townBitmap else mapBitmap
         val nowMs = System.currentTimeMillis()
         drawWorldBackground(cam, world, currentMapBitmap)
-        groundItems.forEach { drawGroundItem(it, cam, scroll100Bitmap, scroll60Bitmap, scroll10Bitmap, gloveBitmap, coinFrames, nowMs) }
+        groundItems.forEach { drawGroundItem(it, cam, scroll100Bitmap, scroll60Bitmap, scroll10Bitmap, gloveBitmap, skeletonBoneBitmap, beefBitmap, coinFrames, nowMs) }
         portals.forEach { drawPortal(it, cam) }
         npcs.forEach { drawNpc(it, cam, npcChuchu) }
         drawAttackRange(player, cam)
@@ -1853,6 +1857,8 @@ private fun DrawScope.drawGroundItem(
     scroll60: ImageBitmap,
     scroll10: ImageBitmap,
     glove: ImageBitmap,
+    skeletonBone: ImageBitmap,
+    beef: ImageBitmap,
     coinFrames: List<ImageBitmap>,
     now: Long
 ) {
@@ -1883,6 +1889,10 @@ private fun DrawScope.drawGroundItem(
                 else                     -> scroll10
             }
             is DropItem.EquipmentDrop -> glove
+            is DropItem.MaterialDrop  -> when (drop.materialType) {
+                MaterialType.SKELETON_BONE -> skeletonBone
+                MaterialType.BEEF          -> beef
+            }
             else -> scroll10
         }
         drawImage(
@@ -1901,6 +1911,7 @@ private fun DrawScope.drawGroundItem(
         is DropItem.ScrollDrop    -> ScrollCatalog.get(drop.scrollType).name
         is DropItem.EquipmentDrop -> drop.equipment.name
         is DropItem.MoneyDrop     -> "${drop.amount}원"
+        is DropItem.MaterialDrop  -> MaterialCatalog.get(drop.materialType).name
     }
     val labelPaint = android.graphics.Paint().apply {
         color       = android.graphics.Color.parseColor("#FFEE66")
@@ -2934,6 +2945,11 @@ fun InventoryWindow(
                                 rootWindowOffset    = rootWindowOffset,
                                 onConsumableDragEnd = onConsumableDragEnd,
                                 modifier            = Modifier.weight(1f)
+                            )
+                            is InventorySlot.MaterialItem -> MaterialInventoryItem(
+                                materialType = slot.type,
+                                quantity     = slot.quantity,
+                                modifier     = Modifier.weight(1f)
                             )
                         }
                     }
@@ -3982,6 +3998,45 @@ private fun ConsumableInventoryItem(
     }
 }
 
+// ── 재료 아이템 인벤토리 슬롯 ─────────────────────────────────────────────────
+@Composable
+private fun MaterialInventoryItem(
+    materialType: MaterialType,
+    quantity: Int,
+    modifier: Modifier = Modifier
+) {
+    val info = MaterialCatalog.get(materialType)
+    Box(
+        modifier = modifier
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFF1A2A1A))
+            .border(1.dp, Color(0xFF66BB6A).copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+            .padding(4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = info.name,
+                color = Color(0xFF66BB6A),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "×$quantity",
+                color = TextGold,
+                fontSize = 10.sp
+            )
+        }
+    }
+}
+
 @Composable
 private fun ConsumableInfoDialog(
     consumableType: ConsumableType,
@@ -4082,6 +4137,7 @@ private fun ShopWindow(
                     itemId       = ConsumableCatalog.itemId(slot.type),
                     itemType     = ShopItemType.CONSUMABLE
                 )
+                is InventorySlot.MaterialItem -> null
                 null -> null
             }
         }

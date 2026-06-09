@@ -60,6 +60,9 @@ object DropRegistry {
         // 주문서 → ScrollType enum 이름과 매핑
         runCatching { ScrollType.valueOf(itemId) }.getOrNull()
             ?.let { return DropItem.ScrollDrop(it) }
+        // 재료 아이템 → MaterialType enum 이름과 매핑
+        runCatching { MaterialType.valueOf(itemId) }.getOrNull()
+            ?.let { return DropItem.MaterialDrop(it) }
         return null
     }
 }

@@ -32,5 +32,7 @@ data class SavedSlot(
     val scrollQty: Int = 0,
     val equipment: Equipment? = null,
     val consumableType: String? = null,
-    val consumableQty: Int = 0
+    val consumableQty: Int = 0,
+    val materialType: String? = null,
+    val materialQty: Int = 0
 )

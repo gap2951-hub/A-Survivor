@@ -2,6 +2,7 @@ package com.a_survivor.app.service
 
 import android.content.Context
 import com.a_survivor.app.model.ConsumableType
+import com.a_survivor.app.model.MaterialType
 import com.a_survivor.app.model.ScrollType
 import com.a_survivor.app.viewmodel.InventorySlot
 import com.a_survivor.app.viewmodel.UiState
@@ -50,6 +51,11 @@ class SaveService(context: Context) {
                         consumableType = slot.type.name,
                         consumableQty  = slot.quantity
                     )
+                    is InventorySlot.MaterialItem -> SavedSlot(
+                        slotType    = "MATERIAL",
+                        materialType = slot.type.name,
+                        materialQty  = slot.quantity
+                    )
                 }
             }
         )
@@ -76,6 +82,9 @@ class SaveService(context: Context) {
         "EQUIP" -> slot.equipment?.let { InventorySlot.EquipItem(it) }
         "CONSUMABLE" -> runCatching {
             InventorySlot.ConsumableItem(ConsumableType.valueOf(slot.consumableType!!), slot.consumableQty)
+        }.getOrNull()
+        "MATERIAL" -> runCatching {
+            InventorySlot.MaterialItem(MaterialType.valueOf(slot.materialType!!), slot.materialQty)
         }.getOrNull()
         else -> null
     }

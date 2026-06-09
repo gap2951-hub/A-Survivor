@@ -76,6 +76,7 @@ sealed class InventorySlot {
     data class ScrollItem(val type: ScrollType, val quantity: Int) : InventorySlot()
     data class EquipItem(val equipment: Equipment) : InventorySlot()
     data class ConsumableItem(val type: ConsumableType, val quantity: Int) : InventorySlot()
+    data class MaterialItem(val type: com.a_survivor.app.model.MaterialType, val quantity: Int) : InventorySlot()
 }
 
 data class PendingRespawn(val monsterId: Int, val diedAt: Long)
@@ -923,6 +924,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return m
     }
 
+    private fun addMaterialToSlots(slots: List<InventorySlot?>, type: com.a_survivor.app.model.MaterialType): List<InventorySlot?> {
+        val m = slots.toMutableList()
+        val idx = m.indexOfFirst { it is InventorySlot.MaterialItem && it.type == type }
+        if (idx >= 0) {
+            m[idx] = (m[idx] as InventorySlot.MaterialItem).let { it.copy(quantity = it.quantity + 1) }
+        } else {
+            val empty = m.indexOfFirst { it == null }
+            if (empty >= 0) m[empty] = InventorySlot.MaterialItem(type, 1)
+        }
+        return m
+    }
+
     private fun applyDrops(state: UiState, drops: List<DropItem>): UiState {
         var s = state
         for (drop in drops) {
@@ -939,6 +952,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val withSlots = s.copy(inventorySlots = addEquipToSlots(s.inventorySlots, drop.equipment))
                     val withEquip = if (withSlots.equipment == null) withSlots.copy(equipment = drop.equipment) else withSlots
                     addMessage(withEquip, "${drop.equipment.name} 획득", MessageType.ITEM)
+                }
+                is DropItem.MaterialDrop -> {
+                    val info = com.a_survivor.app.model.MaterialCatalog.get(drop.materialType)
+                    addMessage(
+                        s.copy(inventorySlots = addMaterialToSlots(s.inventorySlots, drop.materialType)),
+                        "${info.name} 획득", MessageType.ITEM
+                    )
                 }
             }
         }
