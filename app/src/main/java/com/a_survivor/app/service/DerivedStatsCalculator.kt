@@ -6,6 +6,7 @@ import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.PlayerJob
 import com.a_survivor.app.model.PlayerStats
 import com.a_survivor.app.model.Weapon
+import com.a_survivor.app.model.attackIntervalMs
 
 class DerivedStatsCalculator {
 
@@ -76,16 +77,21 @@ class DerivedStatsCalculator {
         }
 
         // 4단계: 장비 전용 능력치 합산
+        val equipAtkSpeedBonus = equipment?.attackSpeed ?: 0f
+        val baseInterval = weapon?.attackIntervalMs() ?: 900L
+        val attackIntervalMs = (baseInterval - equipAtkSpeedBonus.toLong()).coerceAtLeast(300L)
+
         return DerivedStats(
-            attackPower     = baseAtk,
-            magicPower      = baseMag,
-            accuracy        = baseAcc + (equipment?.accuracy ?: 0),
-            avoidability    = baseAvoid + (equipment?.avoidability ?: 0),
-            physicalDefense = equipment?.physicalDefense ?: 0,
-            magicDefense    = equipment?.magicDefense ?: 0,
-            criticalRate    = equipment?.criticalRate ?: 0f,
-            moveSpeed       = equipment?.moveSpeed ?: 0f,
-            attackSpeed     = equipment?.attackSpeed ?: 0f
+            attackPower      = baseAtk,
+            magicPower       = baseMag,
+            accuracy         = baseAcc + (equipment?.accuracy ?: 0),
+            avoidability     = baseAvoid + (equipment?.avoidability ?: 0),
+            physicalDefense  = equipment?.physicalDefense ?: 0,
+            magicDefense     = equipment?.magicDefense ?: 0,
+            criticalRate     = equipment?.criticalRate ?: 0f,
+            moveSpeed        = equipment?.moveSpeed ?: 0f,
+            attackSpeed      = equipAtkSpeedBonus,
+            attackIntervalMs = attackIntervalMs
         )
     }
 

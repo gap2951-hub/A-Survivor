@@ -2512,7 +2512,7 @@ private fun StatWindow(
             DerivedStatRow("마법방어력",  derivedStats.magicDefense.toString(),    note = "장비 효과")
             DerivedStatRow("치명타율",    "${(derivedStats.criticalRate * 100).toInt()}%", note = "장비 효과")
             DerivedStatRow("이동속도",    if (derivedStats.moveSpeed == 0f) "기본" else "+${derivedStats.moveSpeed.toInt()}", note = "장비 효과")
-            DerivedStatRow("공격속도",    if (derivedStats.attackSpeed == 0f) "기본" else "+${derivedStats.attackSpeed.toInt()}", note = "장비 효과")
+            DerivedStatRow("공격속도",    "${derivedStats.attackIntervalMs}ms" + if (derivedStats.attackSpeed != 0f) " (-${derivedStats.attackSpeed.toInt()})" else "", note = "무기+장비")
         }
     }
 }

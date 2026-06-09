@@ -163,7 +163,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
         private const val MOVE_SPEED            = 2f
-        private const val AUTO_ATTACK_INTERVAL  = 1000L
+        private const val AUTO_ATTACK_CHECK_INTERVAL = 100L  // 공격 주기 체크 빈도 (실제 간격은 derivedStats.attackIntervalMs)
         private const val AI_TICK_INTERVAL      = 16L
         private const val RESPAWN_DELAY         = 5000L
         private const val RESPAWN_CHECK_INTERVAL = 1000L
@@ -180,7 +180,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch {
             while (true) {
-                delay(AUTO_ATTACK_INTERVAL)
+                delay(AUTO_ATTACK_CHECK_INTERVAL)
                 autoAttackTick()
             }
         }
@@ -468,7 +468,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         var attacked = false
         _uiState.update { state ->
             if (state.player.hp <= 0) return@update state
-            if (System.currentTimeMillis() - state.playerAttackAnimStart < AUTO_ATTACK_INTERVAL) return@update state
+            if (System.currentTimeMillis() - state.playerAttackAnimStart < state.derivedStats.attackIntervalMs) return@update state
             val lockedIds = state.projectiles.map { it.targetMonsterId }.toSet()
             val result = autoAttackService.tick(
                 player           = state.player,

@@ -18,6 +18,16 @@ data class Weapon(
     val description: String = ""
 )
 
+// 무기 공격속도 문자열 → 기준 공격 주기 (ms)
+fun Weapon.attackIntervalMs(): Long = when (attackSpeed) {
+    "매우빠름" -> 600L
+    "빠름"    -> 750L
+    "보통"    -> 900L
+    "느림"    -> 1050L
+    "매우느림" -> 1200L
+    else      -> 900L
+}
+
 val DefaultWeapon = Weapon(
     name = "낡은 검",
     attackPower = 5,

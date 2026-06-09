@@ -9,5 +9,6 @@ data class DerivedStats(
     val magicDefense: Int = 0,
     val criticalRate: Float = 0f,
     val moveSpeed: Float = 0f,
-    val attackSpeed: Float = 0f
+    val attackSpeed: Float = 0f,      // 장비 보너스 (ms 감소량)
+    val attackIntervalMs: Long = 900L  // 실제 공격 주기 = 무기 기준값 - 장비 보너스
 )
