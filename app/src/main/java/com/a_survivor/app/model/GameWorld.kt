@@ -1,6 +1,6 @@
 package com.a_survivor.app.model
 
-enum class MapType { BEGINNER_FIELD, TOWN, FIELD_2, FIELD_3 }
+enum class MapType { BEGINNER_FIELD, TOWN, FIELD_2, FIELD_3, MINOTAUR_FIELD_1, MINOTAUR_FIELD_2, MINOTAUR_FIELD_3 }
 
 data class GameWorld(
     val width: Float = 1024f,
@@ -16,7 +16,10 @@ data class GameWorld(
         x.coerceIn(0f, width) to y.coerceIn(0f, height)
 }
 
-val DefaultWorld = GameWorld()
-val TownWorld    = GameWorld(mapType = MapType.TOWN)
-val Field2World  = GameWorld(mapType = MapType.FIELD_2)
-val Field3World  = GameWorld(mapType = MapType.FIELD_3)
+val DefaultWorld       = GameWorld()
+val TownWorld          = GameWorld(mapType = MapType.TOWN)
+val Field2World        = GameWorld(mapType = MapType.FIELD_2)
+val Field3World        = GameWorld(mapType = MapType.FIELD_3)
+val MinotaurField1World = GameWorld(mapType = MapType.MINOTAUR_FIELD_1)
+val MinotaurField2World = GameWorld(mapType = MapType.MINOTAUR_FIELD_2)
+val MinotaurField3World = GameWorld(mapType = MapType.MINOTAUR_FIELD_3)

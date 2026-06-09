@@ -94,6 +94,9 @@ com.a_survivor.app/
     ├── skeleton_slash_0~5.png     ← 스켈레톤 Crusader_1 Slash (6프레임)
     ├── skeleton2_idle/walk/slash  ← Crusader_2 (각 6/8/6프레임)
     ├── skeleton3_idle/walk/slash  ← Crusader_3 (각 6/8/6프레임)
+    ├── minotaur1_idle/walk/slash  ← Minotaur_1 variant 4 (각 6/8/6프레임, Idle 3f간격/Walk 3f간격/Slash 2f간격 서브샘플)
+    ├── minotaur2_idle/walk/slash  ← Minotaur_2 variant 5 (각 6/8/6프레임)
+    ├── minotaur3_idle/walk/slash  ← Minotaur_3 variant 6 (각 6/8/6프레임)
     ├── nogada_glove.png
     ├── nogada_sword.png
     ├── scroll_100.png / scroll_60.png / scroll_10.png
@@ -174,6 +177,7 @@ Box (게임 화면)
 | 스켈레톤 (IDLE) | Idle 애니메이션 6프레임 + 초록 HP 바 | `size.height * 0.15f` |
 | 스켈레톤 (AGGRO) | Walk 애니메이션 8프레임 + 주황 HP 바 + "!" | `size.height * 0.15f` |
 | 스켈레톤 (ATTACKING) | Slash 애니메이션 6프레임 + 주황 HP 바 + "!" | `size.height * 0.15f` |
+| 미노타우르스 | 동일 drawMonster 함수 사용, monsterId.startsWith("MINOTAUR") 분기로 minoFrames 선택 | `size.height * 0.15f` |
 | NPC 츄츄 | PNG 이미지 + 이름 텍스트 | 높이 `size.height * 0.20f`, 너비 `높이 * 1.6` |
 | 바닥 아이템 | PNG 이미지 + 이름 텍스트 | `size.height * 0.048f` |
 | 포탈 | 다층 파란 글로우 링 + 레이블 | `24f * cam.zoom` |
@@ -197,17 +201,20 @@ val cam = CameraState(zoom = zoom)
 ### MapType
 
 ```kotlin
-enum class MapType { BEGINNER_FIELD, TOWN, FIELD_2, FIELD_3 }
+enum class MapType { BEGINNER_FIELD, TOWN, FIELD_2, FIELD_3, MINOTAUR_FIELD_1, MINOTAUR_FIELD_2, MINOTAUR_FIELD_3 }
 ```
 
 ### 맵별 설정
 
-| 맵 | 이미지 | 월드 크기 | 몬스터 | 스켈레톤 variant |
-|----|--------|-----------|--------|-----------------|
-| BEGINNER_FIELD | map_beginner.jpg | 1024×572 | 스켈레톤 워리어 5마리 (HP 20, EXP 8) | Crusader_2 |
+| 맵 | 이미지 | 월드 크기 | 몬스터 | variant |
+|----|--------|-----------|--------|---------|
+| BEGINNER_FIELD | map_beginner.jpg | 1024×572 | 스켈레톤 워리어 5마리 (HP 20, EXP 8) | 2 (Crusader_2) |
 | TOWN | map_town.jpg | 1024×572 | 없음 | — |
-| FIELD_2 | map_beginner.jpg | 1024×572 | 스켈레톤 워리어 5마리 (HP 60, EXP 20) | Crusader_3 |
-| FIELD_3 | map_beginner.jpg | 1024×572 | 스켈레톤 워리어 5마리 (HP 150, EXP 45) | Crusader_1 |
+| FIELD_2 | map_beginner.jpg | 1024×572 | 스켈레톤 워리어 5마리 (HP 60, EXP 20) | 3 (Crusader_3) |
+| FIELD_3 | map_beginner.jpg | 1024×572 | 스켈레톤 워리어 5마리 (HP 150, EXP 45) | 1 (Crusader_1) |
+| MINOTAUR_FIELD_1 | map_beginner.jpg | 1024×572 | 미노타우르스 5마리 (HP 300, EXP 80) | 4 (Minotaur_1) |
+| MINOTAUR_FIELD_2 | map_beginner.jpg | 1024×572 | 미노타우르스 5마리 (HP 500, EXP 130) | 5 (Minotaur_2) |
+| MINOTAUR_FIELD_3 | map_beginner.jpg | 1024×572 | 미노타우르스 5마리 (HP 800, EXP 200) | 6 (Minotaur_3) |
 
 ### 픽셀 충돌 시스템 (MainViewModel)
 
@@ -252,11 +259,20 @@ data class Portal(
 | BEGINNER_FIELD | (850, 286) | TOWN | (350, 286) |
 | BEGINNER_FIELD | (174, 286) | FIELD_2 | (800, 286) |
 | TOWN | (250, 286) | BEGINNER_FIELD | (750, 286) |
+| TOWN | (750, 286) | MINOTAUR_FIELD_1 | (300, 286) |
 | FIELD_2 | (850, 286) | BEGINNER_FIELD | (300, 286) |
 | FIELD_2 | (174, 286) | FIELD_3 | (800, 286) |
 | FIELD_3 | (850, 286) | FIELD_2 | (300, 286) |
+| MINOTAUR_FIELD_1 | (174, 286) | TOWN | (750, 286) |
+| MINOTAUR_FIELD_1 | (850, 286) | MINOTAUR_FIELD_2 | (300, 286) |
+| MINOTAUR_FIELD_2 | (174, 286) | MINOTAUR_FIELD_1 | (800, 286) |
+| MINOTAUR_FIELD_2 | (850, 286) | MINOTAUR_FIELD_3 | (300, 286) |
+| MINOTAUR_FIELD_3 | (174, 286) | MINOTAUR_FIELD_2 | (800, 286) |
 
-포탈 체인: `FIELD_3 ←→ FIELD_2 ←→ BEGINNER_FIELD ←→ TOWN` (왼쪽이 더 고급 구역)
+포탈 체인:
+- 스켈레톤 루트: `FIELD_3 ←→ FIELD_2 ←→ BEGINNER_FIELD ←→ TOWN`
+- 미노타우르스 루트: `TOWN ←→ MINOTAUR_FIELD_1 ←→ MINOTAUR_FIELD_2 ←→ MINOTAUR_FIELD_3`
+- TOWN은 두 루트의 허브 (왼쪽=초보자 사냥터, 오른쪽=미노타우르스 사냥터)
 
 > 마을 포탈이 x=250에 있는 이유: x=144(lum=68)·x=168~176(lum=30~70) 장애물 때문에
 > x=180 이전은 접근 불가 함정 지대. x=250(lum=146)부터 완전 개활지.
@@ -1208,6 +1224,13 @@ SoundManager.release()          // onDestroy
 | 183 | MessageLogOverlay bottom 조정 — 170.dp → 110.dp (HudButton 제거 후 여백 축소) | ✅ |
 | 184 | 수동 공격 연타 방지 — executeAttack()에 AUTO_ATTACK_INTERVAL 쿨다운 체크 추가 | ✅ |
 | 185 | 무기 공격속도 데이터 기반 공격 주기 적용 — Weapon.attackIntervalMs() 추가, DerivedStats.attackIntervalMs 필드, DerivedStatsCalculator 계산, 루프 100ms 전환 | ✅ |
+| 186 | 미노타우르스 몬스터 3종 추가 — image/미노타우르스/Minotaur_1~3 PNG 서브샘플(Idle 6/Walk 8/Slash 6프레임)→drawable 복사, variant 4/5/6 | ✅ |
+| 187 | MapType 확장 — MINOTAUR_FIELD_1/2/3 추가 + GameWorld 인스턴스 | ✅ |
+| 188 | 마을 우측 포탈 추가 (750,286)→MINOTAUR_FIELD_1, 미노타우르스 사냥터 3단계 포탈 체인 구성 | ✅ |
+| 189 | monster.csv 미노타우르스 3행 추가 — HP 300→500→800, EXP 80→130→200, 속도 1.2→1.4→1.6 | ✅ |
+| 190 | drop.csv 미노타우르스 드랍 추가 — 스켈레톤 대비 드랍률 상향 (최대 글장100% 35%, 클로버 5%) | ✅ |
+| 191 | MonsterSpawner name 파라미터 추가 — skeletonWarrior 하드코딩 제거, Monster() 직접 생성으로 변경 | ✅ |
+| 192 | MainActivity 미노타우르스 스프라이트 로딩 + drawMonster monsterId 분기 (MINOTAUR→minoFrames, 나머지→skelFrames) | ✅ |
 
 ---
 

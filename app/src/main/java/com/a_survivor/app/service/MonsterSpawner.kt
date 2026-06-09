@@ -3,7 +3,6 @@ package com.a_survivor.app.service
 import com.a_survivor.app.model.GameWorld
 import com.a_survivor.app.model.Monster
 import com.a_survivor.app.model.distanceTo
-import com.a_survivor.app.model.skeletonWarrior
 import kotlin.random.Random
 
 class MonsterSpawner {
@@ -11,6 +10,7 @@ class MonsterSpawner {
     fun spawnMonsters(
         world: GameWorld,
         count: Int,
+        name: String = "몬스터",
         monsterId: String = "",
         variant: Int = 1,
         hp: Int = 30,
@@ -29,7 +29,7 @@ class MonsterSpawner {
         repeat(count) {
             val monster = tryPlace(
                 world, placed, isBlocked, minDistance, margin, nextId,
-                monsterId, variant, hp, expReward, avoidability, accuracy, speed, random
+                name, monsterId, variant, hp, expReward, avoidability, accuracy, speed, random
             )
             if (monster != null) {
                 placed.add(monster)
@@ -46,6 +46,7 @@ class MonsterSpawner {
         minDistance: Float,
         margin: Float,
         id: Int,
+        name: String,
         monsterId: String,
         variant: Int,
         hp: Int,
@@ -65,8 +66,19 @@ class MonsterSpawner {
 
             val tooClose = placed.any { it.distanceTo(x, y) < minDistance }
             val blocked  = isBlocked?.invoke(x, y) == true
-            if (!tooClose && !blocked) return skeletonWarrior(
-                id, x, y, variant, hp, expReward, avoidability, accuracy, speed, monsterId
+            if (!tooClose && !blocked) return Monster(
+                id           = id,
+                name         = name,
+                hp           = hp,
+                maxHp        = hp,
+                positionX    = x,
+                positionY    = y,
+                speed        = speed,
+                expReward    = expReward,
+                avoidability = avoidability,
+                accuracy     = accuracy,
+                variant      = variant,
+                monsterId    = monsterId
             )
         }
         return null

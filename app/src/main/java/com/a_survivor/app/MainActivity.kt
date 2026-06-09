@@ -1616,6 +1616,92 @@ private fun GameCanvas(
         Triple(skelIdle2, skelWalk2, skelSlash2),
         Triple(skelIdle3, skelWalk3, skelSlash3)
     ) }
+    // 미노타우르스 variant 4
+    val minoIdle1  = remember { listOf(
+        loadBitmap(context, R.drawable.minotaur1_idle_0, 256),
+        loadBitmap(context, R.drawable.minotaur1_idle_1, 256),
+        loadBitmap(context, R.drawable.minotaur1_idle_2, 256),
+        loadBitmap(context, R.drawable.minotaur1_idle_3, 256),
+        loadBitmap(context, R.drawable.minotaur1_idle_4, 256),
+        loadBitmap(context, R.drawable.minotaur1_idle_5, 256)
+    ) }
+    val minoWalk1  = remember { listOf(
+        loadBitmap(context, R.drawable.minotaur1_walk_0, 256),
+        loadBitmap(context, R.drawable.minotaur1_walk_1, 256),
+        loadBitmap(context, R.drawable.minotaur1_walk_2, 256),
+        loadBitmap(context, R.drawable.minotaur1_walk_3, 256),
+        loadBitmap(context, R.drawable.minotaur1_walk_4, 256),
+        loadBitmap(context, R.drawable.minotaur1_walk_5, 256),
+        loadBitmap(context, R.drawable.minotaur1_walk_6, 256),
+        loadBitmap(context, R.drawable.minotaur1_walk_7, 256)
+    ) }
+    val minoSlash1 = remember { listOf(
+        loadBitmap(context, R.drawable.minotaur1_slash_0, 256),
+        loadBitmap(context, R.drawable.minotaur1_slash_1, 256),
+        loadBitmap(context, R.drawable.minotaur1_slash_2, 256),
+        loadBitmap(context, R.drawable.minotaur1_slash_3, 256),
+        loadBitmap(context, R.drawable.minotaur1_slash_4, 256),
+        loadBitmap(context, R.drawable.minotaur1_slash_5, 256)
+    ) }
+    // 미노타우르스 variant 5
+    val minoIdle2  = remember { listOf(
+        loadBitmap(context, R.drawable.minotaur2_idle_0, 256),
+        loadBitmap(context, R.drawable.minotaur2_idle_1, 256),
+        loadBitmap(context, R.drawable.minotaur2_idle_2, 256),
+        loadBitmap(context, R.drawable.minotaur2_idle_3, 256),
+        loadBitmap(context, R.drawable.minotaur2_idle_4, 256),
+        loadBitmap(context, R.drawable.minotaur2_idle_5, 256)
+    ) }
+    val minoWalk2  = remember { listOf(
+        loadBitmap(context, R.drawable.minotaur2_walk_0, 256),
+        loadBitmap(context, R.drawable.minotaur2_walk_1, 256),
+        loadBitmap(context, R.drawable.minotaur2_walk_2, 256),
+        loadBitmap(context, R.drawable.minotaur2_walk_3, 256),
+        loadBitmap(context, R.drawable.minotaur2_walk_4, 256),
+        loadBitmap(context, R.drawable.minotaur2_walk_5, 256),
+        loadBitmap(context, R.drawable.minotaur2_walk_6, 256),
+        loadBitmap(context, R.drawable.minotaur2_walk_7, 256)
+    ) }
+    val minoSlash2 = remember { listOf(
+        loadBitmap(context, R.drawable.minotaur2_slash_0, 256),
+        loadBitmap(context, R.drawable.minotaur2_slash_1, 256),
+        loadBitmap(context, R.drawable.minotaur2_slash_2, 256),
+        loadBitmap(context, R.drawable.minotaur2_slash_3, 256),
+        loadBitmap(context, R.drawable.minotaur2_slash_4, 256),
+        loadBitmap(context, R.drawable.minotaur2_slash_5, 256)
+    ) }
+    // 미노타우르스 variant 6
+    val minoIdle3  = remember { listOf(
+        loadBitmap(context, R.drawable.minotaur3_idle_0, 256),
+        loadBitmap(context, R.drawable.minotaur3_idle_1, 256),
+        loadBitmap(context, R.drawable.minotaur3_idle_2, 256),
+        loadBitmap(context, R.drawable.minotaur3_idle_3, 256),
+        loadBitmap(context, R.drawable.minotaur3_idle_4, 256),
+        loadBitmap(context, R.drawable.minotaur3_idle_5, 256)
+    ) }
+    val minoWalk3  = remember { listOf(
+        loadBitmap(context, R.drawable.minotaur3_walk_0, 256),
+        loadBitmap(context, R.drawable.minotaur3_walk_1, 256),
+        loadBitmap(context, R.drawable.minotaur3_walk_2, 256),
+        loadBitmap(context, R.drawable.minotaur3_walk_3, 256),
+        loadBitmap(context, R.drawable.minotaur3_walk_4, 256),
+        loadBitmap(context, R.drawable.minotaur3_walk_5, 256),
+        loadBitmap(context, R.drawable.minotaur3_walk_6, 256),
+        loadBitmap(context, R.drawable.minotaur3_walk_7, 256)
+    ) }
+    val minoSlash3 = remember { listOf(
+        loadBitmap(context, R.drawable.minotaur3_slash_0, 256),
+        loadBitmap(context, R.drawable.minotaur3_slash_1, 256),
+        loadBitmap(context, R.drawable.minotaur3_slash_2, 256),
+        loadBitmap(context, R.drawable.minotaur3_slash_3, 256),
+        loadBitmap(context, R.drawable.minotaur3_slash_4, 256),
+        loadBitmap(context, R.drawable.minotaur3_slash_5, 256)
+    ) }
+    val minoFrames = remember { listOf(
+        Triple(minoIdle1, minoWalk1, minoSlash1),
+        Triple(minoIdle2, minoWalk2, minoSlash2),
+        Triple(minoIdle3, minoWalk3, minoSlash3)
+    ) }
     val scroll100Bitmap = remember { loadBitmap(context, R.drawable.scroll_100, 256) }
     val scroll60Bitmap  = remember { loadBitmap(context, R.drawable.scroll_60,  256) }
     val scroll10Bitmap  = remember { loadBitmap(context, R.drawable.scroll_10,  256) }
@@ -1716,7 +1802,10 @@ private fun GameCanvas(
         npcs.forEach { drawNpc(it, cam, npcChuchu) }
         drawAttackRange(player, cam)
         monsters.forEach { m ->
-            val (idle, walk, slash) = skelFrames[(m.variant - 1).coerceIn(0, 2)]
+            val (idle, walk, slash) = if (m.monsterId.startsWith("MINOTAUR"))
+                minoFrames[(m.variant - 4).coerceIn(0, 2)]
+            else
+                skelFrames[(m.variant - 1).coerceIn(0, 2)]
             drawMonster(m, cam, idle, walk, slash)
         }
         projectiles.forEach { drawProjectile(it, cam, energyBoltFrames) }

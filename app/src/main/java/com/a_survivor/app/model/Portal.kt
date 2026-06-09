@@ -16,7 +16,8 @@ object PortalRegistry {
             Portal(174f, 286f, MapType.FIELD_2, 800f, 286f, "중급 사냥터")
         )
         MapType.TOWN -> listOf(
-            Portal(250f, 286f, MapType.BEGINNER_FIELD, 750f, 286f, "초보자 사냥터")
+            Portal(250f, 286f, MapType.BEGINNER_FIELD,  750f, 286f, "초보자 사냥터"),
+            Portal(750f, 286f, MapType.MINOTAUR_FIELD_1, 300f, 286f, "미노타우르스 사냥터")
         )
         MapType.FIELD_2 -> listOf(
             Portal(850f, 286f, MapType.BEGINNER_FIELD, 300f, 286f, "초보자 사냥터"),
@@ -24,6 +25,17 @@ object PortalRegistry {
         )
         MapType.FIELD_3 -> listOf(
             Portal(850f, 286f, MapType.FIELD_2, 300f, 286f, "중급 사냥터")
+        )
+        MapType.MINOTAUR_FIELD_1 -> listOf(
+            Portal(174f, 286f, MapType.TOWN,            750f, 286f, "마을"),
+            Portal(850f, 286f, MapType.MINOTAUR_FIELD_2, 300f, 286f, "미노타우르스 사냥터 2")
+        )
+        MapType.MINOTAUR_FIELD_2 -> listOf(
+            Portal(174f, 286f, MapType.MINOTAUR_FIELD_1, 800f, 286f, "미노타우르스 사냥터 1"),
+            Portal(850f, 286f, MapType.MINOTAUR_FIELD_3, 300f, 286f, "미노타우르스 사냥터 3")
+        )
+        MapType.MINOTAUR_FIELD_3 -> listOf(
+            Portal(174f, 286f, MapType.MINOTAUR_FIELD_2, 800f, 286f, "미노타우르스 사냥터 2")
         )
     }
 }

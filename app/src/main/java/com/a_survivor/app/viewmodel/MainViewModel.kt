@@ -423,6 +423,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return MonsterSpawner().spawnMonsters(
             world        = world,
             count        = count,
+            name         = cfg.name,
             monsterId    = cfg.monsterId,
             variant      = cfg.variant,
             hp           = cfg.hp,
