@@ -68,6 +68,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -332,7 +333,8 @@ fun MainScreen(
     val configuration = LocalConfiguration.current
     val screenW  = with(density) { configuration.screenWidthDp.dp.toPx() }
     val screenH  = with(density) { configuration.screenHeightDp.dp.toPx() }
-    val panelWPx = with(density) { 280.dp.toPx() }
+    val panelW   = (configuration.screenWidthDp * 0.29f).dp
+    val panelWPx = with(density) { panelW.toPx() }
     val headerPx = with(density) { 36.dp.toPx() }
     val initPad  = with(density) { 8.dp.toPx() }
 
@@ -413,7 +415,7 @@ fun MainScreen(
                 modifier = Modifier
                     .zIndex(10f)
                     .offset { IntOffset(equipOffset.x.roundToInt(), equipOffset.y.roundToInt()) }
-                    .width(280.dp)
+                    .width(panelW)
             ) {
                 EquipmentWindow(
                     equipment = state.equipment,
@@ -436,7 +438,7 @@ fun MainScreen(
                 modifier = Modifier
                     .zIndex(10f)
                     .offset { IntOffset(statOffset.x.roundToInt(), statOffset.y.roundToInt()) }
-                    .width(280.dp)
+                    .width(panelW)
             ) {
                 StatWindow(
                     player       = state.player,
@@ -454,7 +456,7 @@ fun MainScreen(
                 modifier = Modifier
                     .zIndex(10f)
                     .offset { IntOffset(inventOffset.x.roundToInt(), inventOffset.y.roundToInt()) }
-                    .width(280.dp)
+                    .width(panelW)
             ) {
                 InventoryWindow(
                     slots               = state.inventorySlots,
@@ -779,33 +781,34 @@ fun EquipmentWindow(
     ) {
         WindowTitleBar("장비창", onClose = onClose, onDrag = onDrag)
 
+        val slotSz = rememberSlotSize()
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // ① 머리 — 모자
-            BodyRow { LockedSlot("모자", Modifier.size(SlotSize)) }
+            BodyRow { LockedSlot("모자", Modifier.size(slotSz)) }
 
             // ② 얼굴 — 얼굴장식 / 눈장식 / 귀걸이
             BodyRow {
-                LockedSlot("얼굴", Modifier.size(SlotSize))
-                Spacer(Modifier.width(6.dp))
-                LockedSlot("눈장식", Modifier.size(SlotSize))
-                Spacer(Modifier.width(6.dp))
-                LockedSlot("귀걸이", Modifier.size(SlotSize))
+                LockedSlot("얼굴", Modifier.size(slotSz))
+                Spacer(Modifier.width(3.dp))
+                LockedSlot("눈장식", Modifier.size(slotSz))
+                Spacer(Modifier.width(3.dp))
+                LockedSlot("귀걸이", Modifier.size(slotSz))
             }
 
             // ③ 목 — 목걸이
-            BodyRow { LockedSlot("목걸이", Modifier.size(SlotSize)) }
+            BodyRow { LockedSlot("목걸이", Modifier.size(slotSz)) }
 
             // ④ 어깨·상의·망토
             BodyRow {
-                LockedSlot("어깨", Modifier.size(SlotSize))
-                Spacer(Modifier.width(6.dp))
-                LockedSlot("상의", Modifier.size(SlotSize))
-                Spacer(Modifier.width(6.dp))
-                LockedSlot("망토", Modifier.size(SlotSize))
+                LockedSlot("어깨", Modifier.size(slotSz))
+                Spacer(Modifier.width(3.dp))
+                LockedSlot("상의", Modifier.size(slotSz))
+                Spacer(Modifier.width(3.dp))
+                LockedSlot("망토", Modifier.size(slotSz))
             }
 
             // ⑤ 장갑·하의·무기  (장갑 = 드롭 타겟)
@@ -819,29 +822,33 @@ fun EquipmentWindow(
                     isDragOver = isDragOver,
                     onBoundsChanged = onSlotBounds,
                     onUnequip = onUnequip,
-                    onReset = onReset
+                    onReset = onReset,
+                    slotSize = slotSz
                 )
-                Spacer(Modifier.width(6.dp))
-                LockedSlot("하의", Modifier.size(SlotSize))
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(3.dp))
+                LockedSlot("하의", Modifier.size(slotSz))
+                Spacer(Modifier.width(3.dp))
                 WeaponSlot(
                     weapon = weapon,
                     onUnequip = onUnequipWeapon,
-                    onReset = onResetWeapon
+                    onReset = onResetWeapon,
+                    slotSize = slotSz
                 )
             }
 
             // ⑥ 신발·벨트
             BodyRow {
-                LockedSlot("신발", Modifier.size(SlotSize))
-                Spacer(Modifier.width(6.dp))
-                LockedSlot("벨트", Modifier.size(SlotSize))
+                LockedSlot("신발", Modifier.size(slotSz))
+                Spacer(Modifier.width(3.dp))
+                LockedSlot("벨트", Modifier.size(slotSz))
             }
         }
     }
 }
 
-private val SlotSize = 40.dp
+@Composable
+private fun rememberSlotSize(): Dp =
+    (LocalConfiguration.current.screenWidthDp * 0.032f).dp.coerceIn(10.dp, 18.dp)
 
 @Composable
 private fun BodyRow(content: @Composable () -> Unit) {
@@ -862,7 +869,7 @@ private fun WindowTitleBar(
         modifier = Modifier
             .fillMaxWidth()
             .background(PanelHeader)
-            .padding(horizontal = 12.dp, vertical = 7.dp)
+            .padding(horizontal = 6.dp, vertical = 4.dp)
             .then(
                 if (onDrag != null) Modifier.pointerInput(Unit) {
                     detectDragGestures { change, dragAmount ->
@@ -875,15 +882,15 @@ private fun WindowTitleBar(
     ) {
         Box(
             modifier = Modifier
-                .size(8.dp)
+                .size(5.dp)
                 .clip(RoundedCornerShape(50))
                 .background(BorderGold)
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(4.dp))
         Text(
             text = title,
             color = TextGold,
-            fontSize = 13.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.weight(1f)
         )
@@ -891,7 +898,7 @@ private fun WindowTitleBar(
             Text(
                 text = "✕",
                 color = TextMuted,
-                fontSize = 14.sp,
+                fontSize = 10.sp,
                 modifier = Modifier
                     .clickable(
                         indication = null,
@@ -958,7 +965,8 @@ private fun GlovesSlot(
     isDragOver: Boolean,
     onBoundsChanged: (Rect) -> Unit,
     onUnequip: () -> Unit,
-    onReset: () -> Unit
+    onReset: () -> Unit,
+    slotSize: Dp = rememberSlotSize()
 ) {
     var showInfo    by remember { mutableStateOf(false) }
     var showConfirm by remember { mutableStateOf(false) }
@@ -978,7 +986,7 @@ private fun GlovesSlot(
 
     Box(
         modifier = Modifier
-            .size(SlotSize)
+            .size(slotSize)
             .clip(RoundedCornerShape(4.dp))
             .background(bgColor)
             .border(if (isDragOver) 2.dp else 1.dp, borderColor, RoundedCornerShape(4.dp))
@@ -1065,7 +1073,8 @@ private fun GlovesSlot(
 private fun WeaponSlot(
     weapon: Weapon?,
     onUnequip: () -> Unit,
-    onReset: () -> Unit
+    onReset: () -> Unit,
+    slotSize: Dp = rememberSlotSize()
 ) {
     var showInfo    by remember { mutableStateOf(false) }
     var showConfirm by remember { mutableStateOf(false) }
@@ -1075,7 +1084,7 @@ private fun WeaponSlot(
 
     Box(
         modifier = Modifier
-            .size(SlotSize)
+            .size(slotSize)
             .clip(RoundedCornerShape(4.dp))
             .background(bgColor)
             .border(1.dp, borderColor, RoundedCornerShape(4.dp))
@@ -1121,13 +1130,14 @@ private fun WeaponSlot(
 @Composable
 private fun ItemInfoDialog(equipment: Equipment, onDismiss: () -> Unit, onEquip: (() -> Unit)? = null) {
     val isDestroyed = equipment.destroyed
+    val panelW = (LocalConfiguration.current.screenWidthDp * 0.29f).dp
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
+                .width(panelW)
                 .clip(RoundedCornerShape(10.dp))
                 .background(TipBg)
                 .border(1.dp, TipBorder, RoundedCornerShape(10.dp))
@@ -1137,54 +1147,56 @@ private fun ItemInfoDialog(equipment: Equipment, onDismiss: () -> Unit, onEquip:
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(3.dp)
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
                     text = equipment.name,
                     color = if (isDestroyed) ColorDestroyed else TipText,
-                    fontSize = 22.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp
                 )
                 Text(
                     text = if (isDestroyed) "파괴됨" else "교환 불가",
                     color = if (isDestroyed) ColorDestroyed else TipOrange,
-                    fontSize = 13.sp
+                    fontSize = 10.sp
                 )
             }
 
             HorizontalDivider(color = TipLine)
 
-            // ② 이미지 + 강화 정보
-            Row(
+            // ② 이미지 + 강화 정보 (세로 배치)
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.Top
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Box(
                     modifier = Modifier
-                        .size(96.dp)
+                        .size(48.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(if (isDestroyed) Color(0xFF3E0010) else TipImgBg)
                         .border(1.dp, if (isDestroyed) ColorDestroyed else TipImgBdr, RoundedCornerShape(4.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     if (isDestroyed) {
-                        Text("✕", color = ColorDestroyed, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                        Text("✕", color = ColorDestroyed, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     } else {
                         Image(
                             painter = painterResource(id = R.drawable.nogada_glove),
                             contentDescription = null,
-                            modifier = Modifier.size(80.dp),
+                            modifier = Modifier.size(38.dp),
                             contentScale = ContentScale.Fit
                         )
                     }
                 }
-                Spacer(Modifier.width(14.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     WeaponReqRow("최대 강화", "${equipment.maxUpgradeCount}회")
                     WeaponReqRow("남은 강화", "${equipment.remainingUpgradeCount}회")
                     WeaponReqRow(
@@ -1201,7 +1213,7 @@ private fun ItemInfoDialog(equipment: Equipment, onDismiss: () -> Unit, onEquip:
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(TipSection)
-                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                    .padding(horizontal = 4.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1214,13 +1226,13 @@ private fun ItemInfoDialog(equipment: Equipment, onDismiss: () -> Unit, onEquip:
                     PlayerJob.PIRATE   to "해적"
                 ).forEachIndexed { i, (job, label) ->
                     if (i > 0) {
-                        Box(modifier = Modifier.width(1.dp).height(14.dp).background(TipLine))
+                        Box(modifier = Modifier.width(1.dp).height(10.dp).background(TipLine))
                     }
                     val canEquip = equipment.availableJobs.contains(job)
                     Text(
                         text = label,
                         color = if (canEquip) TipOrange else TipMuted,
-                        fontSize = 12.sp,
+                        fontSize = 9.sp,
                         fontWeight = if (canEquip) FontWeight.Bold else FontWeight.Normal
                     )
                 }
@@ -1230,8 +1242,8 @@ private fun ItemInfoDialog(equipment: Equipment, onDismiss: () -> Unit, onEquip:
 
             // ④ 스탯
             Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 WeaponStatRow("공격력", "+${equipment.attackPower}")
                 WeaponStatRow(
@@ -1413,8 +1425,8 @@ private fun WeaponInfoDialog(weapon: Weapon, onDismiss: () -> Unit) {
 @Composable
 private fun WeaponReqRow(label: String, value: String) {
     Row {
-        Text(text = "$label : ", color = TipText, fontSize = 12.sp)
-        Text(text = value,       color = TipText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(text = "$label : ", color = TipText, fontSize = 9.sp)
+        Text(text = value,       color = TipText, fontSize = 9.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1422,9 +1434,9 @@ private fun WeaponReqRow(label: String, value: String) {
 private fun WeaponStatRow(label: String, value: String, isOrange: Boolean = false) {
     val color = if (isOrange) TipOrange else TipText
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("· ",         color = if (isOrange) TipOrange else TipMuted, fontSize = 13.sp)
-        Text("$label : ", color = color, fontSize = 13.sp)
-        Text(value,        color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text("· ",         color = if (isOrange) TipOrange else TipMuted, fontSize = 9.sp)
+        Text("$label : ", color = color, fontSize = 9.sp)
+        Text(value,        color = color, fontSize = 9.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -2527,8 +2539,10 @@ private fun StatWindow(
     ) {
         WindowTitleBar("스탯창", onClose = onClose, onDrag = onDrag)
 
+        val statMaxH = (LocalConfiguration.current.screenHeightDp * 0.32f).dp
         Column(modifier = Modifier
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = 6.dp, vertical = 4.dp)
+            .heightIn(max = statMaxH)
             .verticalScroll(rememberScrollState())
         ) {
 
@@ -2538,18 +2552,18 @@ private fun StatWindow(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("남은 SP", color = TextMuted, fontSize = 13.sp)
+                Text("남은 SP", color = TextMuted, fontSize = 9.sp)
                 Text(
                     text = "${player.availableStatPoint}",
                     color = if (hasPoints) ColorSuccess else TextMuted,
-                    fontSize = 13.sp,
+                    fontSize = 9.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
 
             HorizontalDivider(
                 color = BorderGold.copy(alpha = 0.3f),
-                modifier = Modifier.padding(vertical = 8.dp)
+                modifier = Modifier.padding(vertical = 4.dp)
             )
 
             // 기본 스탯 행
@@ -2560,16 +2574,16 @@ private fun StatWindow(
 
             HorizontalDivider(
                 color = BorderGold.copy(alpha = 0.3f),
-                modifier = Modifier.padding(vertical = 8.dp)
+                modifier = Modifier.padding(vertical = 4.dp)
             )
 
             // 전투 능력치 헤더
             Text(
                 text = "전투 능력치",
                 color = TextGold,
-                fontSize = 12.sp,
+                fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 6.dp)
+                modifier = Modifier.padding(bottom = 3.dp)
             )
 
             DerivedStatRow("공격력",      derivedStats.attackPower.toString())
@@ -2593,27 +2607,27 @@ private fun DerivedStatRow(label: String, value: String, note: String? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 3.dp),
+            .padding(vertical = 1.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label,
             color = TextMuted,
-            fontSize = 12.sp,
+            fontSize = 9.sp,
             modifier = Modifier.weight(1f)
         )
         if (note != null) {
             Text(
                 text = note,
                 color = TextMuted.copy(alpha = 0.5f),
-                fontSize = 10.sp,
-                modifier = Modifier.padding(end = 6.dp)
+                fontSize = 7.sp,
+                modifier = Modifier.padding(end = 3.dp)
             )
         }
         Text(
             text = value,
             color = TextGold,
-            fontSize = 12.sp,
+            fontSize = 9.sp,
             fontWeight = FontWeight.SemiBold
         )
     }
@@ -2629,34 +2643,34 @@ private fun StatAllocRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 5.dp),
+            .padding(vertical = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label,
             color = TextMuted,
-            fontSize = 13.sp,
-            modifier = Modifier.width(40.dp)
+            fontSize = 9.sp,
+            modifier = Modifier.width(26.dp)
         )
         Text(
             text = value.toString(),
             color = TextGold,
-            fontSize = 13.sp,
+            fontSize = 9.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.End
         )
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(4.dp))
         Box(
             modifier = Modifier
-                .size(28.dp)
-                .clip(RoundedCornerShape(4.dp))
+                .size(18.dp)
+                .clip(RoundedCornerShape(3.dp))
                 .background(if (canAllocate) Color(0xFF3A2800) else ColorDisabled)
                 .border(
                     1.dp,
                     if (canAllocate) BorderGold else SlotBorder,
-                    RoundedCornerShape(4.dp)
+                    RoundedCornerShape(3.dp)
                 )
                 .then(
                     if (canAllocate) Modifier.clickable(
@@ -2669,7 +2683,7 @@ private fun StatAllocRow(
             Text(
                 text = "+",
                 color = if (canAllocate) TextGold else TextMuted.copy(alpha = 0.3f),
-                fontSize = 14.sp,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.Bold
             )
         }
@@ -2866,31 +2880,32 @@ fun InventoryWindow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 6.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("소지금", color = TextMuted, fontSize = 11.sp)
+            Text("소지금", color = TextMuted, fontSize = 8.sp)
             Text(
                 text = "%,d원".format(money),
                 color = TextGold,
-                fontSize = 13.sp,
+                fontSize = 9.sp,
                 fontWeight = FontWeight.Bold
             )
         }
-        HorizontalDivider(color = BorderGold.copy(alpha = 0.3f), modifier = Modifier.padding(horizontal = 12.dp))
+        HorizontalDivider(color = BorderGold.copy(alpha = 0.3f), modifier = Modifier.padding(horizontal = 6.dp))
 
         // 4×8 슬롯 그리드 (스크롤 가능)
+        val maxGridH = (LocalConfiguration.current.screenHeightDp * 0.62f).dp
         Column(
             modifier = Modifier
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .heightIn(max = 300.dp)
+                .padding(horizontal = 4.dp, vertical = 4.dp)
+                .heightIn(max = maxGridH)
                 .verticalScroll(rememberScrollState())
         ) {
             slots.chunked(4).forEach { rowSlots ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     rowSlots.forEach { slot ->
                         when (slot) {
@@ -4116,7 +4131,7 @@ private fun ShopWindow(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.95f)
+                .width((LocalConfiguration.current.screenWidthDp * 0.29f).dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(PanelBg)
                 .border(1.dp, BorderGold, RoundedCornerShape(12.dp))
@@ -4126,20 +4141,20 @@ private fun ShopWindow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(PanelHeader)
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     "${shopInfo.npcName}의 상점",
                     color = TextGold,
-                    fontSize = 14.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     "소지금: %,d원".format(money),
                     color = TextGold,
-                    fontSize = 12.sp
+                    fontSize = 8.sp
                 )
             }
             HorizontalDivider(color = BorderGold.copy(alpha = 0.4f))
@@ -4148,8 +4163,8 @@ private fun ShopWindow(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 listOf(ShopMode.BUY to "구매", ShopMode.SELL to "판매").forEach { (m, label) ->
                     Button(
@@ -4162,25 +4177,27 @@ private fun ShopWindow(
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (mode == m) BorderGold else ColorDisabled
                         ),
-                        modifier = Modifier.weight(1f)
-                    ) { Text(label, color = Color.White, fontSize = 12.sp) }
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.weight(1f).height(24.dp)
+                    ) { Text(label, color = Color.White, fontSize = 9.sp) }
                 }
             }
             HorizontalDivider(color = BorderGold.copy(alpha = 0.3f))
 
-            // 본문: 아이템 목록(왼쪽) + 상세(오른쪽)
-            Row(
+            // 본문: 아이템 목록(위) + 상세(아래)
+            val shopListH  = (LocalConfiguration.current.screenHeightDp * 0.18f).dp
+            val shopDetailH = (LocalConfiguration.current.screenHeightDp * 0.22f).dp
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
                     .padding(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // 왼쪽: 아이템 목록
+                // 위: 아이템 목록
                 Column(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
+                        .fillMaxWidth()
+                        .heightIn(max = shopListH)
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -4191,24 +4208,24 @@ private fun ShopWindow(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .clip(RoundedCornerShape(4.dp))
                                     .background(if (selected) BorderGold.copy(alpha = 0.25f) else Color.Transparent)
-                                    .border(1.dp, if (selected) BorderGold else SlotBorder, RoundedCornerShape(6.dp))
+                                    .border(1.dp, if (selected) BorderGold else SlotBorder, RoundedCornerShape(4.dp))
                                     .clickable { selectedBuyId = item.id; quantityInput = "1" }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    .padding(horizontal = 5.dp, vertical = 3.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     item.name,
                                     color = if (canAfford) TextGold else TextMuted,
-                                    fontSize = 12.sp,
+                                    fontSize = 9.sp,
                                     modifier = Modifier.weight(1f)
                                 )
                                 Text(
                                     "%,d원".format(item.buyPrice),
                                     color = if (canAfford) ColorSuccess else ColorFailure,
-                                    fontSize = 11.sp
+                                    fontSize = 8.sp
                                 )
                             }
                         }
@@ -4217,8 +4234,8 @@ private fun ShopWindow(
                             Text(
                                 "판매 가능한 아이템이 없습니다.",
                                 color = TextMuted,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(8.dp)
+                                fontSize = 9.sp,
+                                modifier = Modifier.padding(4.dp)
                             )
                         }
                         sellEntries.forEach { entry ->
@@ -4226,11 +4243,11 @@ private fun ShopWindow(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .clip(RoundedCornerShape(4.dp))
                                     .background(if (selected) BorderGold.copy(alpha = 0.25f) else Color.Transparent)
-                                    .border(1.dp, if (selected) BorderGold else SlotBorder, RoundedCornerShape(6.dp))
+                                    .border(1.dp, if (selected) BorderGold else SlotBorder, RoundedCornerShape(4.dp))
                                     .clickable { selectedSellEntry = entry; quantityInput = "1" }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    .padding(horizontal = 5.dp, vertical = 3.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -4240,61 +4257,61 @@ private fun ShopWindow(
                                         if (entry.isStackable) append(" ×${entry.maxQuantity}")
                                     },
                                     color = TextGold,
-                                    fontSize = 12.sp,
+                                    fontSize = 9.sp,
                                     modifier = Modifier.weight(1f)
                                 )
                                 Text(
                                     "%,d원".format(entry.sellPrice),
                                     color = ColorSuccess,
-                                    fontSize = 11.sp
+                                    fontSize = 8.sp
                                 )
                             }
                         }
                     }
                 }
 
-                // 오른쪽: 상세 패널
+                // 아래: 상세 패널
                 Column(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(8.dp))
+                        .fillMaxWidth()
+                        .height(shopDetailH)
+                        .clip(RoundedCornerShape(6.dp))
                         .background(TipSection)
-                        .border(1.dp, TipBorder, RoundedCornerShape(8.dp))
-                        .padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .border(1.dp, TipBorder, RoundedCornerShape(6.dp))
+                        .padding(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     if (mode == ShopMode.BUY) {
                         val item = shopItems.find { it.id == selectedBuyId }
                         if (item == null) {
-                            Text("아이템을 선택하세요.", color = TextMuted, fontSize = 12.sp)
+                            Text("아이템을 선택하세요.", color = TextMuted, fontSize = 9.sp)
                         } else {
-                            Text(item.name, color = TipOrange, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            Text(item.description, color = TipText, fontSize = 11.sp)
+                            Text(item.name, color = TipOrange, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text(item.description, color = TipText, fontSize = 8.sp)
                             HorizontalDivider(color = TipLine)
-                            Text("구매가: %,d원".format(item.buyPrice), color = TextGold, fontSize = 12.sp)
+                            Text("구매가: %,d원".format(item.buyPrice), color = TextGold, fontSize = 9.sp)
                             if (item.stackable) {
                                 val qty = quantityInput.toIntOrNull()?.coerceAtLeast(1) ?: 1
                                 val total = item.buyPrice * qty
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Button(
                                         onClick = { quantityInput = ((quantityInput.toIntOrNull() ?: 1) - 1).coerceAtLeast(1).toString() },
                                         colors = ButtonDefaults.buttonColors(containerColor = ColorDisabled),
-                                        modifier = Modifier.size(28.dp),
+                                        modifier = Modifier.size(18.dp),
                                         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                                    ) { Text("−", color = Color.White, fontSize = 14.sp) }
-                                    Text(qty.toString(), color = TextGold, fontSize = 13.sp)
+                                    ) { Text("−", color = Color.White, fontSize = 9.sp) }
+                                    Text(qty.toString(), color = TextGold, fontSize = 9.sp)
                                     Button(
                                         onClick = { quantityInput = ((quantityInput.toIntOrNull() ?: 1) + 1).toString() },
                                         colors = ButtonDefaults.buttonColors(containerColor = ColorDisabled),
-                                        modifier = Modifier.size(28.dp),
+                                        modifier = Modifier.size(18.dp),
                                         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                                    ) { Text("+", color = Color.White, fontSize = 14.sp) }
+                                    ) { Text("+", color = Color.White, fontSize = 9.sp) }
                                 }
-                                Text("합계: %,d원".format(total), color = if (money >= total) ColorSuccess else ColorFailure, fontSize = 12.sp)
+                                Text("합계: %,d원".format(total), color = if (money >= total) ColorSuccess else ColorFailure, fontSize = 9.sp)
                             }
                             Spacer(Modifier.weight(1f))
                             val qty = if (item.stackable) (quantityInput.toIntOrNull()?.coerceAtLeast(1) ?: 1) else 1
@@ -4303,52 +4320,55 @@ private fun ShopWindow(
                                 onClick = { onBuy(shopInfo.shopType, item.id, qty) },
                                 enabled = money >= total,
                                 colors = ButtonDefaults.buttonColors(containerColor = BorderGold),
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("구매", color = Color.White, fontSize = 12.sp) }
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                modifier = Modifier.fillMaxWidth().height(24.dp)
+                            ) { Text("구매", color = Color.White, fontSize = 9.sp) }
                         }
                     } else {
                         val entry = selectedSellEntry
                         if (entry == null) {
-                            Text("아이템을 선택하세요.", color = TextMuted, fontSize = 12.sp)
+                            Text("아이템을 선택하세요.", color = TextMuted, fontSize = 9.sp)
                         } else {
-                            Text(entry.name, color = TipOrange, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(entry.name, color = TipOrange, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             HorizontalDivider(color = TipLine)
-                            Text("판매가: %,d원".format(entry.sellPrice), color = ColorSuccess, fontSize = 12.sp)
+                            Text("판매가: %,d원".format(entry.sellPrice), color = ColorSuccess, fontSize = 9.sp)
                             if (entry.isStackable) {
                                 val qty = (quantityInput.toIntOrNull()?.coerceAtLeast(1) ?: 1).coerceAtMost(entry.maxQuantity)
                                 val total = entry.sellPrice * qty
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Button(
                                         onClick = { quantityInput = ((quantityInput.toIntOrNull() ?: 1) - 1).coerceAtLeast(1).toString() },
                                         colors = ButtonDefaults.buttonColors(containerColor = ColorDisabled),
-                                        modifier = Modifier.size(28.dp),
+                                        modifier = Modifier.size(18.dp),
                                         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                                    ) { Text("−", color = Color.White, fontSize = 14.sp) }
-                                    Text(qty.toString(), color = TextGold, fontSize = 13.sp)
+                                    ) { Text("−", color = Color.White, fontSize = 9.sp) }
+                                    Text(qty.toString(), color = TextGold, fontSize = 9.sp)
                                     Button(
                                         onClick = { quantityInput = ((quantityInput.toIntOrNull() ?: 1) + 1).coerceAtMost(entry.maxQuantity).toString() },
                                         colors = ButtonDefaults.buttonColors(containerColor = ColorDisabled),
-                                        modifier = Modifier.size(28.dp),
+                                        modifier = Modifier.size(18.dp),
                                         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                                    ) { Text("+", color = Color.White, fontSize = 14.sp) }
+                                    ) { Text("+", color = Color.White, fontSize = 9.sp) }
                                 }
-                                Text("합계: %,d원".format(total), color = ColorSuccess, fontSize = 12.sp)
+                                Text("합계: %,d원".format(total), color = ColorSuccess, fontSize = 9.sp)
                                 Spacer(Modifier.weight(1f))
                                 Button(
                                     onClick = { onSellStackable(entry.itemId, entry.itemType, qty) },
                                     colors = ButtonDefaults.buttonColors(containerColor = BorderGold),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) { Text("판매", color = Color.White, fontSize = 12.sp) }
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                    modifier = Modifier.fillMaxWidth().height(24.dp)
+                                ) { Text("판매", color = Color.White, fontSize = 9.sp) }
                             } else {
                                 Spacer(Modifier.weight(1f))
                                 Button(
                                     onClick = { onSellEquipment(entry.slotIndex) },
                                     colors = ButtonDefaults.buttonColors(containerColor = BorderGold),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) { Text("판매", color = Color.White, fontSize = 12.sp) }
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                    modifier = Modifier.fillMaxWidth().height(24.dp)
+                                ) { Text("판매", color = Color.White, fontSize = 9.sp) }
                             }
                         }
                     }
@@ -4360,13 +4380,15 @@ private fun ShopWindow(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.End
             ) {
                 Button(
                     onClick = onClose,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A2A14))
-                ) { Text("닫기", color = Color.White, fontSize = 12.sp) }
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A2A14)),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(24.dp)
+                ) { Text("닫기", color = Color.White, fontSize = 9.sp) }
             }
         }
     }

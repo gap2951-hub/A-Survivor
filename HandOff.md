@@ -1245,6 +1245,15 @@ SoundManager.release()          // onDestroy
 | 197 | SaveService MaterialItem 직렬화 — SavedSlot.materialType/materialQty 필드 추가, MATERIAL 슬롯 타입 지원 | ✅ |
 | 198 | drawGroundItem 재료 아이템 렌더링 — skeleton_bone/beef 비트맵 로딩 및 분기, 글로우·이름 텍스트 제거 | ✅ |
 | 199 | MaterialInventoryItem 컴포저블 추가 — painterResource로 PNG 이미지 표시 + 우하단 수량 텍스트 | ✅ |
+| 200 | 반응형 창 너비 도입 — `panelW = (screenWidthDp * 0.29f).dp` 계산, 장비창·스탯창·인벤토리창 `.width(panelW)` 적용 | ✅ |
+| 201 | `rememberSlotSize()` 컴포저블 헬퍼 추가 — `(screenWidthDp * 0.032f).dp.coerceIn(10.dp, 18.dp)`, `GlovesSlot`/`WeaponSlot` 시그니처에 `slotSize: Dp` 파라미터 추가, `import androidx.compose.ui.unit.Dp` 필요 | ✅ |
+| 202 | EquipmentWindow 내부 UI 축소 — padding 12→6/6→3dp, Spacer 6→3dp, slotSz = rememberSlotSize() 사용 | ✅ |
+| 203 | StatWindow 높이 비례 제한 — `statMaxH = screenHeightDp * 0.32f`, `heightIn(max=statMaxH)` + verticalScroll 적용 | ✅ |
+| 204 | StatWindow 내부 텍스트 축소 — DerivedStatRow·StatAllocRow fontSize 11→9.sp, StatAllocRow + 버튼 size 22→18.dp, Divider padding 8→4.dp | ✅ |
+| 205 | WindowTitleBar 크기 축소 — padding 8/8→6/4dp, dot size 8→5dp, title/✕ fontSize 12→10.sp | ✅ |
+| 206 | InventoryWindow 그리드 높이 비례 — `maxGridH = screenHeightDp * 0.62f`, `heightIn(max=maxGridH)` + verticalScroll; 슬롯 간격 4→2dp; money row padding 축소 | ✅ |
+| 207 | ItemInfoDialog 너비 비례 + 레이아웃 수직 전환 — 너비 `screenWidthDp * 0.29f`, 이미지+스탯 Row→Column, 이미지 size 96→48dp, WeaponReqRow/WeaponStatRow fontSize 9.sp, Job tab fontSize 9.sp | ✅ |
+| 208 | ShopWindow 너비 비례 + 레이아웃 수직 누적 전환 — 너비 `screenWidthDp * 0.29f`, 리스트·상세 Row→Column stacked, shopListH=`screenHeightDp*0.18f`, shopDetailH=`screenHeightDp*0.22f`, 내부 버튼 height 24dp, 텍스트 8~10.sp | ✅ |
 
 ---
 
@@ -1287,7 +1296,8 @@ val density       = LocalDensity.current
 val configuration = LocalConfiguration.current
 val screenW  = with(density) { configuration.screenWidthDp.dp.toPx() }
 val screenH  = with(density) { configuration.screenHeightDp.dp.toPx() }
-val panelWPx = with(density) { 280.dp.toPx() }
+val panelW   = (configuration.screenWidthDp * 0.29f).dp   // 화면 너비의 29% ≈ 30%
+val panelWPx = with(density) { panelW.toPx() }
 val headerPx = with(density) { 36.dp.toPx() }
 val initPad  = with(density) { 8.dp.toPx() }
 
@@ -1300,6 +1310,11 @@ fun clampWin(o: Offset) = Offset(
     o.y.coerceIn(0f, (screenH - headerPx).coerceAtLeast(0f))
 )
 ```
+
+- `panelW`는 화면 너비의 **29%** 비례값 — 장비창·스탯창·인벤토리창·장비정보창·상점창 모두 동일 너비
+- 슬롯 크기: `rememberSlotSize() = (screenWidthDp * 0.032f).dp.coerceIn(10.dp, 18.dp)` 화면 비례
+- 인벤토리 그리드 최대 높이: `screenHeightDp * 0.62f`
+- 상점창·장비정보창은 Dialog 내부에서 `LocalConfiguration.current.screenWidthDp * 0.29f` 로 동일 너비 계산
 
 ### WindowTitleBar 드래그 핸들러
 
@@ -1755,3 +1770,54 @@ val quickSlotBounds = remember { mutableStateListOf<Rect?>(null, null, null) }
 - [ ] 레벨업 연출 (파티클/메시지 이펙트)
 - [ ] 스킬 강화 / 스킬 트리 확장
 - [ ] map.csv / portal.csv / dialogue.csv / monster_spawn.csv / equipment_set.csv 추가 예정
+
+---
+
+## UI 반응형 크기 시스템 (작업 #200–208)
+
+모든 플로팅 창이 디바이스 화면 크기에 비례하도록 변경. 기준 단위는 `LocalConfiguration.current.screenWidthDp` / `screenHeightDp`.
+
+### 창 너비
+
+| 창 | 공식 | 비고 |
+|----|------|------|
+| 장비창·스탯창·인벤토리창 | `screenWidthDp * 0.29f` | MainScreen에서 `panelW` 로 계산 |
+| 장비정보창 (Dialog) | `screenWidthDp * 0.29f` | ItemInfoDialog 내부에서 재계산 |
+| 상점창 (Dialog) | `screenWidthDp * 0.29f` | ShopWindow 내부에서 재계산 |
+
+### 슬롯 크기
+
+```kotlin
+@Composable
+private fun rememberSlotSize(): Dp =
+    (LocalConfiguration.current.screenWidthDp * 0.032f).dp.coerceIn(10.dp, 18.dp)
+```
+
+- `GlovesSlot(slotSize: Dp = rememberSlotSize())` — 기본값으로 호출 가능
+- `WeaponSlot(slotSize: Dp = rememberSlotSize())` — 동일
+- `EquipmentWindow` 내부에서 `val slotSz = rememberSlotSize()` 한 번 계산 후 자식에 전달
+
+### 높이 제한
+
+| 컨테이너 | 공식 |
+|----------|------|
+| StatWindow 스크롤 영역 | `screenHeightDp * 0.32f` |
+| InventoryWindow 그리드 | `screenHeightDp * 0.62f` |
+| ShopWindow 목록 | `screenHeightDp * 0.18f` |
+| ShopWindow 상세 패널 | `screenHeightDp * 0.22f` (`height()` 고정 — `Spacer(weight)` 동작 유지) |
+
+### 레이아웃 변경 내역
+
+- **ItemInfoDialog**: 이미지+스탯 `Row` → `Column` (29% 너비에서 이미지 96dp 좌·스탯 우 배치 불가), 이미지 `size(48.dp)`로 축소
+- **ShopWindow**: 리스트·상세 `Row` 나란히 → `Column` 수직 누적 (좁은 창에서 두 컬럼 렌더링 불가)
+
+### 내부 텍스트 크기 기준
+
+| 용도 | sp |
+|------|----|
+| 창 제목 (`WindowTitleBar`) | 10 |
+| 섹션 헤더 (`"전투 능력치"` 등) | 9 |
+| 일반 레이블·수치 행 | 9 |
+| 보조 주석 (`note`) | 7 |
+| 아이템 이름 (상점·정보창 주제목) | 10 |
+| 아이템 설명·부제목 | 8–9 |
