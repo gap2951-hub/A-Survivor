@@ -468,6 +468,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         var attacked = false
         _uiState.update { state ->
             if (state.player.hp <= 0) return@update state
+            if (System.currentTimeMillis() - state.playerAttackAnimStart < AUTO_ATTACK_INTERVAL) return@update state
             val lockedIds = state.projectiles.map { it.targetMonsterId }.toSet()
             val result = autoAttackService.tick(
                 player           = state.player,
