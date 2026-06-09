@@ -22,5 +22,11 @@ data class Equipment(
     val magicDefense: Int = 0,
     val criticalRate: Float = 0f,
     val moveSpeed: Float = 0f,
-    val attackSpeed: Float = 0f
+    val attackSpeed: Float = 0f,
+    // 데이터 테이블 식별자 및 상점 정보 (기본값: 이전 저장 데이터 호환)
+    val itemId: String = "",
+    val slot: String = "GLOVE",
+    val requiredLevel: Int = 1,
+    val buyPrice: Int = 0,
+    val sellPrice: Int = 0
 )

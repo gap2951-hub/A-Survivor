@@ -1832,13 +1832,6 @@ private fun DrawScope.drawPlayer(
         else        -> idleFrames[((now / 200L) % idleFrames.size).toInt()]
     }
 
-    // 그림자
-    drawCircle(
-        Color.Black.copy(alpha = 0.35f),
-        radius = imgH * 0.18f,
-        center = Offset(c.x, c.y + imgH * 0.38f)
-    )
-
     // 스프라이트 (facingLeft 시 좌우 반전)
     withTransform({
         if (player.facingLeft) scale(-1f, 1f, pivot = c)
@@ -1872,13 +1865,6 @@ private fun DrawScope.drawMonster(
     }
     val frameIndex = ((now / intervalMs) % frames.size).toInt()
     val bitmap     = frames[frameIndex]
-
-    // 그림자
-    drawCircle(
-        Color.Black.copy(alpha = 0.3f),
-        radius = imgSize * 0.25f,
-        center = Offset(c.x, c.y + imgSize * 0.42f)
-    )
 
     // 스켈레톤 이미지 (facingLeft 시 좌우 반전)
     withTransform({

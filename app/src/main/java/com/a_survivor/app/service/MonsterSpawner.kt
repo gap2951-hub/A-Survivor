@@ -11,6 +11,7 @@ class MonsterSpawner {
     fun spawnMonsters(
         world: GameWorld,
         count: Int,
+        monsterId: String = "",
         variant: Int = 1,
         hp: Int = 30,
         expReward: Int = 10,
@@ -28,7 +29,7 @@ class MonsterSpawner {
         repeat(count) {
             val monster = tryPlace(
                 world, placed, isBlocked, minDistance, margin, nextId,
-                variant, hp, expReward, avoidability, accuracy, speed, random
+                monsterId, variant, hp, expReward, avoidability, accuracy, speed, random
             )
             if (monster != null) {
                 placed.add(monster)
@@ -45,6 +46,7 @@ class MonsterSpawner {
         minDistance: Float,
         margin: Float,
         id: Int,
+        monsterId: String,
         variant: Int,
         hp: Int,
         expReward: Int,
@@ -64,7 +66,7 @@ class MonsterSpawner {
             val tooClose = placed.any { it.distanceTo(x, y) < minDistance }
             val blocked  = isBlocked?.invoke(x, y) == true
             if (!tooClose && !blocked) return skeletonWarrior(
-                id, x, y, variant, hp, expReward, avoidability, accuracy, speed
+                id, x, y, variant, hp, expReward, avoidability, accuracy, speed, monsterId
             )
         }
         return null

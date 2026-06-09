@@ -374,7 +374,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val newX = if (!isBlocked(clampedX, p.positionY, world)) clampedX else p.positionX
             val newY = if (!isBlocked(newX,     clampedY,    world)) clampedY else p.positionY
 
-            val newFacingLeft = if (dirX < 0f) true else if (dirX > 0f) false else p.facingLeft
+            val isAttacking = System.currentTimeMillis() - state.playerAttackAnimStart < ATTACK_ANIM_DURATION
+            val newFacingLeft = if (isAttacking) p.facingLeft
+                                else if (dirX < 0f) true
+                                else if (dirX > 0f) false
+                                else p.facingLeft
             val moved = state.copy(player = p.copy(positionX = newX, positionY = newY, facingLeft = newFacingLeft))
             val afterPickup = checkPickup(moved)
             if (afterPickup.groundItems.size < moved.groundItems.size) pickedUp = true
@@ -453,9 +457,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (result.targetId == null) return@update state
             attacked = true
 
+            val target = state.monsters.find { it.id == result.targetId }
+            val newFacingLeft = target != null && target.positionX < state.player.positionX
+
             if (result.newProjectile != null) {
                 nextProjectileId++
                 return@update state.copy(
+                    player               = state.player.copy(facingLeft = newFacingLeft),
                     projectiles          = state.projectiles + result.newProjectile,
                     playerAttackAnimStart = now
                 )
@@ -464,6 +472,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (state.pendingPlayerAttack != null) return@update state
 
             state.copy(
+                player                = state.player.copy(facingLeft = newFacingLeft),
                 playerAttackAnimStart = now,
                 pendingPlayerAttack   = PendingPlayerAttack(
                     targetId = result.targetId,

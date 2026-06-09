@@ -152,9 +152,9 @@ Box (게임 화면)
 | 3 | `drawPortal` × N — 포탈 (다층 파란 글로우 + 맵 이름 레이블) |
 | 4 | `drawNpc` × N — NPC 이미지 (size.height×0.20f 높이, 너비=높이×1.6) + 이름 텍스트 |
 | 5 | `drawAttackRange` — 공격 범위 원 (반투명 흰색, 직업별 반경) |
-| 6 | `drawMonster` × N — 그림자 → 스켈레톤 애니메이션(variant별 프레임) → HP 바 → 어그로 "!" |
+| 6 | `drawMonster` × N — 스켈레톤 애니메이션(variant별 프레임) → HP 바 → 어그로 "!" |
 | 7 | `drawProjectile` × N — 직업별 투사체 (임시 도형) |
-| 8 | `drawPlayer` — 그림자 → 전사 스프라이트 (IDLE/WALK/ATTACK/HURT/DIE 상태별 애니메이션, facingLeft 수평 반전) |
+| 8 | `drawPlayer` — 전사 스프라이트 (IDLE/WALK/ATTACK/HURT/DIE 상태별 애니메이션, facingLeft 수평 반전) |
 | 9 | `drawDamageNumber` × N — 데미지 숫자 (노랑: 플→몬, 빨강: 몬→플) |
 
 ### 시각 사양 (화면 비례 크기)
@@ -752,6 +752,8 @@ withTransform({ if (player.facingLeft) scale(-1f, 1f, pivot = c) }) {
 ```
 
 - `movePlayer`에서 `dirX < 0f → facingLeft = true`, `dirX > 0f → facingLeft = false`
+- 단, 공격 애니메이션 재생 중(ATTACK_ANIM_DURATION=300ms)에는 이동 방향에 의한 `facingLeft` 갱신 차단 (타겟 방향 유지)
+- `autoAttackTick`에서 공격 시 타겟 몬스터 X < 플레이어 X → `facingLeft = true`, 그 반대 → `facingLeft = false`
 
 ### 히트 프레임 시스템 (pendingAttackTick)
 
@@ -1164,6 +1166,9 @@ SoundManager.release()          // onDestroy
 | 162 | 물약 퀵슬롯 3개 구현 — 하단 중앙 PotionQuickSlotRow, 인벤토리 꾹 눌러 드래그 등록, 클릭으로 사용 | ✅ |
 | 163 | mutableStateListOf import 누락 빌드 오류 수정 — quickSlotBounds 3슬롯 List 선언에 필요한 import 추가 | ✅ |
 | 164 | 앱 재시작 시 세이브 데이터 초기화 버그 수정 — 타이틀 이어하기/새 게임 버튼 분리, 이어하기는 startGame() 호출 없이 로드된 상태 유지 | ✅ |
+| 165 | 캐릭터·몬스터 발밑 그림자 제거 — drawPlayer / drawMonster의 그림자 drawCircle 삭제 | ✅ |
+| 166 | 공격 시 타겟 방향으로 facingLeft 갱신 — autoAttackTick에서 타겟 X < 플레이어 X 비교, 근접·원거리 모두 적용 | ✅ |
+| 167 | 공격 애니메이션 중 이동 방향에 의한 facingLeft 덮어쓰기 방지 — movePlayer에서 ATTACK_ANIM_DURATION(300ms) 동안 facingLeft 고정 | ✅ |
 
 ---
 

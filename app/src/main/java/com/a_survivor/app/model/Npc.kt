@@ -1,5 +1,7 @@
 package com.a_survivor.app.model
 
+import android.util.Log
+
 data class Npc(
     val id: Int,
     val name: String,
@@ -11,12 +13,37 @@ data class Npc(
 )
 
 object NpcRegistry {
-    fun npcsFor(mapType: MapType): List<Npc> = when (mapType) {
-        MapType.TOWN -> listOf(
-            Npc(id = 1, name = "츄츄",  worldX = 450f, worldY = 260f, role = NpcRole.QUEST),
-            Npc(id = 2, name = "브루스", worldX = 370f, worldY = 260f, role = NpcRole.EQUIPMENT_SHOP),
-            Npc(id = 3, name = "피아",  worldX = 530f, worldY = 260f, role = NpcRole.CONSUMABLE_SHOP)
-        )
-        else -> emptyList()
+
+    private const val TAG = "NpcRegistry"
+    private val npcsByMap = mutableMapOf<String, MutableList<Npc>>()
+
+    internal fun load(rows: List<Map<String, String>>) {
+        npcsByMap.clear()
+        for (row in rows) {
+            try {
+                val npcId = row["npcId"]?.toIntOrNull() ?: run {
+                    Log.w(TAG, "npcId 파싱 실패, 스킵: $row"); continue
+                }
+                val mapId = row["mapId"]?.takeIf { it.isNotBlank() } ?: run {
+                    Log.w(TAG, "mapId 누락, 스킵: $row"); continue
+                }
+                val role = runCatching { NpcRole.valueOf(row["role"] ?: "") }.getOrNull() ?: run {
+                    Log.w(TAG, "role 파싱 실패, 스킵: $row"); continue
+                }
+                val npc = Npc(
+                    id    = npcId,
+                    name  = row["name"] ?: "",
+                    worldX = row["x"]?.toFloatOrNull() ?: 0f,
+                    worldY = row["y"]?.toFloatOrNull() ?: 0f,
+                    role  = role
+                )
+                npcsByMap.getOrPut(mapId) { mutableListOf() }.add(npc)
+            } catch (e: Exception) {
+                Log.w(TAG, "행 파싱 실패, 스킵: $row — ${e.message}")
+            }
+        }
+        Log.d(TAG, "NPC ${npcsByMap.values.sumOf { it.size }}개 로드")
     }
+
+    fun npcsFor(mapType: MapType): List<Npc> = npcsByMap[mapType.name] ?: emptyList()
 }
