@@ -124,12 +124,15 @@ Box (게임 화면)
  ├── Column + zIndex(10) > EquipmentWindow  ← 플로팅 드래그 창
  ├── Column + zIndex(10) > StatWindow       ← 플로팅 드래그 창
  ├── Column + zIndex(10) > InventoryWindow  ← 플로팅 드래그 창
- ├── SkillButton (우하단, HudButton 위) ← 직업별 스킬 1개, 72dp 원형, 쿨다운 파이 오버레이
- ├── HudButton ×3 (우하단)   ← 스탯 / 장비 / 인벤
+ ├── Row (우하단) ← SkillButton + AttackButton 가로 배치 (spacing 10dp, padding end=16dp, bottom=20dp)
+ │    ├── SkillButton ← 직업별 스킬 1개, 72dp 원형, 쿨다운 파이 오버레이
+ │    └── AttackButton ← 기본 공격 버튼, 72dp 원형, 자동/수동 모드 표시
+ ├── Box (우상단, zIndex=30) ← 메뉴 버튼(≡, 44dp) + 메뉴 패널 (isMenuOpen 시)
+ │    └── GameMenuPanel ← 음향 설정(BGM/SFX ON/OFF) + 스탯/장비/인벤 버튼
  ├── JoystickControl (좌하단)
  ├── DragGhost
  ├── JobAdvancementDialog  ← jobAdvancementPending=true 일 때만 표시 (전직 팝업 오버레이)
- ├── MessageLogOverlay (우하단, bottom=170.dp) ← EXP/돈/아이템 획득 메시지 (최대 5개, 2초 자동 소멸)
+ ├── MessageLogOverlay (우하단, bottom=110.dp) ← EXP/돈/아이템 획득 메시지 (최대 5개, 2초 자동 소멸)
  ├── PotionQuickSlotRow (하단 중앙) ← 물약 퀵슬롯 3개 행 (padding bottom=20.dp)
  ├── [대화하기] Button (하단 중앙) ← NPC 근접 시만 표시 (activeDialogue==null)
  └── DialogueWindow (zIndex 20, 하단 전체폭) ← activeDialogue != null 시 표시
@@ -482,7 +485,7 @@ val advancePending = state.jobAdvancementPending || (
 | 항목 | 값 |
 |------|-----|
 | 공격 범위 | 직업별 상이 (아래 공격 방식 참조) |
-| 공격 주기 | 1초 |
+| 공격 주기 | 1초 (autoAttackEnabled=true 시에만 자동 발동) |
 | 타겟 | 범위 내 최근접 몬스터 |
 | 명중 판정 | `accuracy / (accuracy + monster.avoidability)` 확률로 HIT |
 | MISS 처리 | 명중 실패 시 MISS 텍스트, 투사체 미생성 |
@@ -1183,6 +1186,13 @@ SoundManager.release()          // onDestroy
 | 174 | drawSkillEffects Canvas 렌더 추가 — SLASH_BURST(흰 링+선) / EXPLOSION(오렌지 링) 이펙트, drawPlayer 직후 렌더 | ✅ |
 | 175 | SkillButton 컴포저블 추가 — 72dp 원형, 쿨다운 파이 오버레이, 준비/Xs 텍스트, HUD 버튼 위 우하단 배치 | ✅ |
 | 176 | MessageLogOverlay bottom 조정 — 80.dp → 170.dp (SkillButton 겹침 방지) | ✅ |
+| 177 | 우측 상단 메뉴 버튼(≡) 추가 — isMenuOpen 토글, 기존 BGM/SFX 버튼 행 제거 | ✅ |
+| 178 | 메뉴 패널 구현 — 음향 설정(BGM/SFX ON/OFF 2단 표시), 스탯/장비/인벤 GameMenuButton, 창 열면 메뉴 자동 닫힘 | ✅ |
+| 179 | HudButton ×3 (스탯/장비/인벤) 하단 Row 제거 — 메뉴 패널로 이동 | ✅ |
+| 180 | AttackButton 컴포저블 추가 — 72dp 원형, 위로 50px 스와이프 시 자동↔수동 모드 토글, 수동 모드 탭 시 1회 공격 | ✅ |
+| 181 | UiState.autoAttackEnabled 추가 — autoAttackTick은 false 시 스킵, executeAttack()으로 로직 분리 | ✅ |
+| 182 | toggleAutoAttack() / manualAttack() ViewModel 함수 추가 — AttackButton 콜백 연결 | ✅ |
+| 183 | MessageLogOverlay bottom 조정 — 170.dp → 110.dp (HudButton 제거 후 여백 축소) | ✅ |
 
 ---
 
@@ -1471,6 +1481,74 @@ private fun DrawScope.drawSkillEffects(effects: List<SkillEffect>, cam: CameraSt
 - **쿨다운 UI**: 100ms tick(`LaunchedEffect`), 파이 오버레이(`drawArc`, startAngle=-90f, sweepAngle=fraction×360f, useCenter=true)
 - **텍스트**: 쿨다운 중 "Xs" (초 단위 올림) / 준비 시 "준비" (직업 accent color)
 - **경계**: 준비 시 accent color 2.5dp 링 + 외부 글로우, 쿨다운 시 어두운 1.5dp 링
+
+---
+
+## 기본 공격 버튼 시스템
+
+### AttackButton 컴포저블
+
+- **크기**: 72dp 원형 (SkillButton과 동일)
+- **배치**: SkillButton과 함께 Row(우하단), `Alignment.BottomEnd`, `padding(end=16.dp, bottom=20.dp)`
+- **자동 모드** (`autoAttackEnabled=true`): 금색(`0xFFFFD700`) 링 + 글로우, "자동" 텍스트
+- **수동 모드** (`autoAttackEnabled=false`): 파란색(`0xFF6699AA`) 링, "수동" 텍스트
+
+### 제스처
+
+| 제스처 | 동작 |
+|--------|------|
+| 위로 50px 이상 스와이프 | 자동↔수동 모드 토글 (`toggleAutoAttack()`) |
+| 탭 (수동 모드) | 즉시 1회 공격 (`manualAttack()`) |
+| 탭 (자동 모드) | 아무 동작 없음 |
+
+- `rememberUpdatedState` 사용 — `pointerInput(Unit)` 코루틴을 재시작하지 않고 최신 상태 참조
+- raw `awaitPointerEventScope` + `pressed && !previousPressed` 패턴으로 DOWN 감지
+
+### UiState 추가 필드
+
+```kotlin
+val autoAttackEnabled: Boolean = true  // 세이브에 미포함, 세션마다 true로 초기화
+```
+
+### ViewModel 함수
+
+| 함수 | 동작 |
+|------|------|
+| `toggleAutoAttack()` | autoAttackEnabled 반전 |
+| `manualAttack()` | executeAttack() 직접 호출 (1회) |
+| `executeAttack()` | 기존 autoAttackTick 로직 분리 — 플레이어 hp>0 체크, 투사체/근접 분기 |
+
+- `autoAttackTick()`: `!autoAttackEnabled` 시 즉시 return, 아니면 `executeAttack()` 호출
+
+---
+
+## 메뉴 시스템
+
+### 메뉴 버튼
+
+- **위치**: `Alignment.TopEnd`, `padding(end=12.dp, top=8.dp)`, `zIndex(30f)` — 창 위에 표시
+- **크기**: 44dp 정사각형, RoundedCornerShape(8.dp)
+- **레이블**: "≡" (열림: 금색 테두리 + 배경, 닫힘: 반투명)
+- 클릭 시 `isMenuOpen` 토글
+
+### 메뉴 패널 (isMenuOpen=true 시 버튼 아래 offset=52dp에 표시)
+
+```
+Column (170dp 너비, RoundedCornerShape 8dp, 반투명 패널)
+ ├── "음향 설정" 헤더 텍스트
+ ├── Row
+ │    ├── BGM 토글 버튼 (ON/OFF 표시, 녹/적 색상)
+ │    └── SFX 토글 버튼 (ON/OFF 표시, 녹/적 색상)
+ ├── HorizontalDivider
+ ├── GameMenuButton "스탯"  → isStatOpen 토글 + isMenuOpen=false
+ ├── GameMenuButton "장비"  → isEquipmentOpen 토글 + isMenuOpen=false
+ └── GameMenuButton "인벤" → isInventoryOpen 토글 + isMenuOpen=false
+```
+
+### GameMenuButton 컴포저블
+
+- `fillMaxWidth()`, `height(36.dp)`, `RoundedCornerShape(6.dp)`
+- 활성화 시 금색 테두리 + 금색 텍스트 Bold, 비활성화 시 반투명
 
 ---
 
