@@ -1864,25 +1864,12 @@ private fun DrawScope.drawGroundItem(
 ) {
     val pos      = cam.toScreenOffset(item.positionX, item.positionY, size.width, size.height)
     val iconSize = (size.height * 0.048f).toInt().coerceAtLeast(12)
-    val sp       = size.height / 1080f
 
-    // 바닥 글로우
-    drawCircle(Color(0x44FFEE44), radius = iconSize * 0.75f, center = pos)
-
-    // 아이템 이미지
-    if (item.dropItem is DropItem.MoneyDrop) {
+    val bitmap = if (item.dropItem is DropItem.MoneyDrop) {
         val frameIdx = ((now - item.droppedAt) / 150L % 4).toInt().coerceIn(0, 3)
-        drawImage(
-            image         = coinFrames[frameIdx],
-            dstOffset     = androidx.compose.ui.unit.IntOffset(
-                (pos.x - iconSize / 2).toInt(),
-                (pos.y - iconSize).toInt()
-            ),
-            dstSize       = IntSize(iconSize, iconSize),
-            filterQuality = androidx.compose.ui.graphics.FilterQuality.High
-        )
+        coinFrames[frameIdx]
     } else {
-        val bitmap = when (val drop = item.dropItem) {
+        when (val drop = item.dropItem) {
             is DropItem.ScrollDrop -> when (drop.scrollType) {
                 ScrollType.GLOVE_ATK_100 -> scroll100
                 ScrollType.GLOVE_ATK_60  -> scroll60
@@ -1895,32 +1882,16 @@ private fun DrawScope.drawGroundItem(
             }
             else -> scroll10
         }
-        drawImage(
-            image         = bitmap,
-            dstOffset     = androidx.compose.ui.unit.IntOffset(
-                (pos.x - iconSize / 2).toInt(),
-                (pos.y - iconSize).toInt()
-            ),
-            dstSize       = IntSize(iconSize, iconSize),
-            filterQuality = androidx.compose.ui.graphics.FilterQuality.High
-        )
     }
-
-    // 아이템 이름 텍스트
-    val label = when (val drop = item.dropItem) {
-        is DropItem.ScrollDrop    -> ScrollCatalog.get(drop.scrollType).name
-        is DropItem.EquipmentDrop -> drop.equipment.name
-        is DropItem.MoneyDrop     -> "${drop.amount}원"
-        is DropItem.MaterialDrop  -> MaterialCatalog.get(drop.materialType).name
-    }
-    val labelPaint = android.graphics.Paint().apply {
-        color       = android.graphics.Color.parseColor("#FFEE66")
-        textSize    = 14f * sp
-        textAlign   = android.graphics.Paint.Align.CENTER
-        isAntiAlias = true
-        setShadowLayer(3f, 0f, 1f, android.graphics.Color.BLACK)
-    }
-    drawContext.canvas.nativeCanvas.drawText(label, pos.x, pos.y + 18f * sp, labelPaint)
+    drawImage(
+        image         = bitmap,
+        dstOffset     = androidx.compose.ui.unit.IntOffset(
+            (pos.x - iconSize / 2).toInt(),
+            (pos.y - iconSize).toInt()
+        ),
+        dstSize       = IntSize(iconSize, iconSize),
+        filterQuality = androidx.compose.ui.graphics.FilterQuality.High
+    )
 }
 
 private fun DrawScope.drawPortal(portal: Portal, cam: CameraState) {
@@ -4005,7 +3976,10 @@ private fun MaterialInventoryItem(
     quantity: Int,
     modifier: Modifier = Modifier
 ) {
-    val info = MaterialCatalog.get(materialType)
+    val drawableRes = when (materialType) {
+        MaterialType.SKELETON_BONE -> R.drawable.skeleton_bone
+        MaterialType.BEEF          -> R.drawable.beef
+    }
     Box(
         modifier = modifier
             .aspectRatio(1f)
@@ -4015,25 +3989,18 @@ private fun MaterialInventoryItem(
             .padding(4.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = info.name,
-                color = Color(0xFF66BB6A),
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = "×$quantity",
-                color = TextGold,
-                fontSize = 10.sp
-            )
-        }
+        Image(
+            painter            = painterResource(id = drawableRes),
+            contentDescription = null,
+            contentScale       = ContentScale.Fit,
+            modifier           = Modifier.fillMaxSize(0.65f)
+        )
+        Text(
+            text      = "×$quantity",
+            color     = TextGold,
+            fontSize  = 10.sp,
+            modifier  = Modifier.align(Alignment.BottomEnd)
+        )
     }
 }
 
