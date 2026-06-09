@@ -1,4 +1,4 @@
-# A-Survivor HandOff
+﻿# A-Survivor HandOff
 
 ## 프로젝트 개요
 
@@ -22,7 +22,8 @@ com.a_survivor.app/
 │   ├── EquipmentRegistry.kt      (CSV 기반 조회 전용 — EquipmentRegistry.get(itemId))
 │   ├── Monster.kt                (+ monsterId: String 필드 추가)
 │   ├── MonsterRegistry.kt        (CSV 기반 — MonsterConfig + configForMap(MapType))
-│   ├── DropTable.kt              (DropItem sealed class + DropEntry — 데이터 제거, 모델만 유지)
+│   ├── DropTable.kt              (DropItem sealed class — ScrollDrop/EquipmentDrop/MoneyDrop/MaterialDrop + DropEntry)
+│   ├── MaterialType.kt           (MaterialType enum + MaterialCatalog — 재료 아이템 이름·판매가)
 │   ├── DropRegistry.kt           (CSV 기반 드랍 조회 — dropEntriesFor(monsterId, mapType))
 │   ├── QuestRegistry.kt          (CSV 기반 — QuestData + questForNpc(npcId))
 │   ├── Npc.kt                    (NpcRegistry — CSV 기반 로드로 전환)
@@ -97,6 +98,8 @@ com.a_survivor.app/
     ├── minotaur1_idle/walk/slash  ← Minotaur_1 variant 4 (각 6/8/6프레임, Idle 3f간격/Walk 3f간격/Slash 2f간격 서브샘플)
     ├── minotaur2_idle/walk/slash  ← Minotaur_2 variant 5 (각 6/8/6프레임)
     ├── minotaur3_idle/walk/slash  ← Minotaur_3 variant 6 (각 6/8/6프레임)
+    ├── skeleton_bone.png          ← 재료 아이템 — 스켈레톤뼈
+    ├── beef.png                   ← 재료 아이템 — 소고기
     ├── nogada_glove.png
     ├── nogada_sword.png
     ├── scroll_100.png / scroll_60.png / scroll_10.png
@@ -158,7 +161,7 @@ Box (게임 화면)
 | 레이어 | 내용 |
 |--------|------|
 | 1 | `drawWorldBackground` — 현재 맵 이미지를 월드 전체에 렌더링 |
-| 2 | `drawGroundItem` × N — 바닥 드랍 아이템 (글로우 → 이미지 → 이름 텍스트) |
+| 2 | `drawGroundItem` × N — 바닥 드랍 아이템 (이미지만, 글로우·이름 없음) |
 | 3 | `drawPortal` × N — 포탈 (다층 파란 글로우 + 맵 이름 레이블) |
 | 4 | `drawNpc` × N — NPC 이미지 (size.height×0.20f 높이, 너비=높이×1.6) + 이름 텍스트 |
 | 5 | `drawAttackRange` — 공격 범위 원 (반투명 흰색, 직업별 반경) |
@@ -822,7 +825,9 @@ InventoryWindow (280dp, 드래그 이동 가능)
  └── 4×8 슬롯 그리드 (스크롤 가능, heightIn(max=300.dp))
       ├── null → EmptyInventorySlot (어두운 빈 슬롯)
       ├── InventorySlot.ScrollItem → DraggableScrollItem (수량 표시, 꾹 눌러 드래그)
-      └── InventorySlot.EquipItem → EquipmentBagItem (탭 → ItemInfoDialog)
+      ├── InventorySlot.EquipItem → EquipmentBagItem (탭 → ItemInfoDialog)
+      ├── InventorySlot.ConsumableItem → ConsumableInventoryItem (탭 → 정보창, 꾹 눌러 퀵슬롯 드래그)
+      └── InventorySlot.MaterialItem → MaterialInventoryItem (PNG 이미지 + 수량)
 ```
 
 ### UiState 필드
@@ -839,12 +844,14 @@ sealed class InventorySlot {
     data class ScrollItem(val type: ScrollType, val quantity: Int) : InventorySlot()
     data class EquipItem(val equipment: Equipment) : InventorySlot()
     data class ConsumableItem(val type: ConsumableType, val quantity: Int) : InventorySlot()
+    data class MaterialItem(val type: MaterialType, val quantity: Int) : InventorySlot()
 }
 ```
 
 - 같은 종류 스크롤은 동일 슬롯에 스택 (`addScrollToSlots`)
 - 장비는 개별 슬롯 점유 (`addEquipToSlots`)
 - 같은 ConsumableType 소비 아이템은 동일 슬롯에 스택
+- 같은 MaterialType 재료 아이템은 동일 슬롯에 스택 (ddMaterialToSlots)
 
 ### 장비 해제 → 인벤토리 이동
 
@@ -1231,6 +1238,13 @@ SoundManager.release()          // onDestroy
 | 190 | drop.csv 미노타우르스 드랍 추가 — 스켈레톤 대비 드랍률 상향 (최대 글장100% 35%, 클로버 5%) | ✅ |
 | 191 | MonsterSpawner name 파라미터 추가 — skeletonWarrior 하드코딩 제거, Monster() 직접 생성으로 변경 | ✅ |
 | 192 | MainActivity 미노타우르스 스프라이트 로딩 + drawMonster monsterId 분기 (MINOTAUR→minoFrames, 나머지→skelFrames) | ✅ |
+| 193 | MaterialType 모델 추가 — MaterialType enum (SKELETON_BONE/BEEF) + MaterialCatalog (이름·판매가) | ✅ |
+| 194 | DropItem.MaterialDrop 추가 — DropTable sealed class 확장, DropRegistry.resolveItem에 MaterialType 분기 | ✅ |
+| 195 | 재료 아이템 드랍 설정 — 스켈레톤 워리어 전 사냥터 스켈레톤뼈 100%, 미노타우르스 전 사냥터 소고기 100% | ✅ |
+| 196 | InventorySlot.MaterialItem 추가 — addMaterialToSlots 헬퍼, applyDrops MaterialDrop 처리, 획득 메시지 포함 | ✅ |
+| 197 | SaveService MaterialItem 직렬화 — SavedSlot.materialType/materialQty 필드 추가, MATERIAL 슬롯 타입 지원 | ✅ |
+| 198 | drawGroundItem 재료 아이템 렌더링 — skeleton_bone/beef 비트맵 로딩 및 분기, 글로우·이름 텍스트 제거 | ✅ |
+| 199 | MaterialInventoryItem 컴포저블 추가 — painterResource로 PNG 이미지 표시 + 우하단 수량 텍스트 | ✅ |
 
 ---
 
