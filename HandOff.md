@@ -114,7 +114,9 @@ com.a_survivor.app/
     ├── archer_walk_0~3.png        ← 궁수 Walk 4프레임 (203×203)
     ├── archer_attack_0~5.png      ← 궁수 Attack 6프레임 (203×203)
     ├── archer_hurt_0~3.png        ← 궁수 Hurt 4프레임 (203×203)
-    └── archer_die_0~4.png         ← 궁수 Die 5프레임 (203×203)
+    ├── archer_die_0~4.png         ← 궁수 Die 5프레임 (203×203)
+    ├── ground_tileset.png         ← 사냥터 바닥 타일셋 (1254×1254, 4×4 그리드, GT_CELL=313, GT_BORDER=40, GT_TILE=233)
+    └── cemetery_tileset.png       ← 묘지 장식 타일셋 (추후 오브젝트용, decorTs로 로드 중)
 ```
 
 ---
@@ -160,7 +162,7 @@ Box (게임 화면)
 
 | 레이어 | 내용 |
 |--------|------|
-| 1 | `drawWorldBackground` — 현재 맵 이미지를 월드 전체에 렌더링 |
+| 1 | `drawWorldBackground` — TOWN 맵: map_town.jpg / 스켈레톤·미노타우르스 맵: `drawCemeteryBackground` (타일 기반 배경) |
 | 2 | `drawGroundItem` × N — 바닥 드랍 아이템 (이미지만, 글로우·이름 없음) |
 | 3 | `drawPortal` × N — 포탈 (다층 파란 글로우 + 맵 이름 레이블) |
 | 4 | `drawNpc` × N — NPC 이미지 (size.height×0.20f 높이, 너비=높이×1.6) + 이름 텍스트 |
@@ -239,6 +241,56 @@ private fun isPixelBlocked(...): Boolean {
 - **LUMINANCE_THRESHOLD = 80f**: 나무 트렁크(lum<77) 차단 / 잔디·연결로(lum≥80) 통과
 - `isBlocked`: 중심 + 상하좌우 10f 지점 5곳 중 하나라도 막히면 true
 - `movePlayer`: X/Y 축 독립 판정 → 벽 슬라이딩
+
+---
+
+## 사냥터 배경 시스템 (drawCemeteryBackground)
+
+스켈레톤·미노타우르스 사냥터 전용 타일 기반 배경 렌더러.
+
+### ground_tileset.png 스펙
+
+- **크기**: 1254×1254px, 4×4 그리드
+- **상수**: `GT_CELL=313` / `GT_BORDER=40` / `GT_TILE=233`
+- **좌표 계산**: `srcOffset = IntOffset(srcCol * GT_CELL + GT_BORDER, srcRow * GT_CELL + GT_BORDER)`, `srcSize = IntSize(GT_TILE, GT_TILE)`
+
+| 행 | 내용 |
+|----|------|
+| Row 0 | 갈색 흙 4종 (자갈+흙, 풀무리+흙, 균열 흙, 균열+돌) |
+| Row 1 | 풀밭 4종 (풀+돌, 연한 풀, 혼합 풀, 짙은 풀+돌) |
+| Row 2 | 자갈 4종 (소형, 대형, 균열, 조밀 자갈) |
+| Row 3 | 석재 4종 (혼합, 깨끗한 회색, 이끼, 짙은 석재) |
+
+### 맵별 바닥 구성
+
+| 맵 | 바닥 타일 풀 | 엣지 타일 | seed |
+|----|------------|-----------|------|
+| BEGINNER_FIELD | 풀 4종 (row1 전체) | (col=0, row=0) 짙은 흙 | 11 |
+| FIELD_2 | 짙은 흙 2종 + 풀 2종 | (col=0, row=0) 짙은 흙 | 37 |
+| FIELD_3 | 짙은 흙 + 균열 흙 + 자갈 | (col=2, row=0) 균열 흙 | 71 |
+| MINOTAUR_FIELD_* | FIELD_3과 동일 | 동일 | 71 |
+
+### 타일 선택 알고리즘
+
+- **32×18 그리드** 전체 순회 (col 0~31, row 0~17)
+- **엣지** (col==0, col==31, row==0, row==17): 고정 타일
+- **내부**: 해시 기반 의사난수 — `h = col*1301 + row*997 + col*row*37 + seed`, `groundTiles[((h % n) + n) % n]`
+- `FilterQuality.None` (nearest-neighbor) 렌더링
+
+### 관련 코드 위치 (MainActivity.kt)
+
+```kotlin
+private const val GT_CELL   = 313
+private const val GT_BORDER = 40
+private const val GT_TILE   = 233
+
+private val CEMETERY_GROUND_BEGINNER = listOf(0 to 1, 1 to 1, 2 to 1, 3 to 1)
+private val CEMETERY_GROUND_FIELD2   = listOf(0 to 0, 1 to 0, 0 to 1, 2 to 1)
+private val CEMETERY_GROUND_FIELD3   = listOf(0 to 0, 2 to 0, 3 to 0, 0 to 2)
+```
+
+- `groundTs`: `loadBitmap(context, R.drawable.ground_tileset, 1254, noScale = true)`
+- `decorTs`: `loadBitmap(context, R.drawable.cemetery_tileset, 1024, noScale = true)` — 현재 `@Suppress("UNUSED_PARAMETER")`, 추후 오브젝트 추가 시 사용 예정
 
 ---
 
@@ -1254,6 +1306,10 @@ SoundManager.release()          // onDestroy
 | 206 | InventoryWindow 그리드 높이 비례 — `maxGridH = screenHeightDp * 0.62f`, `heightIn(max=maxGridH)` + verticalScroll; 슬롯 간격 4→2dp; money row padding 축소 | ✅ |
 | 207 | ItemInfoDialog 너비 비례 + 레이아웃 수직 전환 — 너비 `screenWidthDp * 0.29f`, 이미지+스탯 Row→Column, 이미지 size 96→48dp, WeaponReqRow/WeaponStatRow fontSize 9.sp, Job tab fontSize 9.sp | ✅ |
 | 208 | ShopWindow 너비 비례 + 레이아웃 수직 누적 전환 — 너비 `screenWidthDp * 0.29f`, 리스트·상세 Row→Column stacked, shopListH=`screenHeightDp*0.18f`, shopDetailH=`screenHeightDp*0.22f`, 내부 버튼 height 24dp, 텍스트 8~10.sp | ✅ |
+| 209 | ground_tileset.png 추가 — 1254×1254 4×4 바닥 타일셋 (흙/풀/자갈/석재 각 4종), GT_CELL=313, GT_BORDER=40, GT_TILE=233 | ✅ |
+| 210 | drawCemeteryBackground 구현 — 스켈레톤·미노타우르스 사냥터 전용 타일 기반 배경 렌더러, 32×18 그리드, FilterQuality.None | ✅ |
+| 211 | 맵별 바닥 타일 구성 — BEGINNER: 풀 4종(row1), FIELD_2: 흙+풀 혼합, FIELD_3: 흙+균열+자갈, 엣지 고정 타일 | ✅ |
+| 212 | 사냥터 오브젝트 전체 제거 — DECOR_* 상수·DECOR_LIST_* 삭제, drawCemeteryBackground 순수 바닥 렌더링만 유지 | ✅ |
 
 ---
 

@@ -654,8 +654,6 @@ fun MainScreen(
             )
         }
 
-
-
         // ⑨ 전직 팝업
         if (state.jobAdvancementPending) {
             JobAdvancementDialog(onAdvance = onAdvanceJob)
@@ -1511,8 +1509,16 @@ fun ResultPanel(result: EnhancementResult, modifier: Modifier = Modifier) {
 }
 
 // ── 비트맵 로더 ──────────────────────────────────────────────────────────────
-private fun loadBitmap(context: android.content.Context, resId: Int, maxSize: Int): ImageBitmap {
-    val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+private fun loadBitmap(
+    context: android.content.Context,
+    resId: Int,
+    maxSize: Int,
+    noScale: Boolean = false,
+): ImageBitmap {
+    val opts = BitmapFactory.Options().apply {
+        inJustDecodeBounds = true
+        if (noScale) inScaled = false
+    }
     BitmapFactory.decodeResource(context.resources, resId, opts)
     val rawMax = maxOf(opts.outWidth, opts.outHeight)
     opts.inJustDecodeBounds = false
@@ -1520,6 +1526,7 @@ private fun loadBitmap(context: android.content.Context, resId: Int, maxSize: In
         var p = 1; while (p * 2 <= s) p *= 2; p
     }
     opts.inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
+    if (noScale) opts.inScaled = false
     return BitmapFactory.decodeResource(context.resources, resId, opts).asImageBitmap()
 }
 
@@ -1542,8 +1549,10 @@ private fun GameCanvas(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val mapBitmap       = remember { loadBitmap(context, R.drawable.map_beginner, 2048) }
-    val townBitmap      = remember { loadBitmap(context, R.drawable.map_town, 2048) }
+    val mapBitmap          = remember { loadBitmap(context, R.drawable.map_beginner, 2048) }
+    val townBitmap         = remember { loadBitmap(context, R.drawable.map_town, 2048) }
+    val cemeteryTileset    = remember { loadBitmap(context, R.drawable.cemetery_tileset, 1024, noScale = true) }
+    val groundTileset      = remember { loadBitmap(context, R.drawable.ground_tileset, 1254, noScale = true) }
     // variant 1
     val skelIdle1  = remember { listOf(
         loadBitmap(context, R.drawable.skeleton_idle_0, 256),
@@ -1810,9 +1819,16 @@ private fun GameCanvas(
             .followPlayer(player.positionX, player.positionY)
             .clampToWorld(world, size.width, size.height)
 
-        val currentMapBitmap = if (world.mapType == MapType.TOWN) townBitmap else mapBitmap
         val nowMs = System.currentTimeMillis()
-        drawWorldBackground(cam, world, currentMapBitmap)
+        val isCemetery = world.mapType == MapType.BEGINNER_FIELD ||
+                         world.mapType == MapType.FIELD_2 ||
+                         world.mapType == MapType.FIELD_3
+        if (isCemetery) {
+            drawCemeteryBackground(cam, world, groundTileset, cemeteryTileset, world.mapType)
+        } else {
+            val currentMapBitmap = if (world.mapType == MapType.TOWN) townBitmap else mapBitmap
+            drawWorldBackground(cam, world, currentMapBitmap)
+        }
         groundItems.forEach { drawGroundItem(it, cam, scroll100Bitmap, scroll60Bitmap, scroll10Bitmap, gloveBitmap, skeletonBoneBitmap, beefBitmap, coinFrames, nowMs) }
         portals.forEach { drawPortal(it, cam) }
         npcs.forEach { drawNpc(it, cam, npcChuchu) }
@@ -1838,6 +1854,86 @@ private fun GameCanvas(
         )
         drawSkillEffects(skillEffects, cam)
         damageNumbers.forEach { drawDamageNumber(it, cam) }
+    }
+}
+
+// ── 공동묘지 타일 데이터 ──────────────────────────────────────────────────────────
+private const val TS_PX = 32
+
+// ──────────────────────────────────────────────────────────────────
+// ground_tileset.png: 4×4 그리드, 각 셀 313×313, 테두리 40px
+// 실제 타일 내용: 233×233 (셀 좌상단 +40 offset부터)
+// 행/열 배치:
+//   row0: 갈색 흙 (col0=자갈+흙, col1=풀싹+흙, col2=균열흙, col3=균열+자갈)
+//   row1: 풀밭 (col0=풀+자갈, col1=연한풀, col2=혼합풀, col3=풀+돌)
+//   row2: 자갈/석재 (col0=잔자갈, col1=큰자갈, col2=균열자갈, col3=밀집자갈)
+//   row3: 돌바닥 (col0=혼합석, col1=깨끗한석, col2=이끼석, col3=어두운석)
+// ──────────────────────────────────────────────────────────────────
+private const val GT_CELL   = 313  // ground tileset 셀 크기
+private const val GT_BORDER = 40   // 테두리 두께 (스킵)
+private const val GT_TILE   = 233  // 실제 타일 내용 크기
+
+// BEGINNER: 풀밭 위주 (row1) — 밝고 초록빛 공동묘지
+private val CEMETERY_GROUND_BEGINNER = listOf(0 to 1, 1 to 1, 2 to 1, 3 to 1)
+// FIELD_2: 흙+풀 혼합 (row0+row1) — 오래된 공동묘지
+private val CEMETERY_GROUND_FIELD2   = listOf(0 to 0, 1 to 0, 0 to 1, 2 to 1)
+// FIELD_3: 어두운 흙+자갈 (row0+row2) — 가장 음산한 묘지
+private val CEMETERY_GROUND_FIELD3   = listOf(0 to 0, 2 to 0, 3 to 0, 0 to 2)
+
+
+private fun DrawScope.drawCemeteryBackground(
+    cam: CameraState,
+    world: GameWorld,
+    groundTs: ImageBitmap,
+    @Suppress("UNUSED_PARAMETER") decorTs: ImageBitmap,
+    mapType: MapType,
+) {
+    val bgColor = when (mapType) {
+        MapType.BEGINNER_FIELD -> Color(0xFF1A1A0E)
+        MapType.FIELD_2        -> Color(0xFF120E08)
+        else                   -> Color(0xFF0A0807)
+    }
+    drawRect(color = bgColor, size = size)
+
+    val tl    = cam.toScreenOffset(0f, 0f, size.width, size.height)
+    val br    = cam.toScreenOffset(world.width, world.height, size.width, size.height)
+    val tile  = (br.x - tl.x) / 32f
+    val tileS = tile.toInt().coerceAtLeast(1)
+
+    val groundTiles: List<Pair<Int, Int>>
+    val edgeSrcCol: Int; val edgeSrcRow: Int
+    val seed: Int
+    when (mapType) {
+        MapType.BEGINNER_FIELD -> {
+            groundTiles = CEMETERY_GROUND_BEGINNER; edgeSrcCol = 0; edgeSrcRow = 0; seed = 11
+        }
+        MapType.FIELD_2 -> {
+            groundTiles = CEMETERY_GROUND_FIELD2;   edgeSrcCol = 0; edgeSrcRow = 0; seed = 37
+        }
+        else -> {
+            groundTiles = CEMETERY_GROUND_FIELD3;   edgeSrcCol = 2; edgeSrcRow = 0; seed = 71
+        }
+    }
+
+    val n = groundTiles.size
+    for (row in 0..17) {
+        for (col in 0..31) {
+            val isEdge = col == 0 || col == 31 || row == 0 || row == 17
+            val (srcCol, srcRow) = if (isEdge) {
+                edgeSrcCol to edgeSrcRow
+            } else {
+                val h = col * 1301 + row * 997 + col * row * 37 + seed
+                groundTiles[((h % n) + n) % n]
+            }
+            drawImage(
+                image         = groundTs,
+                srcOffset     = IntOffset(srcCol * GT_CELL + GT_BORDER, srcRow * GT_CELL + GT_BORDER),
+                srcSize       = IntSize(GT_TILE, GT_TILE),
+                dstOffset     = IntOffset((tl.x + col * tile).toInt(), (tl.y + row * tile).toInt()),
+                dstSize       = IntSize(tileS, tileS),
+                filterQuality = FilterQuality.None,
+            )
+        }
     }
 }
 
