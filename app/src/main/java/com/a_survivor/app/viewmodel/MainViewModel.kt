@@ -987,6 +987,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val scroll     = ScrollCatalog.get(scrollType)
         val targetSlot = scroll.targetSlot.ifEmpty { "GLOVE" }
 
+        val slotIdx = state.inventorySlots.indexOfFirst { it is InventorySlot.ScrollItem && it.type == scrollType }
+        val slot = state.inventorySlots.getOrNull(slotIdx) as? InventorySlot.ScrollItem
+        if (slot == null || slot.quantity <= 0) {
+            _uiState.update { it.copy(lastResult = EnhancementResult.Error("주문서 수량이 부족합니다.")) }
+            return
+        }
+
+        if (targetSlot == "WEAPON") {
+            val weapon = state.weapon ?: run {
+                _uiState.update { it.copy(lastResult = EnhancementResult.Error("무기 슬롯에 장비가 없습니다.")) }
+                return
+            }
+            val (newWeapon, result) = service.applyScrollToWeapon(weapon, scroll)
+            _uiState.update { s ->
+                val newSlots = s.inventorySlots.toMutableList()
+                newSlots[slotIdx] = if (slot.quantity > 1) slot.copy(quantity = slot.quantity - 1) else null
+                computeDerived(s.copy(weapon = newWeapon, inventorySlots = newSlots, lastResult = result))
+            }
+            when (result) {
+                is EnhancementResult.Success   -> SoundManager.playSfx(SoundManager.Sfx.SCROLL_SUCCESS)
+                is EnhancementResult.Failure,
+                is EnhancementResult.Destroyed -> SoundManager.playSfx(SoundManager.Sfx.SCROLL_FAIL)
+                else -> {}
+            }
+            return
+        }
+
         val equipment = when (targetSlot) {
             "HAT"   -> state.hat
             "TOP"   -> state.top
@@ -997,13 +1024,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "HAT"   -> "모자"; "TOP" -> "상의"; "SHOES" -> "신발"; else -> "장갑"
             }
             _uiState.update { it.copy(lastResult = EnhancementResult.Error("${slotName} 슬롯에 장비가 없습니다.")) }
-            return
-        }
-
-        val slotIdx = state.inventorySlots.indexOfFirst { it is InventorySlot.ScrollItem && it.type == scrollType }
-        val slot = state.inventorySlots.getOrNull(slotIdx) as? InventorySlot.ScrollItem
-        if (slot == null || slot.quantity <= 0) {
-            _uiState.update { it.copy(lastResult = EnhancementResult.Error("주문서 수량이 부족합니다.")) }
             return
         }
 

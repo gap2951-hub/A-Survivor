@@ -3,6 +3,7 @@ package com.a_survivor.app.service
 import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
 import com.a_survivor.app.model.Scroll
+import com.a_survivor.app.model.Weapon
 import kotlin.random.Random
 
 class EnhancementService {
@@ -63,6 +64,30 @@ class EnhancementService {
         "SHOES"  -> "신발"
         "WEAPON" -> "무기"
         else     -> slot
+    }
+
+    fun applyScrollToWeapon(weapon: Weapon, scroll: Scroll): Pair<Weapon, EnhancementResult> {
+        if (weapon.destroyed) return weapon to EnhancementResult.Error("무기가 파괴된 상태입니다.")
+        if (scroll.targetSlot.isNotEmpty() && scroll.targetSlot != "WEAPON")
+            return weapon to EnhancementResult.Error("이 주문서는 무기 전용이 아닙니다.")
+        if (weapon.remainingUpgradeCount <= 0)
+            return weapon to EnhancementResult.Error("업그레이드 가능 횟수가 부족합니다.")
+        val roll = Random.nextInt(1, 101)
+        return if (roll <= scroll.successRate) {
+            val updated = weapon.copy(
+                attackPower           = weapon.attackPower + scroll.attackBonus,
+                magicPower            = weapon.magicPower  + scroll.magicBonus,
+                strBonus              = weapon.strBonus    + scroll.strBonus,
+                remainingUpgradeCount = weapon.remainingUpgradeCount - 1
+            )
+            updated to EnhancementResult.Success("${scroll.name} 성공!\n${effectDesc(scroll)}")
+        } else {
+            val updated = weapon.copy(
+                remainingUpgradeCount = weapon.remainingUpgradeCount - 1,
+                failedUpgradeCount    = weapon.failedUpgradeCount + 1
+            )
+            updated to EnhancementResult.Failure("${scroll.name} 실패!")
+        }
     }
 
     private fun applyWhiteScroll(

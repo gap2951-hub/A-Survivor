@@ -321,6 +321,10 @@ fun MainScreen(
     var bgmMuted         by remember { mutableStateOf(SoundManager.bgmMuted) }
     var sfxMuted         by remember { mutableStateOf(SoundManager.sfxMuted) }
     var equipSlotBounds  by remember { mutableStateOf<Rect?>(null) }
+    var hatSlotBounds    by remember { mutableStateOf<Rect?>(null) }
+    var topSlotBounds    by remember { mutableStateOf<Rect?>(null) }
+    var shoesSlotBounds  by remember { mutableStateOf<Rect?>(null) }
+    var weaponSlotBounds by remember { mutableStateOf<Rect?>(null) }
     val quickSlotBounds  = remember { mutableStateListOf<Rect?>(null, null, null) }
     var rootWindowOffset by remember { mutableStateOf(Offset.Zero) }
 
@@ -425,6 +429,10 @@ fun MainScreen(
                     weapon = state.weapon,
                     isDragOver = isDragOver,
                     onSlotBounds = { equipSlotBounds = it },
+                    onHatBounds    = { hatSlotBounds = it },
+                    onTopBounds    = { topSlotBounds = it },
+                    onShoesBounds  = { shoesSlotBounds = it },
+                    onWeaponBounds = { weaponSlotBounds = it },
                     onUnequipSlot = onUnequipSlot,
                     onReset = onReset,
                     onUnequipWeapon = onUnequipWeapon,
@@ -470,9 +478,20 @@ fun MainScreen(
                     onUsePotion         = onUsePotion,
                     onClose             = { isInventoryOpen = false },
                     onDragEnd           = { scrollType, dropPos ->
-                        if (isEquipmentOpen && equipSlotBounds?.contains(dropPos) == true) {
-                            onScrollSelected(scrollType)
-                            onEnhance()
+                        if (isEquipmentOpen) {
+                            val targetSlot = ScrollCatalog.get(scrollType).targetSlot.ifEmpty { "GLOVE" }
+                            val hit = when (targetSlot) {
+                                "GLOVE"  -> equipSlotBounds?.contains(dropPos) == true
+                                "HAT"    -> hatSlotBounds?.contains(dropPos) == true
+                                "TOP"    -> topSlotBounds?.contains(dropPos) == true
+                                "SHOES"  -> shoesSlotBounds?.contains(dropPos) == true
+                                "WEAPON" -> weaponSlotBounds?.contains(dropPos) == true
+                                else     -> false
+                            }
+                            if (hit) {
+                                onScrollSelected(scrollType)
+                                onEnhance()
+                            }
                         }
                     },
                     onConsumableDragEnd = { ct, dropPos ->
@@ -767,6 +786,10 @@ fun EquipmentWindow(
     weapon: Weapon?,
     isDragOver: Boolean,
     onSlotBounds: (Rect) -> Unit,
+    onHatBounds: ((Rect) -> Unit)? = null,
+    onTopBounds: ((Rect) -> Unit)? = null,
+    onShoesBounds: ((Rect) -> Unit)? = null,
+    onWeaponBounds: ((Rect) -> Unit)? = null,
     onUnequipSlot: (String) -> Unit,
     onReset: () -> Unit,
     onUnequipWeapon: () -> Unit,
@@ -790,7 +813,7 @@ fun EquipmentWindow(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // ① 머리 — 모자
-            BodyRow { ArmorSlot("HAT", "모자", hat, slotSz) { onUnequipSlot("HAT") } }
+            BodyRow { ArmorSlot("HAT", "모자", hat, slotSz, onBoundsChanged = onHatBounds) { onUnequipSlot("HAT") } }
 
             // ② 얼굴 — 얼굴장식 / 눈장식 / 귀걸이
             BodyRow {
@@ -808,7 +831,7 @@ fun EquipmentWindow(
             BodyRow {
                 LockedSlot("어깨", Modifier.size(slotSz))
                 Spacer(Modifier.width(3.dp))
-                ArmorSlot("TOP", "상의", top, slotSz) { onUnequipSlot("TOP") }
+                ArmorSlot("TOP", "상의", top, slotSz, onBoundsChanged = onTopBounds) { onUnequipSlot("TOP") }
                 Spacer(Modifier.width(3.dp))
                 LockedSlot("망토", Modifier.size(slotSz))
             }
@@ -834,13 +857,14 @@ fun EquipmentWindow(
                     weapon = weapon,
                     onUnequip = onUnequipWeapon,
                     onReset = onResetWeapon,
-                    slotSize = slotSz
+                    slotSize = slotSz,
+                    onBoundsChanged = onWeaponBounds
                 )
             }
 
             // ⑥ 신발·벨트
             BodyRow {
-                ArmorSlot("SHOES", "신발", shoes, slotSz) { onUnequipSlot("SHOES") }
+                ArmorSlot("SHOES", "신발", shoes, slotSz, onBoundsChanged = onShoesBounds) { onUnequipSlot("SHOES") }
                 Spacer(Modifier.width(3.dp))
                 LockedSlot("벨트", Modifier.size(slotSz))
             }
@@ -967,6 +991,7 @@ private fun ArmorSlot(
     slotLabel: String,
     equipment: Equipment?,
     slotSize: Dp = rememberSlotSize(),
+    onBoundsChanged: ((Rect) -> Unit)? = null,
     onUnequip: () -> Unit,
 ) {
     var showInfo    by remember { mutableStateOf(false) }
@@ -989,6 +1014,7 @@ private fun ArmorSlot(
             .clip(RoundedCornerShape(4.dp))
             .background(bgColor)
             .border(1.dp, borderColor, RoundedCornerShape(4.dp))
+            .then(if (onBoundsChanged != null) Modifier.onGloballyPositioned { onBoundsChanged(it.boundsInWindow()) } else Modifier)
             .then(
                 if (equipment != null)
                     Modifier.pointerInput(equipment.destroyed) {
@@ -1141,7 +1167,8 @@ private fun WeaponSlot(
     weapon: Weapon?,
     onUnequip: () -> Unit,
     onReset: () -> Unit,
-    slotSize: Dp = rememberSlotSize()
+    slotSize: Dp = rememberSlotSize(),
+    onBoundsChanged: ((Rect) -> Unit)? = null
 ) {
     var showInfo    by remember { mutableStateOf(false) }
     var showConfirm by remember { mutableStateOf(false) }
@@ -1155,6 +1182,7 @@ private fun WeaponSlot(
             .clip(RoundedCornerShape(4.dp))
             .background(bgColor)
             .border(1.dp, borderColor, RoundedCornerShape(4.dp))
+            .then(if (onBoundsChanged != null) Modifier.onGloballyPositioned { onBoundsChanged(it.boundsInWindow()) } else Modifier)
             .then(
                 if (weapon != null)
                     Modifier.pointerInput(Unit) {

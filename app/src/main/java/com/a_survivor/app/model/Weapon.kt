@@ -14,6 +14,9 @@ data class Weapon(
     val attackSpeed: String = "보통",
     val availableJobs: List<PlayerJob> = listOf(PlayerJob.WARRIOR),
     val maxUpgradeCount: Int = 7,
+    val remainingUpgradeCount: Int = 7,
+    val failedUpgradeCount: Int = 0,
+    val destroyed: Boolean = false,
     val scissorCount: Int = 10,
     val description: String = ""
 )

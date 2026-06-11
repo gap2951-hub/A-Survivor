@@ -1293,6 +1293,12 @@ SoundManager.release()          // onDestroy
 | 224 | 포탈 y 좌표 수정 — 스켈레톤 사냥터 포탈 y=80 → y=286 (충돌 맵 기준 접근 가능 위치), 도착 좌표도 y=286으로 통일 | ✅ |
 | 225 | 주문서 UI 이미지 통합 — scrollDrawableRes를 suffix 기반으로 전환 (_100→scroll_100, _60→scroll_60, _10→scroll_10), 모든 슬롯·스탯 주문서에 동일 이미지 적용 | ✅ |
 | 226 | drawGroundItem 주문서 비트맵 분기 통합 — suffix 기반 분기로 변경, 모든 주문서 종류가 바닥 드랍 시 올바른 이미지로 렌더링 | ✅ |
+| 227 | ArmorSlot 드래그-드랍 강화 지원 — hatSlotBounds/topSlotBounds/shoesSlotBounds 상태 추가, ArmorSlot에 onBoundsChanged 파라미터 연결, EquipmentWindow에 onHatBounds/onTopBounds/onShoesBounds 전달 | ✅ |
+| 228 | 주문서 슬롯 일치 검증 — onDragEnd에서 scroll.targetSlot 기준으로 해당 슬롯에만 드랍 감지 (장갑 주문서→장갑 슬롯에만, 모자 주문서→모자 슬롯에만 발동) | ✅ |
+| 229 | Weapon 강화 필드 추가 — remainingUpgradeCount/failedUpgradeCount/destroyed 필드 추가, 기존 세이브 호환 (GSON 기본값 처리) | ✅ |
+| 230 | EnhancementService.applyScrollToWeapon() 추가 — 무기 전용 주문서 강화 로직 (targetSlot="WEAPON" 검증, attackPower/magicPower/strBonus 적용) | ✅ |
+| 231 | useSelectedScroll WEAPON 분기 추가 — targetSlot=="WEAPON"일 때 applyScrollToWeapon() 호출, 무기 슬롯 강화 결과 UiState 반영 | ✅ |
+| 232 | WeaponSlot 드래그-드랍 강화 지원 — weaponSlotBounds 상태 추가, WeaponSlot에 onBoundsChanged 파라미터 연결, onDragEnd에서 "WEAPON"→weaponSlotBounds 체크 | ✅ |
 
 ---
 
