@@ -339,7 +339,7 @@ fun MainScreen(
     val screenW  = with(density) { configuration.screenWidthDp.dp.toPx() }
     val screenH  = with(density) { configuration.screenHeightDp.dp.toPx() }
     val panelW      = (configuration.screenWidthDp * 0.29f).dp
-    val equipPanelW = (configuration.screenWidthDp * 0.31f).dp
+    val equipPanelW = (configuration.screenWidthDp * 0.155f).dp
     val panelWPx      = with(density) { panelW.toPx() }
     val equipPanelWPx = with(density) { equipPanelW.toPx() }
     val headerPx = with(density) { 36.dp.toPx() }
@@ -882,7 +882,7 @@ fun EquipmentWindow(
 
 @Composable
 private fun rememberSlotSize(): Dp =
-    (LocalConfiguration.current.screenWidthDp * 0.032f).dp.coerceIn(10.dp, 18.dp)
+    (LocalConfiguration.current.screenWidthDp * 0.044f).dp.coerceIn(14.dp, 26.dp)
 
 @Composable
 private fun BodyRow(content: @Composable () -> Unit) {
