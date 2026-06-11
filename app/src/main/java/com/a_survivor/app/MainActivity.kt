@@ -882,7 +882,7 @@ fun EquipmentWindow(
 
 @Composable
 private fun rememberSlotSize(): Dp =
-    (LocalConfiguration.current.screenWidthDp * 0.036f).dp.coerceIn(12.dp, 22.dp)
+    (LocalConfiguration.current.screenWidthDp * 0.032f).dp.coerceIn(10.dp, 18.dp)
 
 @Composable
 private fun BodyRow(content: @Composable () -> Unit) {
