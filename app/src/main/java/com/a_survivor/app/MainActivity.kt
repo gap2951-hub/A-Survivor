@@ -338,8 +338,10 @@ fun MainScreen(
     val configuration = LocalConfiguration.current
     val screenW  = with(density) { configuration.screenWidthDp.dp.toPx() }
     val screenH  = with(density) { configuration.screenHeightDp.dp.toPx() }
-    val panelW   = (configuration.screenWidthDp * 0.29f).dp
-    val panelWPx = with(density) { panelW.toPx() }
+    val panelW      = (configuration.screenWidthDp * 0.29f).dp
+    val equipPanelW = (configuration.screenWidthDp * 0.36f).dp
+    val panelWPx      = with(density) { panelW.toPx() }
+    val equipPanelWPx = with(density) { equipPanelW.toPx() }
     val headerPx = with(density) { 36.dp.toPx() }
     val initPad  = with(density) { 8.dp.toPx() }
 
@@ -347,8 +349,8 @@ fun MainScreen(
     var statOffset   by remember { mutableStateOf(Offset(initPad, initPad)) }
     var inventOffset by remember { mutableStateOf(Offset(initPad, initPad)) }
 
-    fun clampWin(o: Offset) = Offset(
-        o.x.coerceIn(0f, (screenW - panelWPx).coerceAtLeast(0f)),
+    fun clampWin(o: Offset, wPx: Float = panelWPx) = Offset(
+        o.x.coerceIn(0f, (screenW - wPx).coerceAtLeast(0f)),
         o.y.coerceIn(0f, (screenH - headerPx).coerceAtLeast(0f))
     )
 
@@ -420,7 +422,7 @@ fun MainScreen(
                 modifier = Modifier
                     .zIndex(10f)
                     .offset { IntOffset(equipOffset.x.roundToInt(), equipOffset.y.roundToInt()) }
-                    .width(panelW)
+                    .width(equipPanelW)
             ) {
                 EquipmentWindow(
                     equipment = state.equipment,
@@ -441,7 +443,7 @@ fun MainScreen(
                     onUnequipWeapon = onUnequipWeapon,
                     onResetWeapon = onResetWeapon,
                     onClose = { isEquipmentOpen = false },
-                    onDrag = { delta -> equipOffset = clampWin(equipOffset + delta) }
+                    onDrag = { delta -> equipOffset = clampWin(equipOffset + delta, equipPanelWPx) }
                 )
             }
         }
@@ -880,7 +882,7 @@ fun EquipmentWindow(
 
 @Composable
 private fun rememberSlotSize(): Dp =
-    (LocalConfiguration.current.screenWidthDp * 0.032f).dp.coerceIn(10.dp, 18.dp)
+    (LocalConfiguration.current.screenWidthDp * 0.040f).dp.coerceIn(12.dp, 26.dp)
 
 @Composable
 private fun BodyRow(content: @Composable () -> Unit) {
@@ -4452,11 +4454,10 @@ private fun ShopWindow(
                     }
                 }
 
-                // 아래: 상세 패널
+                // 아래: 상세 패널 (콘텐츠 스크롤 + 버튼 고정 분리)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(shopDetailH)
                         .clip(RoundedCornerShape(6.dp))
                         .background(TipSection)
                         .border(1.dp, TipBorder, RoundedCornerShape(6.dp))
@@ -4466,36 +4467,46 @@ private fun ShopWindow(
                     if (mode == ShopMode.BUY) {
                         val item = shopItems.find { it.id == selectedBuyId }
                         if (item == null) {
-                            Text("아이템을 선택하세요.", color = TextMuted, fontSize = 9.sp)
+                            Text("아이템을 선택하세요.", color = TextMuted, fontSize = 9.sp,
+                                modifier = Modifier.padding(vertical = 8.dp))
                         } else {
-                            Text(item.name, color = TipOrange, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            Text(item.description, color = TipText, fontSize = 8.sp)
-                            HorizontalDivider(color = TipLine)
-                            Text("구매가: %,d원".format(item.buyPrice), color = TextGold, fontSize = 9.sp)
-                            if (item.stackable) {
-                                val qty = quantityInput.toIntOrNull()?.coerceAtLeast(1) ?: 1
-                                val total = item.buyPrice * qty
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Button(
-                                        onClick = { quantityInput = ((quantityInput.toIntOrNull() ?: 1) - 1).coerceAtLeast(1).toString() },
-                                        colors = ButtonDefaults.buttonColors(containerColor = ColorDisabled),
-                                        modifier = Modifier.size(18.dp),
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                                    ) { Text("−", color = Color.White, fontSize = 9.sp) }
-                                    Text(qty.toString(), color = TextGold, fontSize = 9.sp)
-                                    Button(
-                                        onClick = { quantityInput = ((quantityInput.toIntOrNull() ?: 1) + 1).toString() },
-                                        colors = ButtonDefaults.buttonColors(containerColor = ColorDisabled),
-                                        modifier = Modifier.size(18.dp),
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                                    ) { Text("+", color = Color.White, fontSize = 9.sp) }
+                            // 스크롤 가능한 정보 영역
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = shopDetailH - 34.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(item.name, color = TipOrange, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text(item.description, color = TipText, fontSize = 8.sp)
+                                HorizontalDivider(color = TipLine)
+                                Text("구매가: %,d원".format(item.buyPrice), color = TextGold, fontSize = 9.sp)
+                                if (item.stackable) {
+                                    val qty = quantityInput.toIntOrNull()?.coerceAtLeast(1) ?: 1
+                                    val total = item.buyPrice * qty
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Button(
+                                            onClick = { quantityInput = ((quantityInput.toIntOrNull() ?: 1) - 1).coerceAtLeast(1).toString() },
+                                            colors = ButtonDefaults.buttonColors(containerColor = ColorDisabled),
+                                            modifier = Modifier.size(18.dp),
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                                        ) { Text("−", color = Color.White, fontSize = 9.sp) }
+                                        Text(qty.toString(), color = TextGold, fontSize = 9.sp)
+                                        Button(
+                                            onClick = { quantityInput = ((quantityInput.toIntOrNull() ?: 1) + 1).toString() },
+                                            colors = ButtonDefaults.buttonColors(containerColor = ColorDisabled),
+                                            modifier = Modifier.size(18.dp),
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                                        ) { Text("+", color = Color.White, fontSize = 9.sp) }
+                                    }
+                                    Text("합계: %,d원".format(total), color = if (money >= total) ColorSuccess else ColorFailure, fontSize = 9.sp)
                                 }
-                                Text("합계: %,d원".format(total), color = if (money >= total) ColorSuccess else ColorFailure, fontSize = 9.sp)
                             }
-                            Spacer(Modifier.weight(1f))
+                            // 구매 버튼 — 항상 보임
                             val qty = if (item.stackable) (quantityInput.toIntOrNull()?.coerceAtLeast(1) ?: 1) else 1
                             val total = item.buyPrice * qty
                             Button(
@@ -4509,34 +4520,47 @@ private fun ShopWindow(
                     } else {
                         val entry = selectedSellEntry
                         if (entry == null) {
-                            Text("아이템을 선택하세요.", color = TextMuted, fontSize = 9.sp)
+                            Text("아이템을 선택하세요.", color = TextMuted, fontSize = 9.sp,
+                                modifier = Modifier.padding(vertical = 8.dp))
                         } else {
-                            Text(entry.name, color = TipOrange, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            HorizontalDivider(color = TipLine)
-                            Text("판매가: %,d원".format(entry.sellPrice), color = ColorSuccess, fontSize = 9.sp)
+                            // 스크롤 가능한 정보 영역
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = shopDetailH - 34.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(entry.name, color = TipOrange, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                HorizontalDivider(color = TipLine)
+                                Text("판매가: %,d원".format(entry.sellPrice), color = ColorSuccess, fontSize = 9.sp)
+                                if (entry.isStackable) {
+                                    val qty = (quantityInput.toIntOrNull()?.coerceAtLeast(1) ?: 1).coerceAtMost(entry.maxQuantity)
+                                    val total = entry.sellPrice * qty
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Button(
+                                            onClick = { quantityInput = ((quantityInput.toIntOrNull() ?: 1) - 1).coerceAtLeast(1).toString() },
+                                            colors = ButtonDefaults.buttonColors(containerColor = ColorDisabled),
+                                            modifier = Modifier.size(18.dp),
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                                        ) { Text("−", color = Color.White, fontSize = 9.sp) }
+                                        Text(qty.toString(), color = TextGold, fontSize = 9.sp)
+                                        Button(
+                                            onClick = { quantityInput = ((quantityInput.toIntOrNull() ?: 1) + 1).coerceAtMost(entry.maxQuantity).toString() },
+                                            colors = ButtonDefaults.buttonColors(containerColor = ColorDisabled),
+                                            modifier = Modifier.size(18.dp),
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                                        ) { Text("+", color = Color.White, fontSize = 9.sp) }
+                                    }
+                                    Text("합계: %,d원".format(total), color = ColorSuccess, fontSize = 9.sp)
+                                }
+                            }
+                            // 판매 버튼 — 항상 보임
                             if (entry.isStackable) {
                                 val qty = (quantityInput.toIntOrNull()?.coerceAtLeast(1) ?: 1).coerceAtMost(entry.maxQuantity)
-                                val total = entry.sellPrice * qty
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Button(
-                                        onClick = { quantityInput = ((quantityInput.toIntOrNull() ?: 1) - 1).coerceAtLeast(1).toString() },
-                                        colors = ButtonDefaults.buttonColors(containerColor = ColorDisabled),
-                                        modifier = Modifier.size(18.dp),
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                                    ) { Text("−", color = Color.White, fontSize = 9.sp) }
-                                    Text(qty.toString(), color = TextGold, fontSize = 9.sp)
-                                    Button(
-                                        onClick = { quantityInput = ((quantityInput.toIntOrNull() ?: 1) + 1).coerceAtMost(entry.maxQuantity).toString() },
-                                        colors = ButtonDefaults.buttonColors(containerColor = ColorDisabled),
-                                        modifier = Modifier.size(18.dp),
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                                    ) { Text("+", color = Color.White, fontSize = 9.sp) }
-                                }
-                                Text("합계: %,d원".format(total), color = ColorSuccess, fontSize = 9.sp)
-                                Spacer(Modifier.weight(1f))
                                 Button(
                                     onClick = { onSellStackable(entry.itemId, entry.itemType, qty) },
                                     colors = ButtonDefaults.buttonColors(containerColor = BorderGold),
@@ -4544,7 +4568,6 @@ private fun ShopWindow(
                                     modifier = Modifier.fillMaxWidth().height(24.dp)
                                 ) { Text("판매", color = Color.White, fontSize = 9.sp) }
                             } else {
-                                Spacer(Modifier.weight(1f))
                                 Button(
                                     onClick = { onSellEquipment(entry.slotIndex) },
                                     colors = ButtonDefaults.buttonColors(containerColor = BorderGold),
