@@ -2049,7 +2049,9 @@ private fun DrawScope.drawGroundItem(
             else -> scroll10
         }
     }
-    val iconSize = baseIconSize
+    val iconSize = if (item.dropItem is DropItem.EquipmentDrop &&
+        (item.dropItem as DropItem.EquipmentDrop).equipment.itemId != "NOGADA_GLOVE")
+        (baseIconSize * 1.6f).toInt() else baseIconSize
     drawImage(
         image         = bitmap,
         dstOffset     = androidx.compose.ui.unit.IntOffset(
