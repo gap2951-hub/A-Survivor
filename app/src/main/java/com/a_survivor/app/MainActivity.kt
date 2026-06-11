@@ -1313,8 +1313,9 @@ private fun ItemInfoDialog(equipment: Equipment, onDismiss: () -> Unit, onEquip:
                     if (isDestroyed) {
                         Text("✕", color = ColorDestroyed, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     } else {
+                        val drawableRes = equipmentDrawableRes(equipment.itemId) ?: R.drawable.nogada_glove
                         Image(
-                            painter = painterResource(id = R.drawable.nogada_glove),
+                            painter = painterResource(id = drawableRes),
                             contentDescription = null,
                             modifier = Modifier.size(38.dp),
                             contentScale = ContentScale.Fit
@@ -1373,16 +1374,22 @@ private fun ItemInfoDialog(equipment: Equipment, onDismiss: () -> Unit, onEquip:
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                WeaponStatRow("공격력", "+${equipment.attackPower}")
+                if (equipment.attackPower > 0)     WeaponStatRow("공격력",   "+${equipment.attackPower}")
+                if (equipment.magicPower > 0)      WeaponStatRow("마력",     "+${equipment.magicPower}")
+                if (equipment.strBonus > 0)        WeaponStatRow("STR",      "+${equipment.strBonus}")
+                if (equipment.dexBonus > 0)        WeaponStatRow("DEX",      "+${equipment.dexBonus}")
+                if (equipment.intBonus > 0)        WeaponStatRow("INT",      "+${equipment.intBonus}")
+                if (equipment.lukBonus > 0)        WeaponStatRow("LUK",      "+${equipment.lukBonus}")
+                if (equipment.physicalDefense > 0) WeaponStatRow("물리방어", "+${equipment.physicalDefense}")
+                if (equipment.magicDefense > 0)    WeaponStatRow("마법방어", "+${equipment.magicDefense}")
+                if (equipment.accuracy > 0)        WeaponStatRow("명중률",   "+${equipment.accuracy}")
+                if (equipment.avoidability > 0)    WeaponStatRow("회피율",   "+${equipment.avoidability}")
                 WeaponStatRow(
-                    "업그레이드 가능 횟수",
+                    "업그레이드",
                     "${equipment.remainingUpgradeCount} / ${equipment.maxUpgradeCount}"
                 )
-                WeaponStatRow(
-                    "실패 횟수",
-                    equipment.failedUpgradeCount.toString(),
-                    isOrange = equipment.failedUpgradeCount > 0
-                )
+                if (equipment.failedUpgradeCount > 0)
+                    WeaponStatRow("실패 횟수", "${equipment.failedUpgradeCount}", isOrange = true)
             }
 
             // ⑤ 설명

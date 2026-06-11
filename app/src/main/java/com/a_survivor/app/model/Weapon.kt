@@ -6,6 +6,7 @@ data class Weapon(
     val magicPower: Int,
     val strBonus: Int = 0,
     val reqLevel: Int = 1,
+    val itemId: String = "",
     val reqStr: Int = 0,
     val reqDex: Int = 0,
     val reqInt: Int = 0,

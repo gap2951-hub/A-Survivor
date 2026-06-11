@@ -1120,6 +1120,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         magicPower            = e.magicPower,
         strBonus              = e.strBonus,
         reqLevel              = e.requiredLevel,
+        itemId                = e.itemId,
         weaponType            = weaponTypeFor(e.itemId),
         attackSpeed           = "보통",
         availableJobs         = PlayerJob.values().toList(),
@@ -1170,7 +1171,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun unequipWeapon() { _uiState.update { computeDerived(it.copy(weapon = null)) } }
+    fun unequipWeapon() {
+        _uiState.update { s ->
+            val w = s.weapon ?: return@update s
+            if (w.itemId.isNotEmpty()) {
+                val base = EquipmentRegistry.get(w.itemId)
+                if (base != null) {
+                    val restored = base.copy(
+                        attackPower           = w.attackPower,
+                        magicPower            = w.magicPower,
+                        strBonus              = w.strBonus,
+                        maxUpgradeCount       = w.maxUpgradeCount,
+                        remainingUpgradeCount = w.remainingUpgradeCount,
+                        failedUpgradeCount    = w.failedUpgradeCount,
+                        destroyed             = w.destroyed
+                    )
+                    computeDerived(s.copy(weapon = null, inventorySlots = addEquipToSlots(s.inventorySlots, restored)))
+                } else {
+                    computeDerived(s.copy(weapon = null))
+                }
+            } else {
+                computeDerived(s.copy(weapon = null))
+            }
+        }
+    }
     fun resetWeapon()   { _uiState.update { computeDerived(it.copy(weapon = DefaultWeapon)) } }
 
     // ── NPC 대화 / 퀘스트 ─────────────────────────────────────────────────────
