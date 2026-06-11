@@ -2029,7 +2029,7 @@ private fun DrawScope.drawGroundItem(
     now: Long
 ) {
     val pos      = cam.toScreenOffset(item.positionX, item.positionY, size.width, size.height)
-    val iconSize = (size.height * 0.048f).toInt().coerceAtLeast(12)
+    val iconSize = (size.height * 0.09f).toInt().coerceAtLeast(20)
 
     val bitmap = if (item.dropItem is DropItem.MoneyDrop) {
         val frameIdx = ((now - item.droppedAt) / 150L % 4).toInt().coerceIn(0, 3)
