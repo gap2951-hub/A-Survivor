@@ -2028,8 +2028,8 @@ private fun DrawScope.drawGroundItem(
     coinFrames: List<ImageBitmap>,
     now: Long
 ) {
-    val pos      = cam.toScreenOffset(item.positionX, item.positionY, size.width, size.height)
-    val iconSize = (size.height * 0.09f).toInt().coerceAtLeast(20)
+    val pos          = cam.toScreenOffset(item.positionX, item.positionY, size.width, size.height)
+    val baseIconSize = (size.height * 0.048f).toInt().coerceAtLeast(12)
 
     val bitmap = if (item.dropItem is DropItem.MoneyDrop) {
         val frameIdx = ((now - item.droppedAt) / 150L % 4).toInt().coerceIn(0, 3)
@@ -2049,6 +2049,7 @@ private fun DrawScope.drawGroundItem(
             else -> scroll10
         }
     }
+    val iconSize = if (item.dropItem is DropItem.EquipmentDrop) (baseIconSize * 1.9f).toInt() else baseIconSize
     drawImage(
         image         = bitmap,
         dstOffset     = androidx.compose.ui.unit.IntOffset(
