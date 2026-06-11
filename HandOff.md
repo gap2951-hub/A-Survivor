@@ -102,6 +102,11 @@ com.a_survivor.app/
     ├── beef.png                   ← 재료 아이템 — 소고기
     ├── nogada_glove.png
     ├── nogada_sword.png
+    ├── item_hat_test.png          ← 장비 아이템 이미지 — 갈샛 삿갓 (256×256 정규화)
+    ├── item_top_test.png          ← 장비 아이템 이미지 — 지장의 (256×256 정규화)
+    ├── item_shoes_test.png        ← 장비 아이템 이미지 — 흰색 고무신 (256×256 정규화)
+    ├── item_pants_test.png        ← 장비 아이템 이미지 — 백진일갑주 바지 (256×256 정규화)
+    ├── item_bow_test.png          ← 장비 아이템 이미지 — 사냥꾼의 활 (256×256 정규화)
     ├── scroll_100.png / scroll_60.png / scroll_10.png
     ├── npc_chuchu.png             ← 마을 NPC 츄츄 이미지
     ├── warrior_idle_0~3.png       ← 전사 Idle 4프레임 (200ms/frame)
@@ -657,6 +662,11 @@ COLLISION_RADIUS = 16f  // 몬스터 중심과의 거리
 |--------|---------------|---------|---------|
 | **돈** | 10~15원 (100%) | 15~20원 (100%) | 25~35원 (100%) |
 | 노가다 목장갑 | 5% | 5% | 5% |
+| 갈샛 삿갓 (TEST_HAT) | 5% | 5% | 5% |
+| 지장의 (TEST_TOP) | 5% | 5% | 5% |
+| 흰색 고무신 (TEST_SHOES) | 5% | 5% | 5% |
+| 백진일갑주 바지 (TEST_PANTS) | 5% | 5% | 5% |
+| 사냥꾼의 활 (TEST_BOW) | 5% | 5% | 5% |
 | 장갑 공격력 100% | 20% | 20% | 20% |
 | 장갑 공격력 60% | 10% | 10% | 10% |
 | 장갑 공격력 10% | 3% | 3% | 3% |
@@ -1299,6 +1309,15 @@ SoundManager.release()          // onDestroy
 | 230 | EnhancementService.applyScrollToWeapon() 추가 — 무기 전용 주문서 강화 로직 (targetSlot="WEAPON" 검증, attackPower/magicPower/strBonus 적용) | ✅ |
 | 231 | useSelectedScroll WEAPON 분기 추가 — targetSlot=="WEAPON"일 때 applyScrollToWeapon() 호출, 무기 슬롯 강화 결과 UiState 반영 | ✅ |
 | 232 | WeaponSlot 드래그-드랍 강화 지원 — weaponSlotBounds 상태 추가, WeaponSlot에 onBoundsChanged 파라미터 연결, onDragEnd에서 "WEAPON"→weaponSlotBounds 체크 | ✅ |
+| 233 | 테스트 장비 이미지 교체 — TEST_HAT(갈샛 삿갓)/TEST_TOP(지장의)/TEST_SHOES(흰색 고무신) drawable 변경, TEST_GLOVE 삭제(equipment.csv+drop.csv), TEST_PANTS(백진일갑주 바지)/TEST_BOW(사냥꾼의 활) 신규 추가 | ✅ |
+| 234 | 장비 이미지 256×256 정규화 — Python PIL resize(LANCZOS)로 투명 경계 크롭 후 콘텐츠 업스케일 (thumbnail()은 다운스케일 전용이라 소형 이미지 정규화에 사용 불가) | ✅ |
+| 235 | 인벤토리 장비 이미지 크기 수정 — EquipmentBagItem 이중 패딩(Box 4dp + Image inner 4dp) 제거, Image Modifier.fillMaxSize() 단독 적용 | ✅ |
+| 236 | 바닥 드랍 장비 이미지 수정 — drawGroundItem에 equipBitmaps: Map<String,ImageBitmap> 파라미터 추가, itemId별 올바른 비트맵 렌더링 (모든 장비가 NOGADA_GLOVE로 표시되던 하드코딩 버그 수정) | ✅ |
+| 237 | 바닥 드랍 장비 아이콘 크기 분기 — when 표현식: TEST_HAT 1.6×, NOGADA_GLOVE 1.0×(기본), 기타 장비(TEST_TOP/SHOES/PANTS/BOW) 1.3× | ✅ |
+| 238 | PANTS 슬롯 전체 플러밍 — UiState.pants 필드, DerivedStatsCalculator pants 파라미터, equipFromInventory/unequipEquipment/useSelectedScroll PANTS 분기, GameSaveData/SaveService 저장·복원 | ✅ |
+| 239 | WEAPON 슬롯 장착 변환 — equipFromInventory WEAPON 분기: equipmentToWeapon() 헬퍼로 Equipment→Weapon 변환(weaponTypeFor: TEST_BOW→"활", 그 외→"한손검") | ✅ |
+| 240 | ArmorSlot 장착 이미지 표시 — equipmentDrawableRes(itemId) 기반 PNG 이미지 표시, 이미지 없으면 슬롯 이름 텍스트 폴백 | ✅ |
+| 241 | PANTS 주문서 드래그-드랍 지원 — pantsSlotBounds 상태, ArmorSlot onBoundsChanged 파라미터 추가, EquipmentWindow onPantsBounds 전달, onDragEnd "PANTS" 분기 | ✅ |
 
 ---
 
@@ -1810,7 +1829,6 @@ val quickSlotBounds = remember { mutableStateListOf<Rect?>(null, null, null) }
 - [ ] 사운드 파일 실제 배치 — bgm_town/bgm_battle + sfx_* (freesound.org 등 CC0 소스)
 - [ ] 투사체 PNG 리소스 교체 (에너지볼트/화살/표창/총알 이미지)
 - [ ] NPC 퀘스트 2차 — quest.csv에 퀘스트 추가만으로 확장 가능
-- [ ] 무기 강화 시스템
 - [ ] 장비 창고
 - [ ] 레벨업 연출 (파티클/메시지 이펙트)
 - [ ] 스킬 강화 / 스킬 트리 확장
