@@ -1318,6 +1318,13 @@ SoundManager.release()          // onDestroy
 | 239 | WEAPON 슬롯 장착 변환 — equipFromInventory WEAPON 분기: equipmentToWeapon() 헬퍼로 Equipment→Weapon 변환(weaponTypeFor: TEST_BOW→"활", 그 외→"한손검") | ✅ |
 | 240 | ArmorSlot 장착 이미지 표시 — equipmentDrawableRes(itemId) 기반 PNG 이미지 표시, 이미지 없으면 슬롯 이름 텍스트 폴백 | ✅ |
 | 241 | PANTS 주문서 드래그-드랍 지원 — pantsSlotBounds 상태, ArmorSlot onBoundsChanged 파라미터 추가, EquipmentWindow onPantsBounds 전달, onDragEnd "PANTS" 분기 | ✅ |
+| 242 | Weapon 모델 itemId 필드 추가 — equipmentToWeapon 시 원본 itemId 보존 | ✅ |
+| 243 | unequipWeapon 인벤토리 복원 — itemId 있으면 EquipmentRegistry로 Equipment 복원 후 인벤토리에 추가 (기존: weapon=null만 해 아이템 소실) | ✅ |
+| 244 | ItemInfoDialog 이미지 수정 — nogada_glove 하드코딩 → equipmentDrawableRes(itemId) 사용, 없으면 nogada_glove 폴백 | ✅ |
+| 245 | ItemInfoDialog 스탯 표시 개선 — 공격력 외 마력·STR·DEX·INT·LUK·물리방어·마법방어·명중률·회피율 값>0 시 조건부 표시 | ✅ |
+| 246 | 장비창 전용 너비 분리 — equipPanelW (0.155f) / equipPanelWPx 추가, 스탯창·인벤토리창은 panelW (0.29f) 유지 | ✅ |
+| 247 | 장비창 슬롯 크기 조정 — rememberSlotSize 0.044f, coerceIn(14.dp, 26.dp) | ✅ |
+| 248 | 상점 구매/판매 버튼 클리핑 수정 — 상세 패널 height() 고정 제거, 콘텐츠 스크롤 영역 + 버튼 고정 분리 구조로 전환 (Spacer weight 오버플로우 시 버튼이 잘리던 문제 해결) | ✅ |
 
 ---
 
