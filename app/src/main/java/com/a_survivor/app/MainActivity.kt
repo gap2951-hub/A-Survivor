@@ -325,6 +325,7 @@ fun MainScreen(
     var topSlotBounds    by remember { mutableStateOf<Rect?>(null) }
     var shoesSlotBounds  by remember { mutableStateOf<Rect?>(null) }
     var weaponSlotBounds by remember { mutableStateOf<Rect?>(null) }
+    var pantsSlotBounds  by remember { mutableStateOf<Rect?>(null) }
     val quickSlotBounds  = remember { mutableStateListOf<Rect?>(null, null, null) }
     var rootWindowOffset by remember { mutableStateOf(Offset.Zero) }
 
@@ -426,6 +427,7 @@ fun MainScreen(
                     hat = state.hat,
                     top = state.top,
                     shoes = state.shoes,
+                    pants = state.pants,
                     weapon = state.weapon,
                     isDragOver = isDragOver,
                     onSlotBounds = { equipSlotBounds = it },
@@ -433,6 +435,7 @@ fun MainScreen(
                     onTopBounds    = { topSlotBounds = it },
                     onShoesBounds  = { shoesSlotBounds = it },
                     onWeaponBounds = { weaponSlotBounds = it },
+                    onPantsBounds  = { pantsSlotBounds = it },
                     onUnequipSlot = onUnequipSlot,
                     onReset = onReset,
                     onUnequipWeapon = onUnequipWeapon,
@@ -485,6 +488,7 @@ fun MainScreen(
                                 "HAT"    -> hatSlotBounds?.contains(dropPos) == true
                                 "TOP"    -> topSlotBounds?.contains(dropPos) == true
                                 "SHOES"  -> shoesSlotBounds?.contains(dropPos) == true
+                                "PANTS"  -> pantsSlotBounds?.contains(dropPos) == true
                                 "WEAPON" -> weaponSlotBounds?.contains(dropPos) == true
                                 else     -> false
                             }
@@ -783,6 +787,7 @@ fun EquipmentWindow(
     hat: Equipment? = null,
     top: Equipment? = null,
     shoes: Equipment? = null,
+    pants: Equipment? = null,
     weapon: Weapon?,
     isDragOver: Boolean,
     onSlotBounds: (Rect) -> Unit,
@@ -790,6 +795,7 @@ fun EquipmentWindow(
     onTopBounds: ((Rect) -> Unit)? = null,
     onShoesBounds: ((Rect) -> Unit)? = null,
     onWeaponBounds: ((Rect) -> Unit)? = null,
+    onPantsBounds: ((Rect) -> Unit)? = null,
     onUnequipSlot: (String) -> Unit,
     onReset: () -> Unit,
     onUnequipWeapon: () -> Unit,
@@ -851,7 +857,7 @@ fun EquipmentWindow(
                     slotSize = slotSz
                 )
                 Spacer(Modifier.width(3.dp))
-                LockedSlot("하의", Modifier.size(slotSz))
+                ArmorSlot("PANTS", "하의", pants, slotSz, onBoundsChanged = onPantsBounds) { onUnequipSlot("PANTS") }
                 Spacer(Modifier.width(3.dp))
                 WeaponSlot(
                     weapon = weapon,
@@ -984,7 +990,22 @@ private fun LockedSlot(label: String, modifier: Modifier = Modifier) {
     }
 }
 
-// 텍스트 기반 아머 슬롯 (모자/상의/신발) — 탭=정보, 꾹=해제
+private fun equipmentDrawableRes(itemId: String): Int? = when (itemId) {
+    "TEST_HAT"   -> R.drawable.item_hat_test
+    "TEST_TOP"   -> R.drawable.item_top_test
+    "TEST_SHOES" -> R.drawable.item_shoes_test
+    "TEST_PANTS" -> R.drawable.item_pants_test
+    "TEST_BOW"   -> R.drawable.item_bow_test
+    "NOGADA_GLOVE" -> R.drawable.nogada_glove
+    else -> null
+}
+
+private fun weaponDrawableRes(weapon: Weapon): Int = when (weapon.weaponType) {
+    "활" -> R.drawable.item_bow_test
+    else -> R.drawable.nogada_sword
+}
+
+// 아머 슬롯 (모자/상의/신발/하의) — 탭=정보, 꾹=해제
 @Composable
 private fun ArmorSlot(
     slotId: String,
@@ -1030,9 +1051,21 @@ private fun ArmorSlot(
         when {
             equipment == null -> Text(slotLabel, color = TextMuted.copy(alpha = 0.45f), fontSize = 7.sp)
             equipment.destroyed -> Text("✕", color = ColorDestroyed, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            else -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(equipment.name.take(2), color = TextGold, fontSize = 10.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                if (equipment.attackPower > 0) Text("+${equipment.attackPower}", color = ColorSuccess, fontSize = 8.sp)
+            else -> {
+                val drawableRes = equipmentDrawableRes(equipment.itemId)
+                if (drawableRes != null) {
+                    Image(
+                        painter = painterResource(id = drawableRes),
+                        contentDescription = null,
+                        modifier = Modifier.size(slotSize * 0.8f),
+                        contentScale = ContentScale.Fit
+                    )
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(equipment.name.take(2), color = TextGold, fontSize = 10.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                        if (equipment.attackPower > 0) Text("+${equipment.attackPower}", color = ColorSuccess, fontSize = 8.sp)
+                    }
+                }
             }
         }
     }
@@ -1197,7 +1230,7 @@ private fun WeaponSlot(
     ) {
         when {
             weapon != null -> Image(
-                painter = painterResource(id = R.drawable.nogada_sword),
+                painter = painterResource(id = weaponDrawableRes(weapon)),
                 contentDescription = null,
                 modifier = Modifier.size(42.dp),
                 contentScale = ContentScale.Fit
@@ -1432,7 +1465,7 @@ private fun WeaponInfoDialog(weapon: Weapon, onDismiss: () -> Unit) {
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.nogada_sword),
+                        painter = painterResource(id = weaponDrawableRes(weapon)),
                         contentDescription = null,
                         modifier = Modifier.size(80.dp),
                         contentScale = ContentScale.Fit
@@ -2938,22 +2971,32 @@ private fun EquipmentBagItem(
             .padding(4.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = abbr,
-                color = TextGold,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                maxLines = 1
+        val drawableRes = equipmentDrawableRes(equipment.itemId)
+        if (drawableRes != null) {
+            Image(
+                painter = painterResource(id = drawableRes),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize().padding(4.dp),
+                contentScale = ContentScale.Fit
             )
-            if (equipment.attackPower > 0) {
+        } else {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "+${equipment.attackPower}",
-                    color = ColorSuccess,
-                    fontSize = 9.sp,
+                    text = abbr,
+                    color = TextGold,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
                     maxLines = 1
                 )
+                if (equipment.attackPower > 0) {
+                    Text(
+                        text = "+${equipment.attackPower}",
+                        color = ColorSuccess,
+                        fontSize = 9.sp,
+                        maxLines = 1
+                    )
+                }
             }
         }
     }

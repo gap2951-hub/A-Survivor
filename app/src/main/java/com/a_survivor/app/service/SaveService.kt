@@ -36,6 +36,7 @@ class SaveService(context: Context) {
             hat              = state.hat,
             top              = state.top,
             shoes            = state.shoes,
+            pants            = state.pants,
             weapon           = state.weapon,
             inventory        = state.inventorySlots.map { slot ->
                 when (slot) {

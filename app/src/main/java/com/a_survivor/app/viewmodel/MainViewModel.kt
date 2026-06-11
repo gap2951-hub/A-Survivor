@@ -90,9 +90,10 @@ data class PendingPlayerAttack(
 
 data class UiState(
     val equipment: Equipment?,   // GLOVE
-    val hat: Equipment? = null,  // HAT
-    val top: Equipment? = null,  // TOP
+    val hat: Equipment? = null,   // HAT
+    val top: Equipment? = null,   // TOP
     val shoes: Equipment? = null, // SHOES
+    val pants: Equipment? = null, // PANTS
     val weapon: Weapon?,
     val money: Int = 0,
     val inventorySlots: List<InventorySlot?> = List(32) { null },
@@ -279,6 +280,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             hat            = data.hat,
             top            = data.top,
             shoes          = data.shoes,
+            pants          = data.pants,
             weapon         = data.weapon,
             money          = data.money,
             inventorySlots = inventory,
@@ -321,7 +323,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun computeDerived(state: UiState): UiState =
-        state.copy(derivedStats = derivedStatsCalculator.calculate(state.player, state.equipment, state.hat, state.top, state.shoes))
+        state.copy(derivedStats = derivedStatsCalculator.calculate(state.player, state.equipment, state.hat, state.top, state.shoes, state.pants))
 
     private fun createInitialState(job: PlayerJob = PlayerJob.BEGINNER): UiState {
         val initialPlayer = Player(job = job, stats = job.initialStats())
@@ -1018,10 +1020,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             "HAT"   -> state.hat
             "TOP"   -> state.top
             "SHOES" -> state.shoes
+            "PANTS" -> state.pants
             else    -> state.equipment
         } ?: run {
             val slotName = when (targetSlot) {
-                "HAT"   -> "모자"; "TOP" -> "상의"; "SHOES" -> "신발"; else -> "장갑"
+                "HAT" -> "모자"; "TOP" -> "상의"; "SHOES" -> "신발"; "PANTS" -> "하의"; else -> "장갑"
             }
             _uiState.update { it.copy(lastResult = EnhancementResult.Error("${slotName} 슬롯에 장비가 없습니다.")) }
             return
@@ -1035,6 +1038,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "HAT"   -> s.copy(hat   = newEquipment, inventorySlots = newSlots, lastResult = result)
                 "TOP"   -> s.copy(top   = newEquipment, inventorySlots = newSlots, lastResult = result)
                 "SHOES" -> s.copy(shoes = newEquipment, inventorySlots = newSlots, lastResult = result)
+                "PANTS" -> s.copy(pants = newEquipment, inventorySlots = newSlots, lastResult = result)
                 else    -> s.copy(equipment = newEquipment, inventorySlots = newSlots, lastResult = result)
             }
             computeDerived(updated)
@@ -1061,6 +1065,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "SHOES" -> {
                     val cur = s.shoes ?: return@update s
                     computeDerived(s.copy(shoes = null, inventorySlots = addEquipToSlots(s.inventorySlots, cur)))
+                }
+                "PANTS" -> {
+                    val cur = s.pants ?: return@update s
+                    computeDerived(s.copy(pants = null, inventorySlots = addEquipToSlots(s.inventorySlots, cur)))
                 }
                 else -> {
                     val cur = s.equipment ?: return@update s
@@ -1089,12 +1097,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     newSlots[slotIdx] = if (s.shoes != null) InventorySlot.EquipItem(s.shoes) else null
                     computeDerived(s.copy(shoes = equipment, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
                 }
+                "PANTS" -> {
+                    newSlots[slotIdx] = if (s.pants != null) InventorySlot.EquipItem(s.pants) else null
+                    computeDerived(s.copy(pants = equipment, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
+                }
+                "WEAPON" -> {
+                    val newWeapon = equipmentToWeapon(equipment)
+                    newSlots[slotIdx] = null
+                    computeDerived(s.copy(weapon = newWeapon, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
+                }
                 else -> {
                     newSlots[slotIdx] = if (s.equipment != null) InventorySlot.EquipItem(s.equipment) else null
                     computeDerived(s.copy(equipment = equipment, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
                 }
             }
         }
+    }
+
+    private fun equipmentToWeapon(e: Equipment): Weapon = Weapon(
+        name                  = e.name,
+        attackPower           = e.attackPower,
+        magicPower            = e.magicPower,
+        strBonus              = e.strBonus,
+        reqLevel              = e.requiredLevel,
+        weaponType            = weaponTypeFor(e.itemId),
+        attackSpeed           = "보통",
+        availableJobs         = PlayerJob.values().toList(),
+        maxUpgradeCount       = e.maxUpgradeCount,
+        remainingUpgradeCount = e.remainingUpgradeCount,
+        failedUpgradeCount    = e.failedUpgradeCount,
+        destroyed             = e.destroyed,
+        description           = e.description
+    )
+
+    private fun weaponTypeFor(itemId: String): String = when (itemId) {
+        "TEST_BOW" -> "활"
+        else -> "한손검"
     }
 
     fun resetEquipment() {
