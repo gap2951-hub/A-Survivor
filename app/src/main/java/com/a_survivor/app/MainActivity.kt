@@ -1860,6 +1860,14 @@ private fun GameCanvas(
     val scroll60Bitmap    = remember { loadBitmap(context, R.drawable.scroll_60,     256) }
     val scroll10Bitmap    = remember { loadBitmap(context, R.drawable.scroll_10,     256) }
     val gloveBitmap       = remember { loadBitmap(context, R.drawable.nogada_glove,  256) }
+    val equipDropBitmaps  = remember { mapOf(
+        "TEST_HAT"     to loadBitmap(context, R.drawable.item_hat_test,   256),
+        "TEST_TOP"     to loadBitmap(context, R.drawable.item_top_test,   256),
+        "TEST_SHOES"   to loadBitmap(context, R.drawable.item_shoes_test, 256),
+        "TEST_PANTS"   to loadBitmap(context, R.drawable.item_pants_test, 256),
+        "TEST_BOW"     to loadBitmap(context, R.drawable.item_bow_test,   256),
+        "NOGADA_GLOVE" to loadBitmap(context, R.drawable.nogada_glove,    256),
+    ) }
     val skeletonBoneBitmap = remember { loadBitmap(context, R.drawable.skeleton_bone, 256) }
     val beefBitmap         = remember { loadBitmap(context, R.drawable.beef,          256) }
     val coinFrames        = remember { listOf(
@@ -1958,7 +1966,7 @@ private fun GameCanvas(
             else -> mapBitmap
         }
         drawWorldBackground(cam, world, currentMapBitmap)
-        groundItems.forEach { drawGroundItem(it, cam, scroll100Bitmap, scroll60Bitmap, scroll10Bitmap, gloveBitmap, skeletonBoneBitmap, beefBitmap, coinFrames, nowMs) }
+        groundItems.forEach { drawGroundItem(it, cam, scroll100Bitmap, scroll60Bitmap, scroll10Bitmap, gloveBitmap, equipDropBitmaps, skeletonBoneBitmap, beefBitmap, coinFrames, nowMs) }
         portals.forEach { drawPortal(it, cam) }
         npcs.forEach { drawNpc(it, cam, npcChuchu) }
         drawAttackRange(player, cam)
@@ -2014,6 +2022,7 @@ private fun DrawScope.drawGroundItem(
     scroll60: ImageBitmap,
     scroll10: ImageBitmap,
     glove: ImageBitmap,
+    equipBitmaps: Map<String, ImageBitmap>,
     skeletonBone: ImageBitmap,
     beef: ImageBitmap,
     coinFrames: List<ImageBitmap>,
@@ -2032,7 +2041,7 @@ private fun DrawScope.drawGroundItem(
                 drop.scrollType.name.endsWith("_60")  -> scroll60
                 else                                   -> scroll10
             }
-            is DropItem.EquipmentDrop -> glove
+            is DropItem.EquipmentDrop -> equipBitmaps[drop.equipment.itemId] ?: glove
             is DropItem.MaterialDrop  -> when (drop.materialType) {
                 MaterialType.SKELETON_BONE -> skeletonBone
                 MaterialType.BEEF          -> beef
@@ -2976,7 +2985,7 @@ private fun EquipmentBagItem(
             Image(
                 painter = painterResource(id = drawableRes),
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize().padding(4.dp),
+                modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit
             )
         } else {
