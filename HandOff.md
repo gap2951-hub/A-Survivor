@@ -115,8 +115,8 @@ com.a_survivor.app/
     ├── archer_attack_0~5.png      ← 궁수 Attack 6프레임 (203×203)
     ├── archer_hurt_0~3.png        ← 궁수 Hurt 4프레임 (203×203)
     ├── archer_die_0~4.png         ← 궁수 Die 5프레임 (203×203)
-    ├── ground_tileset.png         ← 사냥터 바닥 타일셋 (1254×1254, 4×4 그리드, GT_CELL=313, GT_BORDER=40, GT_TILE=233)
-    └── cemetery_tileset.png       ← 묘지 장식 타일셋 (추후 오브젝트용, decorTs로 로드 중)
+    ├── map_cemetery.png           ← 스켈레톤 사냥터(FIELD_2/FIELD_3) 배경 비트맵 (1024×572, 묘지 테마)
+    └── map_forest.jpg             ← 초보자 사냥터(BEGINNER_FIELD) 배경 비트맵 (1024×572, 숲 테마)
 ```
 
 ---
@@ -162,7 +162,7 @@ Box (게임 화면)
 
 | 레이어 | 내용 |
 |--------|------|
-| 1 | `drawWorldBackground` — TOWN 맵: map_town.jpg / 스켈레톤·미노타우르스 맵: `drawCemeteryBackground` (타일 기반 배경) |
+| 1 | `drawWorldBackground` — TOWN: map_town.jpg / BEGINNER_FIELD: map_forest.jpg / FIELD_2·FIELD_3: map_cemetery.png / 그 외: map_beginner.jpg |
 | 2 | `drawGroundItem` × N — 바닥 드랍 아이템 (이미지만, 글로우·이름 없음) |
 | 3 | `drawPortal` × N — 포탈 (다층 파란 글로우 + 맵 이름 레이블) |
 | 4 | `drawNpc` × N — NPC 이미지 (size.height×0.20f 높이, 너비=높이×1.6) + 이름 텍스트 |
@@ -213,10 +213,10 @@ enum class MapType { BEGINNER_FIELD, TOWN, FIELD_2, FIELD_3, MINOTAUR_FIELD_1, M
 
 | 맵 | 이미지 | 월드 크기 | 몬스터 | variant |
 |----|--------|-----------|--------|---------|
-| BEGINNER_FIELD | map_beginner.jpg | 1024×572 | 스켈레톤 워리어 5마리 (HP 20, EXP 8) | 2 (Crusader_2) |
+| BEGINNER_FIELD | map_forest.jpg | 1024×572 | 스켈레톤 워리어 5마리 (HP 20, EXP 8) | 2 (Crusader_2) |
 | TOWN | map_town.jpg | 1024×572 | 없음 | — |
-| FIELD_2 | map_beginner.jpg | 1024×572 | 스켈레톤 워리어 5마리 (HP 60, EXP 20) | 3 (Crusader_3) |
-| FIELD_3 | map_beginner.jpg | 1024×572 | 스켈레톤 워리어 5마리 (HP 150, EXP 45) | 1 (Crusader_1) |
+| FIELD_2 | map_cemetery.png | 1024×572 | 스켈레톤 워리어 5마리 (HP 60, EXP 20) | 3 (Crusader_3) |
+| FIELD_3 | map_cemetery.png | 1024×572 | 스켈레톤 워리어 5마리 (HP 150, EXP 45) | 1 (Crusader_1) |
 | MINOTAUR_FIELD_1 | map_beginner.jpg | 1024×572 | 미노타우르스 5마리 (HP 300, EXP 80) | 4 (Minotaur_1) |
 | MINOTAUR_FIELD_2 | map_beginner.jpg | 1024×572 | 미노타우르스 5마리 (HP 500, EXP 130) | 5 (Minotaur_2) |
 | MINOTAUR_FIELD_3 | map_beginner.jpg | 1024×572 | 미노타우르스 5마리 (HP 800, EXP 200) | 6 (Minotaur_3) |
@@ -244,53 +244,22 @@ private fun isPixelBlocked(...): Boolean {
 
 ---
 
-## 사냥터 배경 시스템 (drawCemeteryBackground)
+## 사냥터 배경 시스템
 
-스켈레톤·미노타우르스 사냥터 전용 타일 기반 배경 렌더러.
-
-### ground_tileset.png 스펙
-
-- **크기**: 1254×1254px, 4×4 그리드
-- **상수**: `GT_CELL=313` / `GT_BORDER=40` / `GT_TILE=233`
-- **좌표 계산**: `srcOffset = IntOffset(srcCol * GT_CELL + GT_BORDER, srcRow * GT_CELL + GT_BORDER)`, `srcSize = IntSize(GT_TILE, GT_TILE)`
-
-| 행 | 내용 |
-|----|------|
-| Row 0 | 갈색 흙 4종 (자갈+흙, 풀무리+흙, 균열 흙, 균열+돌) |
-| Row 1 | 풀밭 4종 (풀+돌, 연한 풀, 혼합 풀, 짙은 풀+돌) |
-| Row 2 | 자갈 4종 (소형, 대형, 균열, 조밀 자갈) |
-| Row 3 | 석재 4종 (혼합, 깨끗한 회색, 이끼, 짙은 석재) |
-
-### 맵별 바닥 구성
-
-| 맵 | 바닥 타일 풀 | 엣지 타일 | seed |
-|----|------------|-----------|------|
-| BEGINNER_FIELD | 풀 4종 (row1 전체) | (col=0, row=0) 짙은 흙 | 11 |
-| FIELD_2 | 짙은 흙 2종 + 풀 2종 | (col=0, row=0) 짙은 흙 | 37 |
-| FIELD_3 | 짙은 흙 + 균열 흙 + 자갈 | (col=2, row=0) 균열 흙 | 71 |
-| MINOTAUR_FIELD_* | FIELD_3과 동일 | 동일 | 71 |
-
-### 타일 선택 알고리즘
-
-- **32×18 그리드** 전체 순회 (col 0~31, row 0~17)
-- **엣지** (col==0, col==31, row==0, row==17): 고정 타일
-- **내부**: 해시 기반 의사난수 — `h = col*1301 + row*997 + col*row*37 + seed`, `groundTiles[((h % n) + n) % n]`
-- `FilterQuality.None` (nearest-neighbor) 렌더링
-
-### 관련 코드 위치 (MainActivity.kt)
+사냥터 배경은 비트맵 이미지를 `drawWorldBackground`로 렌더링하는 방식을 사용한다.
+각 맵에 맞는 이미지를 `cemeteryBitmap`/`forestBitmap` 등으로 로드한 뒤, `when (world.mapType)` 분기로 선택.
 
 ```kotlin
-private const val GT_CELL   = 313
-private const val GT_BORDER = 40
-private const val GT_TILE   = 233
-
-private val CEMETERY_GROUND_BEGINNER = listOf(0 to 1, 1 to 1, 2 to 1, 3 to 1)
-private val CEMETERY_GROUND_FIELD2   = listOf(0 to 0, 1 to 0, 0 to 1, 2 to 1)
-private val CEMETERY_GROUND_FIELD3   = listOf(0 to 0, 2 to 0, 3 to 0, 0 to 2)
+val currentMapBitmap = when (world.mapType) {
+    MapType.TOWN                           -> townBitmap
+    MapType.BEGINNER_FIELD                 -> forestBitmap    // map_forest.jpg (1024×572, 숲 테마)
+    MapType.FIELD_2, MapType.FIELD_3       -> cemeteryBitmap  // map_cemetery.png (1024×572, 묘지 테마)
+    else                                   -> mapBitmap       // map_beginner.jpg (미노타우르스 맵)
+}
+drawWorldBackground(cam, world, currentMapBitmap)
 ```
 
-- `groundTs`: `loadBitmap(context, R.drawable.ground_tileset, 1254, noScale = true)`
-- `decorTs`: `loadBitmap(context, R.drawable.cemetery_tileset, 1024, noScale = true)` — 현재 `@Suppress("UNUSED_PARAMETER")`, 추후 오브젝트 추가 시 사용 예정
+> 충돌 비트맵(`collisionBitmap`)은 여전히 `map_beginner.jpg` 기반. 시각 배경과 충돌은 독립적.
 
 ---
 
@@ -311,18 +280,20 @@ data class Portal(
 
 | 맵 | 포탈 위치 | 목적지 | 도착 위치 |
 |----|-----------|--------|-----------|
-| BEGINNER_FIELD | (850, 286) | TOWN | (350, 286) |
-| BEGINNER_FIELD | (174, 286) | FIELD_2 | (800, 286) |
-| TOWN | (250, 286) | BEGINNER_FIELD | (750, 286) |
+| BEGINNER_FIELD | **(880, 80)** | TOWN | (350, 286) |
+| BEGINNER_FIELD | **(144, 80)** | FIELD_2 | (800, 100) |
+| TOWN | (250, 286) | BEGINNER_FIELD | (860, 100) |
 | TOWN | (750, 286) | MINOTAUR_FIELD_1 | (300, 286) |
-| FIELD_2 | (850, 286) | BEGINNER_FIELD | (300, 286) |
-| FIELD_2 | (174, 286) | FIELD_3 | (800, 286) |
-| FIELD_3 | (850, 286) | FIELD_2 | (300, 286) |
+| FIELD_2 | **(880, 80)** | BEGINNER_FIELD | (160, 100) |
+| FIELD_2 | **(144, 80)** | FIELD_3 | (800, 100) |
+| FIELD_3 | **(880, 80)** | FIELD_2 | (160, 100) |
 | MINOTAUR_FIELD_1 | (174, 286) | TOWN | (750, 286) |
 | MINOTAUR_FIELD_1 | (850, 286) | MINOTAUR_FIELD_2 | (300, 286) |
 | MINOTAUR_FIELD_2 | (174, 286) | MINOTAUR_FIELD_1 | (800, 286) |
 | MINOTAUR_FIELD_2 | (850, 286) | MINOTAUR_FIELD_3 | (300, 286) |
 | MINOTAUR_FIELD_3 | (174, 286) | MINOTAUR_FIELD_2 | (800, 286) |
+
+> 스켈레톤 사냥터(BEGINNER_FIELD/FIELD_2/FIELD_3) 포탈은 y=80(상단)으로 이동 — 묘지/숲 맵 석문 위치에 맞춤
 
 포탈 체인:
 - 스켈레톤 루트: `FIELD_3 ←→ FIELD_2 ←→ BEGINNER_FIELD ←→ TOWN`
@@ -1310,6 +1281,9 @@ SoundManager.release()          // onDestroy
 | 210 | drawCemeteryBackground 구현 — 스켈레톤·미노타우르스 사냥터 전용 타일 기반 배경 렌더러, 32×18 그리드, FilterQuality.None | ✅ |
 | 211 | 맵별 바닥 타일 구성 — BEGINNER: 풀 4종(row1), FIELD_2: 흙+풀 혼합, FIELD_3: 흙+균열+자갈, 엣지 고정 타일 | ✅ |
 | 212 | 사냥터 오브젝트 전체 제거 — DECOR_* 상수·DECOR_LIST_* 삭제, drawCemeteryBackground 순수 바닥 렌더링만 유지 | ✅ |
+| 213 | 스켈레톤 사냥터 포탈 위치 상단으로 이동 — y=286 → y=80 (묘지 석문 위치 반영), 양방향 도착 좌표도 y=100으로 조정 | ✅ |
+| 214 | 스켈레톤 사냥터(FIELD_2/FIELD_3) 배경을 map_cemetery.png 비트맵으로 교체 — drawCemeteryBackground 타일 렌더러 전면 제거, GT_CELL/GT_BORDER/GT_TILE 상수 삭제 | ✅ |
+| 215 | BEGINNER_FIELD 배경을 map_forest.jpg 숲 이미지로 교체 — image/초보자 사냥터.jpg(1024×572) drawable 복사, forestBitmap 로드 추가 | ✅ |
 
 ---
 
