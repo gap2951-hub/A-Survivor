@@ -22,6 +22,9 @@ data class GameSaveData(
     val questKillCount: Int = 0,
     val questKillGoal: Int = 5,
     val equipment: Equipment? = null,
+    val hat: Equipment? = null,
+    val top: Equipment? = null,
+    val shoes: Equipment? = null,
     val weapon: Weapon? = null,
     val inventory: List<SavedSlot> = emptyList()
 )

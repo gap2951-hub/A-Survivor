@@ -280,20 +280,18 @@ data class Portal(
 
 | 맵 | 포탈 위치 | 목적지 | 도착 위치 |
 |----|-----------|--------|-----------|
-| BEGINNER_FIELD | **(880, 80)** | TOWN | (350, 286) |
-| BEGINNER_FIELD | **(144, 80)** | FIELD_2 | (800, 100) |
-| TOWN | (250, 286) | BEGINNER_FIELD | (860, 100) |
+| BEGINNER_FIELD | (880, 286) | TOWN | (350, 286) |
+| BEGINNER_FIELD | (144, 286) | FIELD_2 | (800, 286) |
+| TOWN | (250, 286) | BEGINNER_FIELD | (860, 286) |
 | TOWN | (750, 286) | MINOTAUR_FIELD_1 | (300, 286) |
-| FIELD_2 | **(880, 80)** | BEGINNER_FIELD | (160, 100) |
-| FIELD_2 | **(144, 80)** | FIELD_3 | (800, 100) |
-| FIELD_3 | **(880, 80)** | FIELD_2 | (160, 100) |
+| FIELD_2 | (880, 286) | BEGINNER_FIELD | (160, 286) |
+| FIELD_2 | (144, 286) | FIELD_3 | (800, 286) |
+| FIELD_3 | (880, 286) | FIELD_2 | (160, 286) |
 | MINOTAUR_FIELD_1 | (174, 286) | TOWN | (750, 286) |
 | MINOTAUR_FIELD_1 | (850, 286) | MINOTAUR_FIELD_2 | (300, 286) |
 | MINOTAUR_FIELD_2 | (174, 286) | MINOTAUR_FIELD_1 | (800, 286) |
 | MINOTAUR_FIELD_2 | (850, 286) | MINOTAUR_FIELD_3 | (300, 286) |
 | MINOTAUR_FIELD_3 | (174, 286) | MINOTAUR_FIELD_2 | (800, 286) |
-
-> 스켈레톤 사냥터(BEGINNER_FIELD/FIELD_2/FIELD_3) 포탈은 y=80(상단)으로 이동 — 묘지/숲 맵 석문 위치에 맞춤
 
 포탈 체인:
 - 스켈레톤 루트: `FIELD_3 ←→ FIELD_2 ←→ BEGINNER_FIELD ←→ TOWN`
@@ -1284,6 +1282,17 @@ SoundManager.release()          // onDestroy
 | 213 | 스켈레톤 사냥터 포탈 위치 상단으로 이동 — y=286 → y=80 (묘지 석문 위치 반영), 양방향 도착 좌표도 y=100으로 조정 | ✅ |
 | 214 | 스켈레톤 사냥터(FIELD_2/FIELD_3) 배경을 map_cemetery.png 비트맵으로 교체 — drawCemeteryBackground 타일 렌더러 전면 제거, GT_CELL/GT_BORDER/GT_TILE 상수 삭제 | ✅ |
 | 215 | BEGINNER_FIELD 배경을 map_forest.jpg 숲 이미지로 교체 — image/초보자 사냥터.jpg(1024×572) drawable 복사, forestBitmap 로드 추가 | ✅ |
+| 216 | 테스트 장비 4종 추가 — TEST_HAT(모자1)/TEST_TOP(상의1)/TEST_GLOVE(장갑1)/TEST_SHOES(신발1), 공격력 1, 강화 가능 횟수 5 (equipment.csv) | ✅ |
+| 217 | 테스트 장비 드랍 설정 — 스켈레톤·미노타우르스 전 몬스터 6종에 각 5% 드랍 (drop.csv) | ✅ |
+| 218 | DerivedStatsCalculator 다중 슬롯 지원 — glove/hat/top/shoes 4개 부위 스탯 합산, calculate() 파라미터 확장 | ✅ |
+| 219 | UiState hat/top/shoes 필드 추가 — GameSaveData/SaveService 저장·복원 포함 | ✅ |
+| 220 | equipFromInventory slot 기반 라우팅 — equipment.slot("HAT"/"TOP"/"SHOES"/"GLOVE") 분기로 올바른 슬롯에 장착 | ✅ |
+| 221 | unequipEquipment(slot: String = "GLOVE") 확장 — 기존 GLOVE 동작 유지하며 HAT/TOP/SHOES 해제 지원 | ✅ |
+| 222 | useSelectedScroll slot 라우팅 — scroll.targetSlot 기준으로 hat/top/shoes/equipment 중 올바른 슬롯에 주문서 적용, 오류 메시지 슬롯명 표시 | ✅ |
+| 223 | EquipmentWindow ArmorSlot 컴포저블 추가 — 모자/상의/신발 슬롯 LockedSlot→ArmorSlot으로 교체, 텍스트 기반 (탭=정보, 꾹=해제) | ✅ |
+| 224 | 포탈 y 좌표 수정 — 스켈레톤 사냥터 포탈 y=80 → y=286 (충돌 맵 기준 접근 가능 위치), 도착 좌표도 y=286으로 통일 | ✅ |
+| 225 | 주문서 UI 이미지 통합 — scrollDrawableRes를 suffix 기반으로 전환 (_100→scroll_100, _60→scroll_60, _10→scroll_10), 모든 슬롯·스탯 주문서에 동일 이미지 적용 | ✅ |
+| 226 | drawGroundItem 주문서 비트맵 분기 통합 — suffix 기반 분기로 변경, 모든 주문서 종류가 바닥 드랍 시 올바른 이미지로 렌더링 | ✅ |
 
 ---
 

@@ -14,19 +14,21 @@ class DerivedStatsCalculator {
         job: PlayerJob,
         stats: PlayerStats,
         weapon: Weapon?,
-        equipment: Equipment?
+        glove: Equipment?,
+        hat: Equipment? = null,
+        top: Equipment? = null,
+        shoes: Equipment? = null,
     ): DerivedStats {
-        // 1단계: 장비 기본 스탯 보정 합산
-        val totalSTR = stats.str + (weapon?.strBonus ?: 0) + (equipment?.strBonus ?: 0)
-        val totalDEX = stats.dex + (equipment?.dexBonus ?: 0)
-        val totalINT = stats.`int` + (equipment?.intBonus ?: 0)
-        val totalLUK = stats.luk + (equipment?.lukBonus ?: 0)
+        val all = listOfNotNull(glove, hat, top, shoes)
 
-        // 2단계: 장비 공격력/마력 합산
-        val equipAtk = (weapon?.attackPower ?: 0) + (equipment?.attackPower ?: 0)
-        val equipMag = (weapon?.magicPower ?: 0) + (equipment?.magicPower ?: 0)
+        val totalSTR = stats.str + (weapon?.strBonus ?: 0) + all.sumOf { it.strBonus }
+        val totalDEX = stats.dex + all.sumOf { it.dexBonus }
+        val totalINT = stats.`int` + all.sumOf { it.intBonus }
+        val totalLUK = stats.luk + all.sumOf { it.lukBonus }
 
-        // 3단계: 직업별 스탯 → 전투 능력치 (기본값)
+        val equipAtk = (weapon?.attackPower ?: 0) + all.sumOf { it.attackPower }
+        val equipMag = (weapon?.magicPower ?: 0) + all.sumOf { it.magicPower }
+
         val baseAtk: Int
         val baseMag: Int
         val baseAcc: Int
@@ -34,35 +36,30 @@ class DerivedStatsCalculator {
 
         when (job) {
             PlayerJob.WARRIOR -> {
-                // STR 주효과, DEX 보조
                 baseAtk   = equipAtk + (totalSTR * 0.5).toInt() + (totalDEX * 0.1).toInt()
                 baseMag   = 0
                 baseAcc   = 10 + totalDEX * 2
                 baseAvoid = (totalLUK * 0.5).toInt()
             }
             PlayerJob.MAGE -> {
-                // INT 주효과, LUK 보조
                 baseAtk   = 0
                 baseMag   = equipMag + (totalINT * 0.5).toInt() + (totalLUK * 0.1).toInt()
                 baseAcc   = 10 + totalLUK * 2 + totalDEX
                 baseAvoid = totalLUK + (totalDEX * 0.2).toInt()
             }
             PlayerJob.ARCHER -> {
-                // DEX 주효과, STR 보조
                 baseAtk   = equipAtk + (totalDEX * 0.5).toInt() + (totalSTR * 0.1).toInt()
                 baseMag   = 0
                 baseAcc   = 10 + totalDEX * 2
                 baseAvoid = (totalLUK * 0.5).toInt()
             }
             PlayerJob.THIEF -> {
-                // LUK 주효과, DEX 보조
                 baseAtk   = equipAtk + (totalLUK * 0.5).toInt() + (totalDEX * 0.1).toInt()
                 baseMag   = 0
                 baseAcc   = 10 + totalDEX * 2
                 baseAvoid = totalLUK
             }
             PlayerJob.PIRATE -> {
-                // DEX 주효과, STR 보조
                 baseAtk   = equipAtk + (totalDEX * 0.5).toInt() + (totalSTR * 0.1).toInt()
                 baseMag   = 0
                 baseAcc   = 10 + totalDEX * 2
@@ -76,25 +73,29 @@ class DerivedStatsCalculator {
             }
         }
 
-        // 4단계: 장비 전용 능력치 합산
-        val equipAtkSpeedBonus = equipment?.attackSpeed ?: 0f
+        val equipAtkSpeedBonus = all.sumOf { it.attackSpeed.toDouble() }.toFloat()
         val baseInterval = weapon?.attackIntervalMs() ?: 900L
         val attackIntervalMs = (baseInterval - equipAtkSpeedBonus.toLong()).coerceAtLeast(300L)
 
         return DerivedStats(
             attackPower      = baseAtk,
             magicPower       = baseMag,
-            accuracy         = baseAcc + (equipment?.accuracy ?: 0),
-            avoidability     = baseAvoid + (equipment?.avoidability ?: 0),
-            physicalDefense  = equipment?.physicalDefense ?: 0,
-            magicDefense     = equipment?.magicDefense ?: 0,
-            criticalRate     = equipment?.criticalRate ?: 0f,
-            moveSpeed        = equipment?.moveSpeed ?: 0f,
+            accuracy         = baseAcc + all.sumOf { it.accuracy },
+            avoidability     = baseAvoid + all.sumOf { it.avoidability },
+            physicalDefense  = all.sumOf { it.physicalDefense },
+            magicDefense     = all.sumOf { it.magicDefense },
+            criticalRate     = all.sumOf { it.criticalRate.toDouble() }.toFloat(),
+            moveSpeed        = all.sumOf { it.moveSpeed.toDouble() }.toFloat(),
             attackSpeed      = equipAtkSpeedBonus,
             attackIntervalMs = attackIntervalMs
         )
     }
 
-    fun calculate(player: Player, equipment: Equipment?): DerivedStats =
-        calculate(player.job, player.stats, player.weapon, equipment)
+    fun calculate(
+        player: Player,
+        glove: Equipment?,
+        hat: Equipment? = null,
+        top: Equipment? = null,
+        shoes: Equipment? = null,
+    ): DerivedStats = calculate(player.job, player.stats, player.weapon, glove, hat, top, shoes)
 }

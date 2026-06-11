@@ -33,6 +33,9 @@ class SaveService(context: Context) {
             questKillCount   = state.questState.killCount,
             questKillGoal    = state.questState.killGoal,
             equipment        = state.equipment,
+            hat              = state.hat,
+            top              = state.top,
+            shoes            = state.shoes,
             weapon           = state.weapon,
             inventory        = state.inventorySlots.map { slot ->
                 when (slot) {

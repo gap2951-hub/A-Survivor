@@ -89,7 +89,10 @@ data class PendingPlayerAttack(
 )
 
 data class UiState(
-    val equipment: Equipment?,
+    val equipment: Equipment?,   // GLOVE
+    val hat: Equipment? = null,  // HAT
+    val top: Equipment? = null,  // TOP
+    val shoes: Equipment? = null, // SHOES
     val weapon: Weapon?,
     val money: Int = 0,
     val inventorySlots: List<InventorySlot?> = List(32) { null },
@@ -273,6 +276,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val base = UiState(
             player         = player,
             equipment      = data.equipment,
+            hat            = data.hat,
+            top            = data.top,
+            shoes          = data.shoes,
             weapon         = data.weapon,
             money          = data.money,
             inventorySlots = inventory,
@@ -315,7 +321,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun computeDerived(state: UiState): UiState =
-        state.copy(derivedStats = derivedStatsCalculator.calculate(state.player, state.equipment))
+        state.copy(derivedStats = derivedStatsCalculator.calculate(state.player, state.equipment, state.hat, state.top, state.shoes))
 
     private fun createInitialState(job: PlayerJob = PlayerJob.BEGINNER): UiState {
         val initialPlayer = Player(job = job, stats = job.initialStats())
@@ -976,13 +982,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun useSelectedScroll() {
-        val state     = _uiState.value
-        val equipment = state.equipment ?: run {
-            _uiState.update { it.copy(lastResult = EnhancementResult.Error("장비가 장착되어 있지 않습니다.")) }
-            return
-        }
+        val state      = _uiState.value
         val scrollType = state.selectedScrollType ?: return
         val scroll     = ScrollCatalog.get(scrollType)
+        val targetSlot = scroll.targetSlot.ifEmpty { "GLOVE" }
+
+        val equipment = when (targetSlot) {
+            "HAT"   -> state.hat
+            "TOP"   -> state.top
+            "SHOES" -> state.shoes
+            else    -> state.equipment
+        } ?: run {
+            val slotName = when (targetSlot) {
+                "HAT"   -> "모자"; "TOP" -> "상의"; "SHOES" -> "신발"; else -> "장갑"
+            }
+            _uiState.update { it.copy(lastResult = EnhancementResult.Error("${slotName} 슬롯에 장비가 없습니다.")) }
+            return
+        }
 
         val slotIdx = state.inventorySlots.indexOfFirst { it is InventorySlot.ScrollItem && it.type == scrollType }
         val slot = state.inventorySlots.getOrNull(slotIdx) as? InventorySlot.ScrollItem
@@ -995,7 +1011,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { s ->
             val newSlots = s.inventorySlots.toMutableList()
             newSlots[slotIdx] = if (slot.quantity > 1) slot.copy(quantity = slot.quantity - 1) else null
-            computeDerived(s.copy(equipment = newEquipment, inventorySlots = newSlots, lastResult = result))
+            val updated = when (targetSlot) {
+                "HAT"   -> s.copy(hat   = newEquipment, inventorySlots = newSlots, lastResult = result)
+                "TOP"   -> s.copy(top   = newEquipment, inventorySlots = newSlots, lastResult = result)
+                "SHOES" -> s.copy(shoes = newEquipment, inventorySlots = newSlots, lastResult = result)
+                else    -> s.copy(equipment = newEquipment, inventorySlots = newSlots, lastResult = result)
+            }
+            computeDerived(updated)
         }
         when (result) {
             is EnhancementResult.Success   -> SoundManager.playSfx(SoundManager.Sfx.SCROLL_SUCCESS)
@@ -1005,11 +1027,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun unequipEquipment() {
+    fun unequipEquipment(slot: String = "GLOVE") {
         _uiState.update { s ->
-            if (s.equipment == null) return@update s
-            val newSlots = addEquipToSlots(s.inventorySlots, s.equipment)
-            computeDerived(s.copy(equipment = null, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
+            when (slot) {
+                "HAT" -> {
+                    val cur = s.hat ?: return@update s
+                    computeDerived(s.copy(hat = null, inventorySlots = addEquipToSlots(s.inventorySlots, cur)))
+                }
+                "TOP" -> {
+                    val cur = s.top ?: return@update s
+                    computeDerived(s.copy(top = null, inventorySlots = addEquipToSlots(s.inventorySlots, cur)))
+                }
+                "SHOES" -> {
+                    val cur = s.shoes ?: return@update s
+                    computeDerived(s.copy(shoes = null, inventorySlots = addEquipToSlots(s.inventorySlots, cur)))
+                }
+                else -> {
+                    val cur = s.equipment ?: return@update s
+                    val newSlots = addEquipToSlots(s.inventorySlots, cur)
+                    computeDerived(s.copy(equipment = null, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
+                }
+            }
         }
     }
 
@@ -1018,8 +1056,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val slotIdx = s.inventorySlots.indexOfFirst { it is InventorySlot.EquipItem && it.equipment == equipment }
             if (slotIdx < 0) return@update s
             val newSlots = s.inventorySlots.toMutableList()
-            newSlots[slotIdx] = if (s.equipment != null) InventorySlot.EquipItem(s.equipment) else null
-            computeDerived(s.copy(equipment = equipment, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
+            when (equipment.slot) {
+                "HAT" -> {
+                    newSlots[slotIdx] = if (s.hat != null) InventorySlot.EquipItem(s.hat) else null
+                    computeDerived(s.copy(hat = equipment, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
+                }
+                "TOP" -> {
+                    newSlots[slotIdx] = if (s.top != null) InventorySlot.EquipItem(s.top) else null
+                    computeDerived(s.copy(top = equipment, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
+                }
+                "SHOES" -> {
+                    newSlots[slotIdx] = if (s.shoes != null) InventorySlot.EquipItem(s.shoes) else null
+                    computeDerived(s.copy(shoes = equipment, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
+                }
+                else -> {
+                    newSlots[slotIdx] = if (s.equipment != null) InventorySlot.EquipItem(s.equipment) else null
+                    computeDerived(s.copy(equipment = equipment, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
+                }
+            }
         }
     }
 

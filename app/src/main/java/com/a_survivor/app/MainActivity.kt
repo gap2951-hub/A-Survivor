@@ -238,7 +238,7 @@ class MainActivity : ComponentActivity() {
                     state               = state,
                     onScrollSelected    = vm::selectScroll,
                     onEnhance           = vm::useSelectedScroll,
-                    onUnequip           = vm::unequipEquipment,
+                    onUnequipSlot       = { vm.unequipEquipment(it) },
                     onReset             = vm::resetEquipment,
                     onUnequipWeapon     = vm::unequipWeapon,
                     onResetWeapon       = vm::resetWeapon,
@@ -289,7 +289,7 @@ fun MainScreen(
     state: UiState,
     onScrollSelected: (ScrollType) -> Unit,
     onEnhance: () -> Unit,
-    onUnequip: () -> Unit,
+    onUnequipSlot: (String) -> Unit,
     onReset: () -> Unit,
     onUnequipWeapon: () -> Unit,
     onResetWeapon: () -> Unit,
@@ -419,10 +419,13 @@ fun MainScreen(
             ) {
                 EquipmentWindow(
                     equipment = state.equipment,
+                    hat = state.hat,
+                    top = state.top,
+                    shoes = state.shoes,
                     weapon = state.weapon,
                     isDragOver = isDragOver,
                     onSlotBounds = { equipSlotBounds = it },
-                    onUnequip = onUnequip,
+                    onUnequipSlot = onUnequipSlot,
                     onReset = onReset,
                     onUnequipWeapon = onUnequipWeapon,
                     onResetWeapon = onResetWeapon,
@@ -467,9 +470,7 @@ fun MainScreen(
                     onUsePotion         = onUsePotion,
                     onClose             = { isInventoryOpen = false },
                     onDragEnd           = { scrollType, dropPos ->
-                        if (isEquipmentOpen &&
-                            equipSlotBounds?.contains(dropPos) == true &&
-                            state.equipment != null && !state.equipment.destroyed) {
+                        if (isEquipmentOpen && equipSlotBounds?.contains(dropPos) == true) {
                             onScrollSelected(scrollType)
                             onEnhance()
                         }
@@ -760,10 +761,13 @@ private fun MessageLogOverlay(
 @Composable
 fun EquipmentWindow(
     equipment: Equipment?,
+    hat: Equipment? = null,
+    top: Equipment? = null,
+    shoes: Equipment? = null,
     weapon: Weapon?,
     isDragOver: Boolean,
     onSlotBounds: (Rect) -> Unit,
-    onUnequip: () -> Unit,
+    onUnequipSlot: (String) -> Unit,
     onReset: () -> Unit,
     onUnequipWeapon: () -> Unit,
     onResetWeapon: () -> Unit,
@@ -786,7 +790,7 @@ fun EquipmentWindow(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // ① 머리 — 모자
-            BodyRow { LockedSlot("모자", Modifier.size(slotSz)) }
+            BodyRow { ArmorSlot("HAT", "모자", hat, slotSz) { onUnequipSlot("HAT") } }
 
             // ② 얼굴 — 얼굴장식 / 눈장식 / 귀걸이
             BodyRow {
@@ -804,7 +808,7 @@ fun EquipmentWindow(
             BodyRow {
                 LockedSlot("어깨", Modifier.size(slotSz))
                 Spacer(Modifier.width(3.dp))
-                LockedSlot("상의", Modifier.size(slotSz))
+                ArmorSlot("TOP", "상의", top, slotSz) { onUnequipSlot("TOP") }
                 Spacer(Modifier.width(3.dp))
                 LockedSlot("망토", Modifier.size(slotSz))
             }
@@ -819,7 +823,7 @@ fun EquipmentWindow(
                     equipment = equipment,
                     isDragOver = isDragOver,
                     onBoundsChanged = onSlotBounds,
-                    onUnequip = onUnequip,
+                    onUnequip = { onUnequipSlot("GLOVE") },
                     onReset = onReset,
                     slotSize = slotSz
                 )
@@ -836,7 +840,7 @@ fun EquipmentWindow(
 
             // ⑥ 신발·벨트
             BodyRow {
-                LockedSlot("신발", Modifier.size(slotSz))
+                ArmorSlot("SHOES", "신발", shoes, slotSz) { onUnequipSlot("SHOES") }
                 Spacer(Modifier.width(3.dp))
                 LockedSlot("벨트", Modifier.size(slotSz))
             }
@@ -953,6 +957,71 @@ private fun LockedSlot(label: String, modifier: Modifier = Modifier) {
                 fontSize = 6.sp
             )
         }
+    }
+}
+
+// 텍스트 기반 아머 슬롯 (모자/상의/신발) — 탭=정보, 꾹=해제
+@Composable
+private fun ArmorSlot(
+    slotId: String,
+    slotLabel: String,
+    equipment: Equipment?,
+    slotSize: Dp = rememberSlotSize(),
+    onUnequip: () -> Unit,
+) {
+    var showInfo    by remember { mutableStateOf(false) }
+    var showConfirm by remember { mutableStateOf(false) }
+
+    val borderColor = when {
+        equipment?.destroyed == true -> ColorDestroyed
+        equipment != null            -> Color(0xFF6A8800)
+        else                         -> SlotBorder
+    }
+    val bgColor = when {
+        equipment?.destroyed == true -> Color(0xFF2A0010)
+        equipment != null            -> Color(0xFF1A2200)
+        else                         -> SlotEmpty
+    }
+
+    Box(
+        modifier = Modifier
+            .size(slotSize)
+            .clip(RoundedCornerShape(4.dp))
+            .background(bgColor)
+            .border(1.dp, borderColor, RoundedCornerShape(4.dp))
+            .then(
+                if (equipment != null)
+                    Modifier.pointerInput(equipment.destroyed) {
+                        detectTapGestures(
+                            onTap = { showInfo = true },
+                            onLongPress = { showConfirm = true }
+                        )
+                    }
+                else Modifier
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            equipment == null -> Text(slotLabel, color = TextMuted.copy(alpha = 0.45f), fontSize = 7.sp)
+            equipment.destroyed -> Text("✕", color = ColorDestroyed, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            else -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(equipment.name.take(2), color = TextGold, fontSize = 10.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                if (equipment.attackPower > 0) Text("+${equipment.attackPower}", color = ColorSuccess, fontSize = 8.sp)
+            }
+        }
+    }
+
+    if (showInfo && equipment != null) {
+        ItemInfoDialog(equipment = equipment, onDismiss = { showInfo = false })
+    }
+    if (showConfirm && equipment != null) {
+        ConfirmDialog(
+            title = "장비 해제",
+            message = "${equipment.name}을(를) 해제하시겠습니까?",
+            confirmText = "해제",
+            onConfirm = { showConfirm = false; onUnequip() },
+            onDismiss = { showConfirm = false }
+        )
     }
 }
 
@@ -1897,10 +1966,10 @@ private fun DrawScope.drawGroundItem(
         coinFrames[frameIdx]
     } else {
         when (val drop = item.dropItem) {
-            is DropItem.ScrollDrop -> when (drop.scrollType) {
-                ScrollType.GLOVE_ATK_100 -> scroll100
-                ScrollType.GLOVE_ATK_60  -> scroll60
-                else                     -> scroll10
+            is DropItem.ScrollDrop -> when {
+                drop.scrollType.name.endsWith("_100") -> scroll100
+                drop.scrollType.name.endsWith("_60")  -> scroll60
+                else                                   -> scroll10
             }
             is DropItem.EquipmentDrop -> glove
             is DropItem.MaterialDrop  -> when (drop.materialType) {
@@ -2739,11 +2808,11 @@ private fun PanelOverlay(
 
 // ── 인벤토리창 ────────────────────────────────────────────────────────────────
 @Composable
-private fun scrollDrawableRes(scrollType: ScrollType): Int? = when (scrollType) {
-    ScrollType.GLOVE_ATK_100 -> R.drawable.scroll_100
-    ScrollType.GLOVE_ATK_60  -> R.drawable.scroll_60
-    ScrollType.GLOVE_ATK_10  -> R.drawable.scroll_10
-    else                     -> null
+private fun scrollDrawableRes(scrollType: ScrollType): Int? = when {
+    scrollType.name.endsWith("_100") -> R.drawable.scroll_100
+    scrollType.name.endsWith("_60")  -> R.drawable.scroll_60
+    scrollType.name.endsWith("_10")  -> R.drawable.scroll_10
+    else                             -> null
 }
 
 @Composable
