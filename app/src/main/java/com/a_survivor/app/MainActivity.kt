@@ -686,10 +686,11 @@ fun MainScreen(
             }
         )
 
-        // ⑧-b 튜토리얼 조이스틱 시범 (이동 전 애니메이션 가이드)
+        // ⑧-b 튜토리얼 조이스틱 시범 (대화 종료 후, 이동 시작 전)
         AnimatedVisibility(
             visible = state.questState.tutorialStep == TutorialStep.EXPLORE_TOWN &&
-                      state.questState.tutorialTravelDistance < 30f,
+                      state.questState.tutorialTravelDistance < 30f &&
+                      state.activeDialogue == null,
             enter   = fadeIn(),
             exit    = fadeOut(),
             modifier = Modifier
@@ -697,6 +698,19 @@ fun MainScreen(
                 .padding(start = 20.dp, bottom = 20.dp)
         ) {
             JoystickDemoOverlay()
+        }
+
+        // ⑧-c 튜토리얼 공격 시범 (KILL_MONSTER 단계, 대화 없을 때)
+        AnimatedVisibility(
+            visible = state.questState.tutorialStep == TutorialStep.KILL_MONSTER &&
+                      state.activeDialogue == null,
+            enter   = fadeIn(),
+            exit    = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 20.dp)
+        ) {
+            AttackDemoOverlay()
         }
 
         // ⑧ 드래그 중인 아이템 고스트
@@ -3395,6 +3409,133 @@ private fun JoystickDemoOverlay(modifier: Modifier = Modifier) {
                 center = center + thumbOff,
                 style  = Stroke(width = 1.5.dp.toPx())
             )
+        }
+    }
+}
+
+// ── 공격 튜토리얼 시범 ────────────────────────────────────────────────────────
+@Composable
+private fun AttackDemoOverlay(modifier: Modifier = Modifier) {
+    val btnSize = 72.dp
+    val infinite = rememberInfiniteTransition(label = "atkDemo")
+    // 0→1 in 4s: 0.0~0.45 = 수동 탭 단계, 0.55~1.0 = 자동 스와이프 단계
+    val progress by infinite.animateFloat(
+        initialValue  = 0f,
+        targetValue   = 1f,
+        animationSpec = infiniteRepeatable(
+            animation  = tween(4000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "atkProgress"
+    )
+
+    val isAutoPhase = progress >= 0.55f
+    val accent      = if (isAutoPhase) Color(0xFFFFD700) else Color(0xFF6699AA)
+
+    // 라벨 텍스트
+    val labelText = if (isAutoPhase) "위로 스와이프 → 자동 공격" else "탭 → 1회 공격"
+
+    Column(
+        modifier            = modifier,
+        horizontalAlignment = Alignment.End
+    ) {
+        Box(
+            modifier = Modifier
+                .background(Color(0xCC000000), RoundedCornerShape(4.dp))
+                .padding(horizontal = 8.dp, vertical = 3.dp)
+        ) {
+            Text(
+                text       = labelText,
+                color      = Color(0xFFFFDF7E),
+                fontSize   = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Box(contentAlignment = Alignment.Center) {
+            // 버튼 배경 (AttackButton 동일 스타일)
+            Canvas(modifier = Modifier.size(btnSize)) {
+                val r = size.minDimension / 2f
+                drawCircle(Color(0xFF1A2533), radius = r)
+                drawCircle(accent.copy(alpha = if (isAutoPhase) 0.28f else 0.10f), radius = r * 0.88f)
+                drawCircle(
+                    color  = accent,
+                    radius = r,
+                    style  = Stroke(width = (if (isAutoPhase) 2.5f else 1.5f) * density)
+                )
+                if (isAutoPhase) drawCircle(accent.copy(alpha = 0.12f), radius = r * 1.15f)
+
+                val center = this.center
+
+                if (!isAutoPhase) {
+                    // 수동 탭: 탭 리플 애니메이션
+                    val p = progress / 0.45f  // 0→1 in phase 1
+                    val rippleAlpha  = ((1f - p) * 0.7f).coerceIn(0f, 1f)
+                    val rippleRadius = r * (0.5f + p * 0.65f)
+                    drawCircle(
+                        color  = Color(0xFF6699AA).copy(alpha = rippleAlpha),
+                        radius = rippleRadius,
+                        center = center,
+                        style  = Stroke(width = 2.dp.toPx())
+                    )
+                    // 탭 파티클 (중심 점)
+                    val dotAlpha = ((0.3f - p * 0.3f) * 3f).coerceIn(0f, 1f)
+                    drawCircle(Color.White.copy(alpha = dotAlpha), radius = 5.dp.toPx(), center = center)
+                } else {
+                    // 자동: 위로 스와이프 손가락 애니메이션
+                    val p = ((progress - 0.55f) / 0.45f).coerceIn(0f, 1f)  // 0→1 in phase 2
+                    val fingerAlpha = if (p < 0.85f) 1f else (1f - p) / 0.15f
+                    val startY = center.y + r * 0.55f
+                    val endY   = center.y - r * 0.55f
+                    val fingerY = startY + (endY - startY) * p
+
+                    // 궤적 라인
+                    if (p > 0.05f) {
+                        drawLine(
+                            color       = Color(0xFFFFD700).copy(alpha = fingerAlpha * 0.5f),
+                            start       = Offset(center.x, startY),
+                            end         = Offset(center.x, fingerY),
+                            strokeWidth = 2.dp.toPx()
+                        )
+                    }
+                    // 화살표 머리
+                    val arrowSize = 6.dp.toPx()
+                    drawLine(
+                        color       = Color(0xFFFFD700).copy(alpha = fingerAlpha),
+                        start       = Offset(center.x, fingerY),
+                        end         = Offset(center.x - arrowSize, fingerY + arrowSize),
+                        strokeWidth = 2.dp.toPx()
+                    )
+                    drawLine(
+                        color       = Color(0xFFFFD700).copy(alpha = fingerAlpha),
+                        start       = Offset(center.x, fingerY),
+                        end         = Offset(center.x + arrowSize, fingerY + arrowSize),
+                        strokeWidth = 2.dp.toPx()
+                    )
+                    // 손가락 원
+                    drawCircle(
+                        color  = Color(0xFFFFD700).copy(alpha = fingerAlpha * 0.9f),
+                        radius = 7.dp.toPx(),
+                        center = Offset(center.x, fingerY)
+                    )
+                }
+            }
+            // 버튼 텍스트 레이어
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    "공격",
+                    color      = Color.White.copy(alpha = if (isAutoPhase) 1f else 0.7f),
+                    fontSize   = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign  = TextAlign.Center
+                )
+                Text(
+                    if (isAutoPhase) "자동" else "수동",
+                    color      = accent,
+                    fontSize   = 9.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }
