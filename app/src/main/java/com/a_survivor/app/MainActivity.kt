@@ -107,6 +107,7 @@ import com.a_survivor.app.model.PlayerJob
 import com.a_survivor.app.model.Portal
 import com.a_survivor.app.model.QuestState
 import com.a_survivor.app.model.QuestStatus
+import com.a_survivor.app.model.TutorialStep
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
 import com.a_survivor.app.model.StatType
@@ -261,7 +262,8 @@ class MainActivity : ComponentActivity() {
                     onUseQuickSlotPotion = { idx -> vm.useQuickSlotPotion(idx) },
                     onUseSkill           = vm::useSkill,
                     onToggleAutoAttack   = vm::toggleAutoAttack,
-                    onManualAttack       = vm::manualAttack
+                    onManualAttack       = vm::manualAttack,
+                    onInventoryOpened    = vm::onInventoryOpened
                 )
             }
         }
@@ -312,7 +314,8 @@ fun MainScreen(
     onUseQuickSlotPotion: (Int) -> Unit = {},
     onUseSkill: () -> Unit = {},
     onToggleAutoAttack: () -> Unit = {},
-    onManualAttack: () -> Unit = {}
+    onManualAttack: () -> Unit = {},
+    onInventoryOpened: () -> Unit = {}
 ) {
     val dragState        = remember { DragDropState() }
     var isEquipmentOpen  by remember { mutableStateOf(false) }
@@ -333,6 +336,10 @@ fun MainScreen(
     var joystickDirX by remember { mutableStateOf(0f) }
     var joystickDirY by remember { mutableStateOf(0f) }
 
+    // 튜토리얼 6단계: 인벤토리 오픈 감지
+    LaunchedEffect(isInventoryOpen) {
+        if (isInventoryOpen) onInventoryOpened()
+    }
 
     // 플로팅 창 위치 및 경계 계산
     val density       = LocalDensity.current
@@ -390,7 +397,11 @@ fun MainScreen(
             isMoving              = joystickDirX != 0f || joystickDirY != 0f,
             playerAttackAnimStart  = state.playerAttackAnimStart,
             playerHurtAnimStart   = state.playerHurtAnimStart,
-            playerDeathTime       = state.playerDeathTime
+            playerDeathTime       = state.playerDeathTime,
+            npcHintIds            = when (state.questState.tutorialStep) {
+                TutorialStep.TALK_TO_CHUCHU, TutorialStep.RETURN_TO_TOWN -> setOf(1)
+                else -> emptySet()
+            }
         )
 
         // ② 상단 HUD
@@ -716,8 +727,19 @@ fun MainScreen(
             )
         }
 
-        // ⑫ 퀘스트 트래커
-        if (state.questState.status == QuestStatus.IN_PROGRESS || state.questState.status == QuestStatus.READY_TO_COMPLETE) {
+        // ⑫ 튜토리얼 배너
+        if (state.questState.tutorialStep != TutorialStep.COMPLETED) {
+            TutorialBanner(
+                questState = state.questState,
+                modifier   = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 0.dp)
+            )
+        }
+
+        // ⑫-b 퀘스트 트래커 (튜토리얼 완료 후 메인 퀘스트 진행 중일 때만)
+        if (state.questState.tutorialStep == TutorialStep.COMPLETED &&
+            (state.questState.status == QuestStatus.IN_PROGRESS || state.questState.status == QuestStatus.READY_TO_COMPLETE)) {
             QuestTrackerPanel(
                 questState = state.questState,
                 modifier = Modifier
@@ -1686,6 +1708,7 @@ private fun GameCanvas(
     playerAttackAnimStart: Long = 0L,
     playerHurtAnimStart: Long = 0L,
     playerDeathTime: Long = 0L,
+    npcHintIds: Set<Int> = emptySet(),
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1978,7 +2001,7 @@ private fun GameCanvas(
         drawWorldBackground(cam, world, currentMapBitmap)
         groundItems.forEach { drawGroundItem(it, cam, scroll100Bitmap, scroll60Bitmap, scroll10Bitmap, gloveBitmap, equipDropBitmaps, skeletonBoneBitmap, beefBitmap, coinFrames, nowMs) }
         portals.forEach { drawPortal(it, cam) }
-        npcs.forEach { drawNpc(it, cam, npcChuchu) }
+        npcs.forEach { drawNpc(it, cam, npcChuchu, showHint = it.id in npcHintIds) }
         drawAttackRange(player, cam)
         monsters.forEach { m ->
             val (idle, walk, slash) = if (m.monsterId.startsWith("MINOTAUR"))
@@ -3923,7 +3946,7 @@ private fun JobAdvancementDialog(onAdvance: (PlayerJob) -> Unit) {
 }
 
 // ── NPC 렌더링 ────────────────────────────────────────────────────────────────
-private fun DrawScope.drawNpc(npc: Npc, cam: CameraState, bitmap: ImageBitmap?) {
+private fun DrawScope.drawNpc(npc: Npc, cam: CameraState, bitmap: ImageBitmap?, showHint: Boolean = false) {
     val c = cam.toScreenOffset(npc.worldX, npc.worldY, size.width, size.height)
     val imgH = (size.height * 0.30f).toInt().coerceAtLeast(64)
     val imgW = (imgH * 1.6f).toInt()
@@ -3950,6 +3973,22 @@ private fun DrawScope.drawNpc(npc: Npc, cam: CameraState, bitmap: ImageBitmap?) 
             setShadowLayer(3f, 0f, 1f, android.graphics.Color.BLACK)
         }
     )
+    // 튜토리얼 힌트 ! 표시
+    if (showHint) {
+        val hintY = c.y - imgH - size.height * 0.01f
+        drawContext.canvas.nativeCanvas.drawText(
+            "!",
+            c.x,
+            hintY,
+            android.graphics.Paint().apply {
+                color = android.graphics.Color.YELLOW
+                textSize = size.height * 0.07f
+                textAlign = android.graphics.Paint.Align.CENTER
+                isFakeBoldText = true
+                setShadowLayer(4f, 0f, 2f, android.graphics.Color.BLACK)
+            }
+        )
+    }
 }
 
 // ── 대화창 ────────────────────────────────────────────────────────────────────
@@ -4031,6 +4070,34 @@ private fun DialogueWindow(
 }
 
 // ── 퀘스트 트래커 ─────────────────────────────────────────────────────────────
+@Composable
+private fun TutorialBanner(questState: QuestState, modifier: Modifier = Modifier) {
+    val tut = questState.tutorialStep
+    val text = when (tut) {
+        TutorialStep.TALK_TO_CHUCHU -> "NPC 츄츄와 대화해보세요."
+        TutorialStep.EXPLORE_TOWN   -> "마을을 둘러보세요. (${questState.tutorialTravelDistance.toInt()} / 300)"
+        TutorialStep.USE_PORTAL     -> "사냥터로 이동해보세요."
+        TutorialStep.KILL_MONSTER   -> "몬스터를 공격해보세요."
+        TutorialStep.PICKUP_ITEM    -> "드랍된 아이템을 획득해보세요."
+        TutorialStep.OPEN_INVENTORY -> "인벤토리를 열어보세요."
+        TutorialStep.EQUIP_ITEM     -> "획득한 장비를 착용해보세요."
+        TutorialStep.RETURN_TO_TOWN -> "마을로 돌아가 츄츄에게 보고하세요."
+        TutorialStep.COMPLETED      -> return
+    }
+    Box(
+        modifier = modifier
+            .background(Color(0xCC000000), RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
+            .padding(horizontal = 14.dp, vertical = 5.dp)
+    ) {
+        Text(
+            text       = "[튜토리얼] $text",
+            color      = Color(0xFFFFDF7E),
+            fontSize   = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
 @Composable
 private fun QuestTrackerPanel(questState: QuestState, modifier: Modifier = Modifier) {
     val isReady = questState.status == QuestStatus.READY_TO_COMPLETE

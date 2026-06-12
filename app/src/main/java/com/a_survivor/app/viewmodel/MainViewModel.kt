@@ -13,6 +13,7 @@ import com.a_survivor.app.model.MessageType
 import com.a_survivor.app.model.DamageNumber
 import com.a_survivor.app.model.DefaultWeapon
 import com.a_survivor.app.model.DefaultWorld
+import com.a_survivor.app.model.TownWorld
 import com.a_survivor.app.model.DerivedStats
 import com.a_survivor.app.model.DialoguePage
 import com.a_survivor.app.model.DialogueSession
@@ -35,6 +36,7 @@ import com.a_survivor.app.model.PortalRegistry
 import com.a_survivor.app.model.Projectile
 import com.a_survivor.app.model.QuestState
 import com.a_survivor.app.model.QuestStatus
+import com.a_survivor.app.model.TutorialStep
 import com.a_survivor.app.model.ScrollCatalog
 import com.a_survivor.app.model.ScrollType
 import com.a_survivor.app.model.ShopInfo
@@ -255,6 +257,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val job       = runCatching { PlayerJob.valueOf(data.playerJob) }.getOrDefault(PlayerJob.BEGINNER)
         val mapType   = runCatching { MapType.valueOf(data.mapType) }.getOrDefault(MapType.BEGINNER_FIELD)
         val questStat = runCatching { QuestStatus.valueOf(data.questStatus) }.getOrDefault(QuestStatus.NOT_STARTED)
+        val tutStep   = runCatching { TutorialStep.valueOf(data.tutorialStep) }.getOrDefault(TutorialStep.COMPLETED)
 
         val player = Player(
             level              = data.playerLevel,
@@ -289,9 +292,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             portals        = PortalRegistry.portalsFor(mapType),
             npcs           = NpcRegistry.npcsFor(mapType),
             questState     = QuestState(
-                status    = questStat,
-                killCount = data.questKillCount,
-                killGoal  = data.questKillGoal
+                status                = questStat,
+                killCount             = data.questKillCount,
+                killGoal              = data.questKillGoal,
+                tutorialStep          = tutStep,
+                tutorialTravelDistance = data.tutorialTravelDistance
             )
         )
         return computeDerived(base)
@@ -326,7 +331,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         state.copy(derivedStats = derivedStatsCalculator.calculate(state.player, state.equipment, state.hat, state.top, state.shoes, state.pants))
 
     private fun createInitialState(job: PlayerJob = PlayerJob.BEGINNER): UiState {
-        val initialPlayer = Player(job = job, stats = job.initialStats())
+        val initialPlayer = Player(job = job, stats = job.initialStats(), positionX = 450f, positionY = 286f)
         val initialEquip  = EquipmentRegistry.get("NOGADA_GLOVE") ?: Equipment(
             name = "노가다 목장갑",
             attackPower = 0,
@@ -338,12 +343,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
         val questData = QuestRegistry.questForNpc(1)
         val base = UiState(
-            monsters   = spawnSkeletons(DefaultWorld, 5),
-            portals    = PortalRegistry.portalsFor(MapType.BEGINNER_FIELD),
+            monsters   = emptyList(),
+            portals    = PortalRegistry.portalsFor(MapType.TOWN),
+            npcs       = NpcRegistry.npcsFor(MapType.TOWN),
             weapon     = DefaultWeapon,
             equipment  = initialEquip,
             player     = initialPlayer,
-            questState = QuestState(killGoal = questData?.targetCount ?: 5)
+            world      = TownWorld,
+            questState = QuestState(
+                killGoal     = questData?.targetCount ?: 5,
+                tutorialStep = TutorialStep.TALK_TO_CHUCHU
+            )
         )
         return computeDerived(base)
     }
@@ -407,18 +417,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val afterPickup = checkPickup(moved)
             if (afterPickup.groundItems.size < moved.groundItems.size) pickedUp = true
 
-            val now = System.currentTimeMillis()
-            if (now - afterPickup.lastTeleportAt < PORTAL_COOLDOWN) return@update afterPickup
+            // 튜토리얼 2단계: 마을 이동 거리 누적
+            var afterTutorial = afterPickup
+            if (afterPickup.questState.tutorialStep == TutorialStep.EXPLORE_TOWN) {
+                val dx = newX - p.positionX
+                val dy = newY - p.positionY
+                val stepDist = sqrt(dx * dx + dy * dy)
+                val newDist = afterPickup.questState.tutorialTravelDistance + stepDist
+                afterTutorial = if (newDist >= 300f) {
+                    val rewarded = levelService.applyExp(afterPickup.player, 10)
+                    computeDerived(afterPickup.copy(
+                        player = rewarded,
+                        money  = afterPickup.money + 50,
+                        questState = afterPickup.questState.copy(
+                            tutorialStep           = TutorialStep.USE_PORTAL,
+                            tutorialTravelDistance = newDist
+                        )
+                    ))
+                } else {
+                    afterPickup.copy(questState = afterPickup.questState.copy(tutorialTravelDistance = newDist))
+                }
+            }
 
-            val nearPortal = afterPickup.portals.firstOrNull { portal ->
+            val now = System.currentTimeMillis()
+            if (now - afterTutorial.lastTeleportAt < PORTAL_COOLDOWN) return@update afterTutorial
+
+            val nearPortal = afterTutorial.portals.firstOrNull { portal ->
                 val dx = newX - portal.worldX
                 val dy = newY - portal.worldY
                 sqrt(dx * dx + dy * dy) <= PORTAL_RANGE
             }
             if (nearPortal != null) {
                 teleportedMap = nearPortal.targetMap
-                teleportState(afterPickup, nearPortal, now)
-            } else afterPickup
+                teleportState(afterTutorial, nearPortal, now)
+            } else afterTutorial
         }
         if (pickedUp) SoundManager.playSfx(SoundManager.Sfx.ITEM_PICKUP)
         teleportedMap?.let { map ->
@@ -448,7 +480,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val targetWorld = GameWorld(mapType = portal.targetMap)
         val newMonsters = spawnSkeletons(targetWorld, 5)
 
-        return state.copy(
+        var result = state.copy(
             player          = state.player.copy(positionX = portal.targetX, positionY = portal.targetY),
             world           = targetWorld,
             monsters        = newMonsters,
@@ -459,6 +491,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             projectiles     = emptyList(),
             npcs            = NpcRegistry.npcsFor(portal.targetMap)
         )
+
+        val tut = state.questState.tutorialStep
+        result = when {
+            // 3단계: 포탈로 초보자 사냥터 진입
+            tut == TutorialStep.USE_PORTAL && portal.targetMap == MapType.BEGINNER_FIELD -> {
+                val rewarded = levelService.applyExp(result.player, 15)
+                computeDerived(result.copy(
+                    player     = rewarded,
+                    questState = result.questState.copy(tutorialStep = TutorialStep.KILL_MONSTER)
+                ))
+            }
+            // 8단계: 마을 복귀 → 튜토리얼 완료 + 츄츄 자동 대화
+            tut == TutorialStep.RETURN_TO_TOWN && portal.targetMap == MapType.TOWN -> {
+                val rewarded = levelService.applyExp(result.player, 20)
+                val completePages = listOf(
+                    DialoguePage("츄츄", "벌써 사냥을 다녀오셨네요!\n생각보다 재능이 있는 것 같아요."),
+                    DialoguePage("츄츄", "이제 기본적인 모험 방법은\n충분히 익히신 것 같아요."),
+                    DialoguePage("츄츄", "하지만 아직 마을 주변에는\n몬스터들이 남아 있어요."),
+                    DialoguePage("츄츄", "주민들이 안심하고 다닐 수 있도록\n도와주실 수 있나요?",
+                        choices = listOf("도와주겠습니다", "나중에 할게요"))
+                )
+                computeDerived(result.copy(
+                    player         = rewarded,
+                    money          = result.money + 100,
+                    questState     = result.questState.copy(tutorialStep = TutorialStep.COMPLETED),
+                    activeDialogue = DialogueSession(pages = completePages, npcId = 1)
+                ))
+            }
+            else -> result
+        }
+        return result
     }
 
     // ── 자동 공격 틱 ───────────────────────────────────────────────────────────
@@ -599,14 +662,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val newQuestStatus = if (state.questState.status == QuestStatus.IN_PROGRESS &&
                 newKillCount >= state.questState.killGoal) QuestStatus.READY_TO_COMPLETE
                 else state.questState.status
+
+            // 튜토리얼 4단계: 첫 번째 몬스터 처치
+            val tutKillAdvance = killedList.isNotEmpty() && state.questState.tutorialStep == TutorialStep.KILL_MONSTER
+            val playerWithTutExp = if (tutKillAdvance) levelService.applyExp(updatedPlayer, 20) else updatedPlayer
+            if (playerWithTutExp.level > state.player.level) sfxToPlay = SoundManager.Sfx.LEVEL_UP
+
             val newQuestState  = state.questState.copy(
-                killCount = newKillCount.coerceAtMost(state.questState.killGoal),
-                status    = newQuestStatus
+                killCount    = newKillCount.coerceAtMost(state.questState.killGoal),
+                status       = newQuestStatus,
+                tutorialStep = if (tutKillAdvance) TutorialStep.PICKUP_ITEM else state.questState.tutorialStep
             )
 
             val finalState = baseState.copy(
                 monsters              = updatedMonsters,
-                player                = updatedPlayer,
+                player                = playerWithTutExp,
+                money                 = baseState.money + (if (tutKillAdvance) 100 else 0),
                 groundItems           = baseState.groundItems + newGroundItems,
                 pendingRespawns       = baseState.pendingRespawns + killedList.map { PendingRespawn(it.id, now) },
                 damageNumbers         = baseState.damageNumbers + listOfNotNull(attackDmgNum),
@@ -695,20 +766,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val newQuestStatus = if (state.questState.status == QuestStatus.IN_PROGRESS && newKillCount >= state.questState.killGoal)
                 QuestStatus.READY_TO_COMPLETE else state.questState.status
 
+            // 튜토리얼 4단계: 첫 번째 몬스터 처치 (스킬 경로)
+            val tutKillAdvSkill = killed.isNotEmpty() && state.questState.tutorialStep == TutorialStep.KILL_MONSTER
+            val playerWithTutExpSkill = if (tutKillAdvSkill) levelService.applyExp(updatedPlayer, 20) else updatedPlayer
+
             val advancePending = state.jobAdvancementPending || (
-                gainedExp > 0 && updatedPlayer.job == PlayerJob.BEGINNER &&
-                updatedPlayer.level >= 3 && state.player.level < 3
+                gainedExp > 0 && playerWithTutExpSkill.job == PlayerJob.BEGINNER &&
+                playerWithTutExpSkill.level >= 3 && state.player.level < 3
             )
 
             val base = state.copy(
                 skillCooldownUntil    = newCooldowns,
                 skillEffects          = newEffects,
                 monsters              = updatedMonsters,
-                player                = updatedPlayer,
+                player                = playerWithTutExpSkill,
+                money                 = state.money + (if (tutKillAdvSkill) 100 else 0),
                 groundItems           = state.groundItems + newGroundItems,
                 pendingRespawns       = state.pendingRespawns + killed.map { PendingRespawn(it.id, now) },
                 damageNumbers         = state.damageNumbers + dmgNums,
-                questState            = state.questState.copy(killCount = newKillCount, status = newQuestStatus),
+                questState            = state.questState.copy(
+                    killCount    = newKillCount,
+                    status       = newQuestStatus,
+                    tutorialStep = if (tutKillAdvSkill) TutorialStep.PICKUP_ITEM else state.questState.tutorialStep
+                ),
                 jobAdvancementPending = advancePending,
                 playerAttackAnimStart = now
             )
@@ -799,15 +879,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val newKillCountProj = (state.questState.killCount + questKillAddProj)
             val newQuestStatusProj = if (state.questState.status == QuestStatus.IN_PROGRESS && newKillCountProj >= state.questState.killGoal)
                 QuestStatus.READY_TO_COMPLETE else state.questState.status
+
+            // 튜토리얼 4단계: 첫 번째 몬스터 처치 (투사체 경로)
+            val tutKillAdvProj = killed.isNotEmpty() && state.questState.tutorialStep == TutorialStep.KILL_MONSTER
+            val playerWithTutExpProj = if (tutKillAdvProj) levelService.applyExp(updatedPlayer, 20) else updatedPlayer
+
             val newQuestStateProj = state.questState.copy(
-                killCount = newKillCountProj.coerceAtMost(state.questState.killGoal),
-                status = newQuestStatusProj
+                killCount    = newKillCountProj.coerceAtMost(state.questState.killGoal),
+                status       = newQuestStatusProj,
+                tutorialStep = if (tutKillAdvProj) TutorialStep.PICKUP_ITEM else state.questState.tutorialStep
             )
 
             val newState = state.copy(
                 projectiles           = projResult.updatedProjectiles,
                 monsters              = updatedMonsters,
-                player                = updatedPlayer,
+                player                = playerWithTutExpProj,
+                money                 = state.money + (if (tutKillAdvProj) 100 else 0),
                 groundItems           = state.groundItems + newGroundItems,
                 pendingRespawns       = state.pendingRespawns + newPending,
                 damageNumbers         = state.damageNumbers + newDmgNums,
@@ -970,6 +1057,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+        // 튜토리얼 5단계: 첫 번째 아이템 획득
+        if (drops.isNotEmpty() && s.questState.tutorialStep == TutorialStep.PICKUP_ITEM) {
+            val rewarded = levelService.applyExp(s.player, 10)
+            s = computeDerived(s.copy(
+                player     = rewarded,
+                questState = s.questState.copy(tutorialStep = TutorialStep.OPEN_INVENTORY)
+            ))
+        }
         return s
     }
 
@@ -1084,7 +1179,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val slotIdx = s.inventorySlots.indexOfFirst { it is InventorySlot.EquipItem && it.equipment == equipment }
             if (slotIdx < 0) return@update s
             val newSlots = s.inventorySlots.toMutableList()
-            when (equipment.slot) {
+            val equipped: UiState = when (equipment.slot) {
                 "HAT" -> {
                     newSlots[slotIdx] = if (s.hat != null) InventorySlot.EquipItem(s.hat) else null
                     computeDerived(s.copy(hat = equipment, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
@@ -1111,6 +1206,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     computeDerived(s.copy(equipment = equipment, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
                 }
             }
+            // 튜토리얼 7단계: 장비 착용
+            if (equipped.questState.tutorialStep == TutorialStep.EQUIP_ITEM) {
+                val rewarded = levelService.applyExp(equipped.player, 20)
+                computeDerived(equipped.copy(
+                    player     = rewarded,
+                    questState = equipped.questState.copy(tutorialStep = TutorialStep.RETURN_TO_TOWN)
+                ))
+            } else equipped
         }
     }
 
@@ -1134,6 +1237,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun weaponTypeFor(itemId: String): String = when (itemId) {
         "TEST_BOW" -> "활"
         else -> "한손검"
+    }
+
+    // 튜토리얼 6단계: 인벤토리 열기 (MainActivity에서 호출)
+    fun onInventoryOpened() {
+        _uiState.update { state ->
+            if (state.questState.tutorialStep != TutorialStep.OPEN_INVENTORY) return@update state
+            val rewarded = levelService.applyExp(state.player, 10)
+            computeDerived(state.copy(
+                player     = rewarded,
+                questState = state.questState.copy(tutorialStep = TutorialStep.EQUIP_ITEM)
+            ))
+        }
     }
 
     fun resetEquipment() {
@@ -1203,7 +1318,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { state ->
             val npc = state.npcs.find { it.id == npcId } ?: return@update state
             val pages = when (npc.role) {
-                NpcRole.QUEST -> buildDialoguePages(state.questState)
+                NpcRole.QUEST -> {
+                    val tut = state.questState.tutorialStep
+                    when {
+                        tut == TutorialStep.TALK_TO_CHUCHU -> listOf(
+                            DialoguePage("츄츄", "앗! 처음 보는 얼굴이네요.\n혹시 새로 마을에 오신 모험가신가요?"),
+                            DialoguePage("츄츄", "이 마을 주변은 비교적 안전하지만\n밖에는 몬스터들이 돌아다니고 있어요."),
+                            DialoguePage("츄츄", "모험을 시작하기 전에\n먼저 마을을 둘러보는 건 어떨까요?")
+                        )
+                        tut == TutorialStep.EXPLORE_TOWN -> listOf(
+                            DialoguePage("츄츄", "마을을 더 둘러보세요!\n걷다 보면 구석구석 재미있는 곳이 있을 거예요.")
+                        )
+                        tut == TutorialStep.USE_PORTAL -> listOf(
+                            DialoguePage("츄츄", "왼쪽 포탈을 이용해\n초보자 사냥터로 이동해보세요!")
+                        )
+                        tut.ordinal in TutorialStep.KILL_MONSTER.ordinal..TutorialStep.EQUIP_ITEM.ordinal -> listOf(
+                            DialoguePage("츄츄", "사냥터에서 모험을 계속해주세요!\n제가 응원하고 있을게요.")
+                        )
+                        tut == TutorialStep.RETURN_TO_TOWN -> listOf(
+                            DialoguePage("츄츄", "마을로 돌아오세요!\n포탈을 이용해 마을로 돌아와 주세요.")
+                        )
+                        else -> buildDialoguePages(state.questState)
+                    }
+                }
                 NpcRole.EQUIPMENT_SHOP -> listOf(
                     DialoguePage(
                         speaker = "브루스",
@@ -1219,7 +1356,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 )
             }
-            state.copy(activeDialogue = DialogueSession(pages = pages, npcId = npcId))
+            // 튜토리얼 1단계 완료: 츄츄와 첫 대화
+            var newState = state.copy(activeDialogue = DialogueSession(pages = pages, npcId = npcId))
+            if (npc.role == NpcRole.QUEST && state.questState.tutorialStep == TutorialStep.TALK_TO_CHUCHU) {
+                val rewarded = levelService.applyExp(newState.player, 10)
+                newState = computeDerived(newState.copy(
+                    player     = rewarded,
+                    questState = newState.questState.copy(tutorialStep = TutorialStep.EXPLORE_TOWN)
+                ))
+            }
+            newState
         }
     }
 

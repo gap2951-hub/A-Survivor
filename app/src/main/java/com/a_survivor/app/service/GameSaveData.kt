@@ -27,7 +27,9 @@ data class GameSaveData(
     val shoes: Equipment? = null,
     val pants: Equipment? = null,
     val weapon: Weapon? = null,
-    val inventory: List<SavedSlot> = emptyList()
+    val inventory: List<SavedSlot> = emptyList(),
+    val tutorialStep: String = "TALK_TO_CHUCHU",
+    val tutorialTravelDistance: Float = 0f
 )
 
 data class SavedSlot(

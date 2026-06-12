@@ -1897,3 +1897,68 @@ private fun rememberSlotSize(): Dp =
 | 보조 주석 (`note`) | 7 |
 | 아이템 이름 (상점·정보창 주제목) | 10 |
 | 아이템 설명·부제목 | 8–9 |
+
+---
+
+## 튜토리얼 퀘스트 시스템 (작업 #255–262)
+
+기존 퀘스트 인프라(`QuestState`, `QuestStatus`)를 확장하여 8단계 튜토리얼 흐름을 구현.
+별도 시스템이 아닌 `QuestState.tutorialStep` 필드로 진행 상태를 추적한다.
+
+### TutorialStep enum (QuestState.kt)
+
+```kotlin
+enum class TutorialStep {
+    TALK_TO_CHUCHU, EXPLORE_TOWN, USE_PORTAL, KILL_MONSTER,
+    PICKUP_ITEM, OPEN_INVENTORY, EQUIP_ITEM, RETURN_TO_TOWN, COMPLETED
+}
+```
+
+`QuestState`에 `tutorialStep: TutorialStep`과 `tutorialTravelDistance: Float` 필드 추가.
+
+### 단계별 달성 조건 및 보상
+
+| 단계 | 조건 | 보상 |
+|------|------|------|
+| TALK_TO_CHUCHU | 추추 NPC 대화 시작 시 즉시 | EXP +10 |
+| EXPLORE_TOWN | 이동 누적 거리 300 단위 | EXP +10, 골드 +50 |
+| USE_PORTAL | BEGINNER_FIELD 포탈 진입 | EXP +15 |
+| KILL_MONSTER | 첫 몬스터 처치 | EXP +20, 골드 +100 |
+| PICKUP_ITEM | 드롭 아이템 자동 수거 | EXP +10 |
+| OPEN_INVENTORY | 인벤토리 열기 | EXP +10 |
+| EQUIP_ITEM | 아이템 장착 | EXP +20 |
+| RETURN_TO_TOWN | TOWN 복귀 + 추추 대화 | EXP +20, 골드 +100 → 본 퀘스트 연결 |
+
+### 진행 트리거 구현 위치 (MainViewModel.kt)
+
+| 함수 | 처리 단계 |
+|------|-----------|
+| `startDialogue()` NpcRole.QUEST 분기 | TALK_TO_CHUCHU → EXPLORE_TOWN, 각 단계별 안내 대화 |
+| `movePlayer()` | EXPLORE_TOWN → USE_PORTAL (300 거리 누적) |
+| `teleportState()` | USE_PORTAL+BEGINNER_FIELD → KILL_MONSTER; RETURN_TO_TOWN+TOWN → COMPLETED |
+| `pendingAttackTick()` / `projectileTick()` / `useSkill()` | KILL_MONSTER → PICKUP_ITEM |
+| `applyDrops()` | PICKUP_ITEM → OPEN_INVENTORY |
+| `onInventoryOpened()` | OPEN_INVENTORY → EQUIP_ITEM |
+| `equipFromInventory()` | EQUIP_ITEM → RETURN_TO_TOWN |
+
+### 자동 대화 (teleportState)
+
+`RETURN_TO_TOWN` 단계에서 TOWN 복귀 시 `teleportState()`가 자동으로 추추 대화를 열고
+4페이지 튜토리얼 완료 메시지 후 "도와주겠습니다" / "나중에 할게요" 선택지로 본 퀘스트 진입.
+
+### UI 변경 (MainActivity.kt)
+
+- **TutorialBanner**: 화면 상단에 `[튜토리얼] <단계 안내문>` 표시; EXPLORE_TOWN 단계는 진행 거리 `(현재/300)` 포함
+- **`!` 힌트**: `drawNpc(showHint = it.id in npcHintIds)`로 추추 머리 위에 노란 `!` 표시 (TALK_TO_CHUCHU, RETURN_TO_TOWN 단계)
+- **QuestTrackerPanel**: `tutorialStep == COMPLETED`이고 본 퀘스트 진행 중일 때만 표시
+- **인벤토리 열기 감지**: `LaunchedEffect(isInventoryOpen)` → `vm::onInventoryOpened()`
+
+### 저장/복원
+
+`GameSaveData`에 `tutorialStep: String`, `tutorialTravelDistance: Float` 추가.
+`SaveService.save()` / `restoreState()`에서 직렬화·역직렬화 처리.
+
+### 초기 상태
+
+새 게임 시작 시 TOWN 맵, 플레이어 위치 `(450f, 286f)`, 몬스터 없음.
+튜토리얼 완료 전에는 퀘스트 트래커 패널이 숨겨진다.

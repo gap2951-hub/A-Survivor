@@ -37,7 +37,9 @@ class SaveService(context: Context) {
             top              = state.top,
             shoes            = state.shoes,
             pants            = state.pants,
-            weapon           = state.weapon,
+            weapon                   = state.weapon,
+            tutorialStep             = state.questState.tutorialStep.name,
+            tutorialTravelDistance   = state.questState.tutorialTravelDistance,
             inventory        = state.inventorySlots.map { slot ->
                 when (slot) {
                     null -> SavedSlot("EMPTY")
