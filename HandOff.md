@@ -23,7 +23,7 @@ com.a_survivor.app/
 │   ├── Monster.kt                (+ monsterId: String 필드 추가)
 │   ├── MonsterRegistry.kt        (CSV 기반 — MonsterConfig + configForMap(MapType))
 │   ├── DropTable.kt              (DropItem sealed class — ScrollDrop/EquipmentDrop/MoneyDrop/MaterialDrop + DropEntry)
-│   ├── MaterialType.kt           (MaterialType enum + MaterialCatalog — 재료 아이템 이름·판매가)
+│   ├── MaterialType.kt           (MaterialType enum 8종 + iconKey() 확장함수 + MaterialCatalog)
 │   ├── DropRegistry.kt           (CSV 기반 드랍 조회 — dropEntriesFor(monsterId, mapType))
 │   ├── QuestRegistry.kt          (CSV 기반 — QuestData + questForNpc(npcId))
 │   ├── Npc.kt                    (NpcRegistry — CSV 기반 로드로 전환)
@@ -72,7 +72,7 @@ com.a_survivor.app/
 │   ├── drop.csv                  (monsterId,itemId,dropRate)
 │   ├── npc.csv                   (npcId,name,role,mapId,x,y)
 │   ├── shop.csv                  (shopType,itemId,buyPrice,sellPrice)
-│   └── quest.csv                 (questId,name,npcId,targetMonsterId,targetCount,rewardExp,rewardMoney,rewardItemId)
+│   └── quest.csv                 (questId,name,npcId,questType,targetMonsterId,targetMaterialId,targetMapId,targetLevel,targetCount,rewardExp,rewardMoney,rewardItemId,nextQuestId)
 ├── assets/sounds/                ← 오디오 파일 배치 폴더 (없어도 정상 실행)
 │   ├── README.txt                (파일 네이밍 가이드)
 │   ├── bgm_town.*                (마을 BGM)
@@ -391,44 +391,129 @@ enum class QuestStatus { NOT_STARTED, IN_PROGRESS, READY_TO_COMPLETE, COMPLETED 
 data class QuestState(
     val status: QuestStatus = QuestStatus.NOT_STARTED,
     val killCount: Int = 0,
-    val killGoal: Int = 5
+    val killGoal: Int = 5,
+    val tutorialStep: TutorialStep = TutorialStep.LEARN_MOVEMENT,
+    val tutorialTravelDistance: Float = 0f,
+    // 메인 퀘스트 체인
+    val mainQuestId: String = "",
+    val mainQuestProgress: Int = 0,
+    val mainQuestStatus: QuestStatus = QuestStatus.NOT_STARTED,
+)
+
+data class QuestData(
+    val questId: String, val name: String, val npcId: Int,
+    val questType: String = "KILL",      // KILL | COLLECT | ENTER_MAP | REACH_LEVEL
+    val targetMonsterId: String = "",
+    val targetMaterialId: String = "",   // MaterialType 이름
+    val targetMapId: String = "",        // MapType 이름
+    val targetLevel: Int = 0,
+    val targetCount: Int = 1,
+    val rewardExp: Int = 0, val rewardMoney: Int = 0,
+    val rewardItemId: String = "",       // ScrollType 이름 또는 RANDOM_SCROLL_BOX
+    val nextQuestId: String = "",
 )
 ```
 
-### 퀘스트: 스켈레톤 소탕 작전
+### QUEST_001: 스켈레톤 소탕 작전
 
 | 단계 | 조건 | 동작 |
 |------|------|------|
 | NOT_STARTED | 츄츄에게 대화 | 4페이지 + 수락/거절 선택지 |
-| IN_PROGRESS | 스켈레톤 처치마다 | killCount++ (autoAttackTick + projectileTick 양쪽) |
+| IN_PROGRESS | 스켈레톤 처치마다 | killCount++ (pendingAttackTick + projectileTick + useSkill) |
 | READY_TO_COMPLETE | killCount >= 5 | 자동 전환 |
-| COMPLETED | 츄츄에게 대화 후 보상 수령 | EXP +50, 장갑 공격력 100% 주문서 +1 |
+| COMPLETED | 츄츄에게 대화 후 보상 수령 | EXP +50, 장갑 공격력 100% 주문서 +1 → MQ-001 등록(NOT_STARTED) + 인트로 대화 |
 
-### 대화 시나리오
+**NOT_STARTED 대화:**
+1~3. 상황 설명 / 4. "도와주실 수 있나요?" → [도와준다] / [거절한다]
 
-**NOT_STARTED (4페이지 + 선택지):**
-1. "안녕하세요! 혹시 모험가이신가요?"
-2. "요즘 마을 주변이 이상해졌어요..."
-3. "주민들이 밭을 관리하러 나가지도 못하고 있어요..."
-4. "혹시 저를 도와주실 수 있나요?" → [도와준다] / [거절한다]
-   - 수락: "정말 감사합니다!..." / "스켈레톤 워리어 5마리를 처치하면..." → 닫기
-   - 거절: "그렇군요... 마음이 바뀌면..." → 닫기
+**READY_TO_COMPLETE 대화:**
+1~3. 감사 메시지 / 4. "이건 작은 감사의 표시예요." → [보상 받기]
 
-**IN_PROGRESS (1페이지):** "스켈레톤 워리어들이 아직 남아있어요. (N/5)" → 닫기
+**COMPLETED 대화:** "덕분에 평화로워졌어요. 정말 감사합니다!"
 
-**READY_TO_COMPLETE (4페이지 + 선택지):**
-1. "정말 해내셨군요!"
-2. "주민들이 다시 밭으로 나갈 수 있게 되었어요."
-3. "모두가 모험가님 덕분이라며 감사하고 있어요."
-4. "이건 작은 감사의 표시예요." → [보상 받기] → EXP +50 + 주문서 지급 + COMPLETED
+### 메인 퀘스트 체인 (MQ-001 ~ MQ-013)
 
-**COMPLETED (1페이지):** "덕분에 평화로워졌어요. 정말 감사합니다!" → 닫기
+#### quest.csv 정의
+
+| ID | 이름 | 타입 | 목표 | 목표 수 | 보상 EXP | 보상 금 | 보상 아이템 |
+|----|------|------|------|---------|---------|--------|------------|
+| MQ-001 | 수상한 뼈 | COLLECT | SKELETON_BONE_1 | 10 | 100 | 500 | — |
+| MQ-002 | 불길한 변화 | KILL | SKELETON_FIELD2 | 10 | 200 | 1000 | — |
+| MQ-003 | 검게 물든 뼈 | COLLECT | SKELETON_BONE_2 | 15 | 250 | 1500 | — |
+| MQ-004 | 정예 개체 출현 | KILL | SKELETON_FIELD3 | 15 | 350 | 2500 | — |
+| MQ-005 | 강한 마력의 흔적 | COLLECT | SKELETON_BONE_3 | 20 | 500 | 3000 | GLOVE_ATK_100 |
+| MQ-006 | 거대한 발자국 | ENTER_MAP | MINOTAUR_FIELD_1 | 1 | 200 | 0 | — |
+| MQ-007 | 초원의 괴수 | KILL | MINOTAUR_1 | 10 | 500 | 2000 | — |
+| MQ-008 | 식량 확보 | COLLECT | MINOTAUR_BEEF_1 | 10 | 300 | 1000 | — |
+| MQ-009 | 더욱 난폭한 개체 | KILL | MINOTAUR_2 | 15 | 700 | 3000 | — |
+| MQ-010 | 괜찮은 품질 | COLLECT | MINOTAUR_BEEF_2 | 15 | 500 | 2500 | — |
+| MQ-011 | 초원의 지배자 | KILL | MINOTAUR_3 | 20 | 1000 | 5000 | — |
+| MQ-012 | 최고의 식재료 | COLLECT | MINOTAUR_BEEF_3 | 20 | 1200 | 7000 | SWORD_ATK_100 |
+| MQ-013 | 더욱 강해져야 한다 | REACH_LEVEL | 레벨 20 | 1 | 1500 | 10000 | RANDOM_SCROLL_BOX |
+
+#### 퀘스트 진행 흐름
+
+- `startNextMainQuest(state, nextQuestId)` — 다음 퀘스트를 `NOT_STARTED` 상태로 등록 (자동 시작 안 함)
+- `acceptMainQuest(state)` — `IN_PROGRESS`로 전환, COLLECT 타입은 기존 인벤 수량으로 초기 진행도 동기화
+- 진행도 업데이트:
+  - **KILL**: `pendingAttackTick` / `useSkill` / `projectileTick`에서 해당 `monsterId` 처치 수 누적
+  - **COLLECT**: `applyDrops` MaterialDrop 시 인벤 전체 수량으로 재계산 (누적 방식 아님)
+  - **ENTER_MAP**: `teleportState`에서 `portal.targetMap.name == targetMapId` 시 즉시 READY_TO_COMPLETE
+  - **REACH_LEVEL**: `pendingAttackTick` / `useSkill` / `projectileTick`에서 레벨 크로싱 감지
+
+#### 보상 아이템
+
+| 아이템 ID | 지급 내용 |
+|----------|---------|
+| `GLOVE_ATK_100` | 장갑 공격력 100% 주문서 ×1 |
+| `SWORD_ATK_100` | 무기 공격력 100% 주문서 ×1 |
+| `RANDOM_SCROLL_BOX` | GLOVE_ATK_100/60/10, SWORD_ATK_100/60 중 랜덤 ×3 |
+
+#### 특수 인트로 대화
+
+| 트리거 | 내용 |
+|--------|------|
+| QUEST_001 완료 후 MQ-001 등록 | "수상한 뼈를 모아달라" 3페이지 + 수락/거절 선택지 |
+| MQ-005 완료 후 MQ-006 등록 | 거대한 발자국 발견 4페이지 + 수락/거절 선택지 |
+| MQ-012 완료 후 MQ-013 등록 | 스토리 마무리 및 강해져달라는 4페이지 대화 (선택지 없음, 수락은 NPC 재방문으로) |
+
+#### NPC 대화 분기 (buildMainQuestDialogue)
+
+| mainQuestStatus | 대화 내용 |
+|----------------|---------|
+| NOT_STARTED | `buildMainQuestOfferText(data)` + [수락한다] / [나중에 할게요] |
+| IN_PROGRESS | `buildMainQuestProgressText(data, quest)` — 타입별 진행 현황 |
+| READY_TO_COMPLETE | "수고하셨어요!" + `buildRewardDescription(data)` + [보상 받기] |
+| COMPLETED (마지막 MQ) | "계속 모험을 해주세요!" |
+
+### 재료 아이템 (MaterialType)
+
+```kotlin
+enum class MaterialType {
+    SKELETON_BONE, BEEF,           // 레거시 (구 세이브 호환용)
+    SKELETON_BONE_1, SKELETON_BONE_2, SKELETON_BONE_3,
+    MINOTAUR_BEEF_1, MINOTAUR_BEEF_2, MINOTAUR_BEEF_3
+}
+
+fun MaterialType.iconKey(): String = if (name.contains("BONE")) "bone" else "beef"
+// → skeleton_bone.png / beef.png 이미지 재사용
+```
+
+| 타입 | 드랍 몬스터 | 이름 | 판매가 |
+|------|------------|------|--------|
+| SKELETON_BONE_1 | SKELETON_BEGINNER | 스켈레톤1의 뼈 | 20 |
+| SKELETON_BONE_2 | SKELETON_FIELD2 | 스켈레톤2의 뼈 | 40 |
+| SKELETON_BONE_3 | SKELETON_FIELD3 | 스켈레톤3의 뼈 | 80 |
+| MINOTAUR_BEEF_1 | MINOTAUR_1 | 질긴 소고기 | 50 |
+| MINOTAUR_BEEF_2 | MINOTAUR_2 | 신선한 소고기 | 100 |
+| MINOTAUR_BEEF_3 | MINOTAUR_3 | 최상급 소고기 | 200 |
 
 ### 퀘스트 트래커 UI (QuestTrackerPanel)
 
 - **위치:** 좌상단 HUD 아래 (padding start=12dp, top=80dp)
-- **표시 조건:** IN_PROGRESS 또는 READY_TO_COMPLETE
-- **내용:** 상태 레이블 + "스켈레톤 소탕 작전" + 진행 프로그레스 바 + "스켈레톤 처치 N/5" 텍스트
+- **표시 조건:** QUEST_001 또는 메인 퀘스트 IN_PROGRESS / READY_TO_COMPLETE (NOT_STARTED는 숨김)
+- **메인 퀘스트 표시 시:** 퀘스트명 + 타입별 진행 텍스트 (MonsterRegistry로 몬스터명 표시) + 프로그레스 바
+- **QUEST_001 표시 시:** "스켈레톤 소탕 작전" + 처치 수/목표 수 + 프로그레스 바
 - **색상:** 진행 중 주황 / 완료 가능 금색 (테두리도 변경)
 
 ---
@@ -1341,6 +1426,25 @@ SoundManager.release()          // onDestroy
 | 262 | "전환 완료!" 메시지 실제 전환 시에만 표시 — AttackDemoOverlay에서 타이머 기반 표시 제거, LaunchedEffect(tutorialStep) 변경 시점에 1.2초 노출하도록 수정 | ✅ |
 | 263 | 공격 모드 전환 완료 메시지 UI Box 추가 — BottomEnd padding(end=16dp, bottom=130dp)에 fadeIn/fadeOut AnimatedVisibility, 노란 텍스트 어두운 배경 | ✅ |
 | 264 | PICKUP_ITEM 튜토리얼 문구 수정 — "아이템에 가까이 가면 아이템을 획득합니다. 장비 아이템을 획득해보세요." | ✅ |
+| 265 | MaterialType 6종 분리 — SKELETON_BONE_1/2/3, MINOTAUR_BEEF_1/2/3 추가, 레거시 SKELETON_BONE/BEEF 유지 (세이브 호환) | ✅ |
+| 266 | iconKey() 확장함수 추가 — `name.contains("BONE")` → "bone" / 나머지 → "beef", skeleton_bone.png/beef.png 이미지 재사용 | ✅ |
+| 267 | drop.csv 재료 드랍 세분화 — 몬스터별 고유 MaterialType으로 교체 (SKELETON_BONE → BONE_1/2/3, BEEF → BEEF_1/2/3) | ✅ |
+| 268 | quest.csv 전면 개편 — QUEST_001 + MQ-001~MQ-013 (14행), 컬럼 확장 (questType/targetMaterialId/targetMapId/targetLevel/nextQuestId) | ✅ |
+| 269 | QuestData 모델 확장 — questType(KILL/COLLECT/ENTER_MAP/REACH_LEVEL), targetMaterialId, targetMapId, targetLevel, nextQuestId 필드 추가 | ✅ |
+| 270 | QuestState 확장 — mainQuestId/mainQuestProgress/mainQuestStatus 3개 필드 추가 | ✅ |
+| 271 | GameSaveData/SaveService 메인 퀘스트 직렬화 — mainQuestId/Progress/Status 저장·복원 지원 | ✅ |
+| 272 | startNextMainQuest/acceptMainQuest 헬퍼 분리 — 등록(NOT_STARTED)과 수락(IN_PROGRESS+COLLECT 동기화)을 별도 함수로 관리 | ✅ |
+| 273 | giveRewardItem 헬퍼 추가 — RANDOM_SCROLL_BOX(랜덤 3개), ScrollType 직접 지정 보상 지급 | ✅ |
+| 274 | pendingAttackTick/useSkill/projectileTick 메인 퀘스트 KILL/REACH_LEVEL 진행 추가 | ✅ |
+| 275 | applyDrops MaterialDrop COLLECT 퀘스트 진행 추적 — 인벤토리 전체 수량 기준 (누적 방식 아님) | ✅ |
+| 276 | teleportState ENTER_MAP 퀘스트 자동완료 — portal.targetMap.name == targetMapId 일치 시 READY_TO_COMPLETE | ✅ |
+| 277 | buildMainQuestDialogue — NOT_STARTED(수락 안내)/IN_PROGRESS(진행)/READY_TO_COMPLETE(보상) 3상태 대화 분기 구현 | ✅ |
+| 278 | buildMainQuestOfferText/buildMainQuestProgressText/buildRewardDescription 헬퍼 — 타입별 안내 문구 생성 | ✅ |
+| 279 | MQ-001 인트로 대화 추가 — QUEST_001 보상 후 수상한 뼈 소개 3페이지 + 수락/거절 선택지 | ✅ |
+| 280 | MQ-006/MQ-013 특수 인트로 대화 — 이전 퀘스트 보상 후 스토리 브리핑 4페이지 + 수락/거절 선택지 | ✅ |
+| 281 | QuestTrackerPanel 메인 퀘스트 표시 지원 — 메인 퀘스트 우선 표시, 퀘스트명·타입별 진행 텍스트·프로그레스 바 | ✅ |
+| 282 | QuestTrackerPanel KILL 진행 텍스트 — MonsterRegistry.get()으로 "SKELETON_FIELD2" 대신 "스켈레톤 워리어" 표시 | ✅ |
+| 283 | drawGroundItem/MaterialInventoryItem iconKey() 적용 — 새 6종 재료 타입을 bone/beef 이미지로 올바르게 렌더링 | ✅ |
 
 ---
 
@@ -1716,7 +1820,8 @@ Column (170dp 너비, RoundedCornerShape 8dp, 반투명 패널)
 | 플레이어 | 레벨, EXP, HP, MaxHP, 직업, STR/DEX/INT/LUK, 스탯포인트, 위치(X/Y) |
 | 소지금 | money: Int |
 | 현재 맵 | world.mapType |
-| 퀘스트 | status, killCount, killGoal |
+| 퀘스트 | status, killCount, killGoal, tutorialStep, tutorialTravelDistance |
+| 메인 퀘스트 | mainQuestId, mainQuestProgress, mainQuestStatus |
 | 장착 장비 | equipment: Equipment? |
 | 무기 | weapon: Weapon? |
 | 인벤토리 | inventorySlots (32개, ScrollItem/EquipItem/ConsumableItem) |
@@ -1849,9 +1954,11 @@ val quickSlotBounds = remember { mutableStateListOf<Rect?>(null, null, null) }
 
 ## 다음 작업 후보 (우선순위 순)
 
+- [ ] 메인 퀘스트 실제 플레이 테스트 — MQ-001~MQ-013 전 체인 수락/진행/완료 흐름 검증
+- [ ] 메인 퀘스트 보상 아이템 이미지 — RANDOM_SCROLL_BOX, 특수 재료 이미지 추가
+- [ ] MQ-013 이후 엔딩/크레딧 연출 또는 추가 퀘스트 확장
 - [ ] 사운드 파일 실제 배치 — bgm_town/bgm_battle + sfx_* (freesound.org 등 CC0 소스)
 - [ ] 투사체 PNG 리소스 교체 (에너지볼트/화살/표창/총알 이미지)
-- [ ] NPC 퀘스트 2차 — quest.csv에 퀘스트 추가만으로 확장 가능
 - [ ] 장비 창고
 - [ ] 레벨업 연출 (파티클/메시지 이펙트)
 - [ ] 스킬 강화 / 스킬 트리 확장
