@@ -106,6 +106,7 @@ import com.a_survivor.app.model.Npc
 import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.PlayerJob
 import com.a_survivor.app.model.Portal
+import com.a_survivor.app.model.MonsterRegistry
 import com.a_survivor.app.model.QuestRegistry
 import com.a_survivor.app.model.QuestState
 import com.a_survivor.app.model.QuestStatus
@@ -4423,7 +4424,10 @@ private fun QuestTrackerPanel(questState: QuestState, modifier: Modifier = Modif
         val total = mqData?.targetCount ?: 1
         val fraction = if (total > 0) (progress.toFloat() / total).coerceIn(0f, 1f) else 1f
         val progressLabel = when (mqData?.questType) {
-            "KILL"      -> "${mqData.targetMonsterId} 처치  $progress / $total"
+            "KILL"      -> {
+                val monName = MonsterRegistry.get(mqData.targetMonsterId)?.name ?: mqData.targetMonsterId
+                "$monName 처치  $progress / $total"
+            }
             "COLLECT"   -> "재료 수집  $progress / $total"
             "ENTER_MAP" -> if (isReady) "맵 진입 완료" else "맵으로 이동하세요"
             "REACH_LEVEL" -> "레벨 달성  ${mqData?.targetLevel ?: ""}"

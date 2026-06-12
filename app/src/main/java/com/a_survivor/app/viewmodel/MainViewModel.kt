@@ -1577,14 +1577,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 questState = quest.copy(status = QuestStatus.COMPLETED),
                             ))
                             newState = giveRewardItem(newState, questData?.rewardItemId ?: "GLOVE_ATK_100")
-                            // MQ-001 자동 시작
+                            // MQ-001 등록 (NOT_STARTED) 후 인트로 대화 표시
                             newState = startNextMainQuest(newState, questData?.nextQuestId ?: "MQ-001")
                             val mq001Pages = listOf(
                                 DialoguePage("츄츄", "그런데... 사냥하면서 혹시 이상한 뼈를 보신 적 있나요?"),
                                 DialoguePage("츄츄", "평범한 스켈레톤 뼈인데 뭔가 이상한 기운이 느껴지는 게 있어요.\n사냥하다 보면 주울 수 있을 거예요."),
-                                DialoguePage("츄츄", "초보자 사냥터의 스켈레톤들을 사냥하다 보면\n수상한 뼈를 얻을 수 있을 거예요. 10개만 모아다 주실 수 있나요?")
+                                DialoguePage("츄츄", "초보자 사냥터에서 수상한 뼈 10개를 모아다 주실 수 있나요?",
+                                    choices = listOf("수락한다", "나중에 할게요"))
                             )
                             newState.copy(activeDialogue = DialogueSession(pages = mq001Pages, npcId = dlg.npcId))
+                        }
+                        // 메인 퀘스트 수락
+                        quest.mainQuestStatus == QuestStatus.NOT_STARTED && quest.mainQuestId.isNotBlank() -> {
+                            if (index == 0) {
+                                acceptMainQuest(state).copy(activeDialogue = null)
+                            } else {
+                                state.copy(activeDialogue = null)
+                            }
                         }
                         // 메인 퀘스트 체인 보상 수령
                         quest.mainQuestStatus == QuestStatus.READY_TO_COMPLETE && index == 0 -> {
@@ -1598,22 +1607,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             ))
                             newState = giveRewardItem(newState, qData.rewardItemId)
 
-                            // 다음 퀘스트 시작 여부 결정
+                            // 다음 퀘스트 등록 (NOT_STARTED)
                             val nextId = qData.nextQuestId
                             newState = if (nextId.isNotBlank()) {
                                 startNextMainQuest(newState, nextId)
                             } else {
-                                // 마지막 퀘스트 — 챕터 종료
                                 newState
                             }
 
-                            // MQ-006 / MQ-013 특수 인트로 대화
+                            // MQ-006 / MQ-013 특수 인트로 대화 (수락/거절 선택지 포함)
                             val specialPages: List<DialoguePage>? = when (nextId) {
                                 "MQ-006" -> listOf(
                                     DialoguePage("츄츄", "최근 스켈레톤들이 출몰하던 지역을\n조사하던 중 이상한 흔적이 발견됐어요."),
                                     DialoguePage("츄츄", "마을에서 사냥터로 가는 포탈 반대편에서\n한 번도 본 적 없는 거대한 발자국이 발견됐어요."),
                                     DialoguePage("츄츄", "스켈레톤들과 관련이 있는지 모르겠지만\n분명 평범한 일은 아닌 것 같아요."),
-                                    DialoguePage("츄츄", "직접 가서 조사해 주실 수 있나요?")
+                                    DialoguePage("츄츄", "직접 가서 조사해 주실 수 있나요?",
+                                        choices = listOf("수락한다", "나중에 할게요"))
                                 )
                                 "MQ-013" -> listOf(
                                     DialoguePage("츄츄", "정말 대단해요!\n덕분에 마을 주변은 한동안 안전할 것 같아요."),
@@ -1672,6 +1681,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val data = QuestRegistry.get(quest.mainQuestId)
             ?: return listOf(DialoguePage("츄츄", "계속 모험을 해주세요!"))
         return when (quest.mainQuestStatus) {
+            QuestStatus.NOT_STARTED -> listOf(
+                DialoguePage("츄츄", buildMainQuestOfferText(data),
+                    choices = listOf("수락한다", "나중에 할게요"))
+            )
             QuestStatus.IN_PROGRESS -> listOf(
                 DialoguePage("츄츄", buildMainQuestProgressText(data, quest))
             )
@@ -1681,6 +1694,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             else -> listOf(DialoguePage("츄츄", "계속 모험을 해주세요!"))
         }
+    }
+
+    private fun buildMainQuestOfferText(data: QuestData): String = when (data.questType) {
+        "KILL" -> {
+            val monsterName = MonsterRegistry.get(data.targetMonsterId)?.name ?: data.targetMonsterId
+            "${monsterName} ${data.targetCount}마리를 처치해주세요.\n수락하시겠어요?"
+        }
+        "COLLECT" -> {
+            val matName = runCatching { MaterialType.valueOf(data.targetMaterialId) }
+                .getOrNull()?.let { MaterialCatalog.get(it).name } ?: data.targetMaterialId
+            "${matName} ${data.targetCount}개를 모아다 주세요.\n수락하시겠어요?"
+        }
+        "ENTER_MAP" -> "해당 지역으로 직접 이동해서 조사해주세요.\n수락하시겠어요?"
+        "REACH_LEVEL" -> "레벨 ${data.targetLevel}에 도달해주세요.\n수락하시겠어요?"
+        else -> "'${data.name}' 퀘스트를 수락하시겠어요?"
     }
 
     private fun buildMainQuestProgressText(data: QuestData, quest: QuestState): String = when (data.questType) {
@@ -1728,8 +1756,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startNextMainQuest(state: UiState, nextQuestId: String): UiState {
         if (nextQuestId.isBlank()) return state
-        val qData = QuestRegistry.get(nextQuestId) ?: return state
-        // COLLECT 퀘스트는 시작 시 기존 인벤 수량으로 초기 진행도 동기화
+        QuestRegistry.get(nextQuestId) ?: return state
+        return state.copy(
+            questState = state.questState.copy(
+                mainQuestId       = nextQuestId,
+                mainQuestProgress = 0,
+                mainQuestStatus   = QuestStatus.NOT_STARTED,
+            )
+        )
+    }
+
+    // 퀘스트 수락 시 호출 — COLLECT는 인벤 기존 수량으로 초기 진행도 동기화
+    private fun acceptMainQuest(state: UiState): UiState {
+        val qData = QuestRegistry.get(state.questState.mainQuestId) ?: return state
         val initProgress = if (qData.questType == "COLLECT" && qData.targetMaterialId.isNotBlank()) {
             val matType = runCatching { MaterialType.valueOf(qData.targetMaterialId) }.getOrNull()
             if (matType != null) {
@@ -1744,7 +1783,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                          else QuestStatus.IN_PROGRESS
         return state.copy(
             questState = state.questState.copy(
-                mainQuestId       = nextQuestId,
                 mainQuestProgress = initProgress,
                 mainQuestStatus   = initStatus,
             )
