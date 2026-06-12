@@ -124,7 +124,7 @@ data class UiState(
     val quickSlots: List<ConsumableType?> = List(3) { null },
     val skillCooldownUntil: Map<String, Long> = emptyMap(),
     val skillEffects: List<SkillEffect> = emptyList(),
-    val autoAttackEnabled: Boolean = true
+    val autoAttackEnabled: Boolean = false
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -516,9 +516,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             tut == TutorialStep.USE_PORTAL && portal.targetMap == MapType.BEGINNER_FIELD -> {
                 val rewarded = levelService.applyExp(result.player, 15)
                 computeDerived(result.copy(
-                    player            = rewarded,
-                    autoAttackEnabled = true,   // 튜토리얼 시작 전 자동 상태로 초기화
-                    questState        = result.questState.copy(tutorialStep = TutorialStep.LEARN_MANUAL_SWITCH)
+                    player     = rewarded,
+                    questState = result.questState.copy(tutorialStep = TutorialStep.LEARN_TAP_ATTACK)
                 ))
             }
             // 8단계: 마을 복귀 → 튜토리얼 완료 + 츄츄 자동 대화
@@ -555,7 +554,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { state ->
             if (state.questState.tutorialStep == TutorialStep.LEARN_TAP_ATTACK)
                 state.copy(questState = state.questState.copy(tutorialStep = TutorialStep.LEARN_AUTO_SWITCH))
-            else state
+            else state  // LEARN_TAP_ATTACK → LEARN_AUTO_SWITCH → LEARN_MANUAL_SWITCH → KILL_MONSTER
         }
         executeAttack()
     }
@@ -564,9 +563,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { state ->
             val newAuto = !state.autoAttackEnabled
             val newStep = when {
-                state.questState.tutorialStep == TutorialStep.LEARN_MANUAL_SWITCH && !newAuto ->
-                    TutorialStep.LEARN_TAP_ATTACK
+                // 순서: LEARN_TAP_ATTACK → LEARN_AUTO_SWITCH → LEARN_MANUAL_SWITCH → KILL_MONSTER
                 state.questState.tutorialStep == TutorialStep.LEARN_AUTO_SWITCH && newAuto ->
+                    TutorialStep.LEARN_MANUAL_SWITCH
+                state.questState.tutorialStep == TutorialStep.LEARN_MANUAL_SWITCH && !newAuto ->
                     TutorialStep.KILL_MONSTER
                 else -> state.questState.tutorialStep
             }
@@ -1372,7 +1372,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         tut == TutorialStep.USE_PORTAL -> listOf(
                             DialoguePage("츄츄", "왼쪽 포탈을 이용해\n초보자 사냥터로 이동해보세요!")
                         )
-                        tut.ordinal in TutorialStep.LEARN_MANUAL_SWITCH.ordinal..TutorialStep.EQUIP_ITEM.ordinal -> listOf(
+                        tut.ordinal in TutorialStep.LEARN_TAP_ATTACK.ordinal..TutorialStep.EQUIP_ITEM.ordinal -> listOf(
                             DialoguePage("츄츄", "사냥터에서 모험을 계속해주세요!\n제가 응원하고 있을게요.")
                         )
                         tut == TutorialStep.RETURN_TO_TOWN -> listOf(
