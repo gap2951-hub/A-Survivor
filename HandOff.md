@@ -1331,6 +1331,16 @@ SoundManager.release()          // onDestroy
 | 252 | 테스트 아이템 6종 복원 — equipment.csv에 NOGADA_GLOVE/TEST_HAT/TEST_TOP/TEST_SHOES/TEST_PANTS/TEST_BOW 추가, shop.csv 상단에도 등록 (drop.csv는 기존 유지) | ✅ |
 | 253 | 상점 아이템 아이콘 표시 — ShopWindow BUY/SELL 탭 아이템 행 이름 왼쪽에 18dp 이미지(equipmentDrawableRes/scrollDrawableRes) 표시, 이미지 없으면 한글 슬롯명 텍스트(모자/상의/하의/장갑/신발/무기/주문서/소비) 폴백 | ✅ |
 | 254 | EquipmentRegistry import 누락 수정 — 상점 아이콘 기능 추가 후 `Unresolved reference 'EquipmentRegistry'` 빌드 오류 발생, MainActivity.kt에 `import com.a_survivor.app.model.EquipmentRegistry` 추가로 해결 | ✅ |
+| 255 | 튜토리얼 퀘스트 시스템 기초 구현 — TutorialStep enum (8단계), QuestState tutorialStep/tutorialTravelDistance 필드, GameSaveData 직렬화, TutorialBanner UI, NPC `!` 힌트 | ✅ |
+| 256 | 튜토리얼 TutorialBanner 문구 친절하게 수정 — "마을을 둘러보세요" → "왼쪽 하단 조이스틱을 움직여 이동해보세요" 등 UI 요소 위치 명시 | ✅ |
+| 257 | JoystickDemoOverlay 추가 — 1800ms 루프 조이스틱 thumb 회전 애니메이션, LEARN_MOVEMENT 및 EXPLORE_TOWN 초반(30 거리 미만) 대화 없을 때 표시 | ✅ |
+| 258 | AttackDemoOverlay 추가 — 공격 버튼 시범 애니메이션(탭/스와이프), 3단계(LEARN_TAP_ATTACK/LEARN_AUTO_SWITCH/LEARN_MANUAL_SWITCH) | ✅ |
+| 259 | LEARN_MOVEMENT 단계 신규 추가 — 조이스틱 이동 학습(30 거리)을 TALK_TO_CHUCHU 이전에 배치, 이동 먼저 배운 뒤 츄츄에게 가도록 순서 수정 | ✅ |
+| 260 | 공격 튜토리얼 인터랙티브 전환 — 애니메이션만 보여주던 방식에서 플레이어가 직접 탭/스와이프해야 단계가 넘어가도록 변경 (LEARN_TAP_ATTACK/LEARN_AUTO_SWITCH/LEARN_MANUAL_SWITCH 3단계 추가) | ✅ |
+| 261 | 기본 공격 모드 수동으로 변경 — UiState.autoAttackEnabled 기본값 true → false | ✅ |
+| 262 | "전환 완료!" 메시지 실제 전환 시에만 표시 — AttackDemoOverlay에서 타이머 기반 표시 제거, LaunchedEffect(tutorialStep) 변경 시점에 1.2초 노출하도록 수정 | ✅ |
+| 263 | 공격 모드 전환 완료 메시지 UI Box 추가 — BottomEnd padding(end=16dp, bottom=130dp)에 fadeIn/fadeOut AnimatedVisibility, 노란 텍스트 어두운 배경 | ✅ |
+| 264 | PICKUP_ITEM 튜토리얼 문구 수정 — "아이템에 가까이 가면 아이템을 획득합니다. 장비 아이템을 획득해보세요." | ✅ |
 
 ---
 
@@ -1900,65 +1910,135 @@ private fun rememberSlotSize(): Dp =
 
 ---
 
-## 튜토리얼 퀘스트 시스템 (작업 #255–262)
+## 튜토리얼 퀘스트 시스템 (작업 #255–270)
 
-기존 퀘스트 인프라(`QuestState`, `QuestStatus`)를 확장하여 8단계 튜토리얼 흐름을 구현.
+기존 퀘스트 인프라(`QuestState`, `QuestStatus`)를 확장하여 13단계 튜토리얼 흐름을 구현.
 별도 시스템이 아닌 `QuestState.tutorialStep` 필드로 진행 상태를 추적한다.
 
 ### TutorialStep enum (QuestState.kt)
 
 ```kotlin
 enum class TutorialStep {
-    TALK_TO_CHUCHU, EXPLORE_TOWN, USE_PORTAL, KILL_MONSTER,
-    PICKUP_ITEM, OPEN_INVENTORY, EQUIP_ITEM, RETURN_TO_TOWN, COMPLETED
+    LEARN_MOVEMENT,       // 조이스틱 이동 학습 (30 거리)
+    TALK_TO_CHUCHU,       // 츄츄 NPC 탭
+    EXPLORE_TOWN,         // 마을 탐험 (300 거리)
+    USE_PORTAL,           // 초보자 사냥터 포탈 진입
+    LEARN_TAP_ATTACK,     // 수동 공격 1회 (탭)
+    LEARN_AUTO_SWITCH,    // 자동 공격 전환 (스와이프↑)
+    LEARN_MANUAL_SWITCH,  // 수동 공격 재전환 (스와이프↑)
+    KILL_MONSTER,         // 몬스터 처치
+    PICKUP_ITEM,          // 장비 아이템 획득
+    OPEN_INVENTORY,       // 인벤토리 열기
+    EQUIP_ITEM,           // 장비 착용
+    RETURN_TO_TOWN,       // TOWN 복귀 + 츄츄 대화
+    COMPLETED             // 튜토리얼 완료
 }
 ```
 
-`QuestState`에 `tutorialStep: TutorialStep`과 `tutorialTravelDistance: Float` 필드 추가.
+`QuestState`에 `tutorialStep: TutorialStep = TutorialStep.LEARN_MOVEMENT`과 `tutorialTravelDistance: Float = 0f` 필드 추가.
 
 ### 단계별 달성 조건 및 보상
 
 | 단계 | 조건 | 보상 |
 |------|------|------|
-| TALK_TO_CHUCHU | 추추 NPC 대화 시작 시 즉시 | EXP +10 |
+| LEARN_MOVEMENT | 이동 누적 거리 30 단위 | — |
+| TALK_TO_CHUCHU | 츄츄 NPC 대화 시작 (LEARN_MOVEMENT·TALK_TO_CHUCHU 모두 동일 대화창) | EXP +10 |
 | EXPLORE_TOWN | 이동 누적 거리 300 단위 | EXP +10, 골드 +50 |
 | USE_PORTAL | BEGINNER_FIELD 포탈 진입 | EXP +15 |
+| LEARN_TAP_ATTACK | 공격 버튼 탭으로 수동 공격 1회 | — |
+| LEARN_AUTO_SWITCH | 공격 버튼 위로 스와이프 → 자동 공격 전환 | — |
+| LEARN_MANUAL_SWITCH | 공격 버튼 위로 스와이프 → 수동 공격 재전환 | — |
 | KILL_MONSTER | 첫 몬스터 처치 | EXP +20, 골드 +100 |
-| PICKUP_ITEM | 드롭 아이템 자동 수거 | EXP +10 |
+| PICKUP_ITEM | 장비 드롭 아이템 자동 수거 | EXP +10 |
 | OPEN_INVENTORY | 인벤토리 열기 | EXP +10 |
 | EQUIP_ITEM | 아이템 장착 | EXP +20 |
-| RETURN_TO_TOWN | TOWN 복귀 + 추추 대화 | EXP +20, 골드 +100 → 본 퀘스트 연결 |
+| RETURN_TO_TOWN | TOWN 복귀 + 츄츄 대화 | EXP +20, 골드 +100 → 본 퀘스트 연결 |
+
+### TutorialBanner 문구 (MainActivity.kt)
+
+```kotlin
+TutorialStep.LEARN_MOVEMENT      -> "왼쪽 하단 조이스틱으로 이동해보세요! 그리고 NPC 츄츄에게 가보세요."
+TutorialStep.TALK_TO_CHUCHU      -> "NPC 츄츄에게 다가가 탭해보세요."
+TutorialStep.EXPLORE_TOWN        -> "왼쪽 하단 조이스틱을 움직여 마을을 탐험해보세요! (n / 300)"
+TutorialStep.USE_PORTAL          -> "파란 포탈에 다가가 초보자 사냥터로 이동해보세요."
+TutorialStep.LEARN_TAP_ATTACK    -> "공격 버튼을 탭해 수동 공격을 한 번 해보세요!"
+TutorialStep.LEARN_AUTO_SWITCH   -> "공격 버튼을 위로 스와이프해 자동 공격으로 전환해보세요!"
+TutorialStep.LEARN_MANUAL_SWITCH -> "공격 버튼을 위로 스와이프해 수동 공격으로 전환해보세요!"
+TutorialStep.KILL_MONSTER        -> "몬스터를 처치해보세요!"
+TutorialStep.PICKUP_ITEM         -> "아이템에 가까이 가면 아이템을 획득합니다. 장비 아이템을 획득해보세요."
+TutorialStep.OPEN_INVENTORY      -> "우측 상단 메뉴의 '인벤' 버튼을 탭해보세요."
+TutorialStep.EQUIP_ITEM          -> "인벤토리에서 장비 아이템을 탭해 착용해보세요."
+TutorialStep.RETURN_TO_TOWN      -> "포탈로 마을에 돌아가 츄츄에게 보고하세요."
+```
 
 ### 진행 트리거 구현 위치 (MainViewModel.kt)
 
 | 함수 | 처리 단계 |
 |------|-----------|
-| `startDialogue()` NpcRole.QUEST 분기 | TALK_TO_CHUCHU → EXPLORE_TOWN, 각 단계별 안내 대화 |
-| `movePlayer()` | EXPLORE_TOWN → USE_PORTAL (300 거리 누적) |
-| `teleportState()` | USE_PORTAL+BEGINNER_FIELD → KILL_MONSTER; RETURN_TO_TOWN+TOWN → COMPLETED |
+| `movePlayer()` | LEARN_MOVEMENT → TALK_TO_CHUCHU (30 거리); EXPLORE_TOWN → USE_PORTAL (300 거리) |
+| `startDialogue()` | LEARN_MOVEMENT·TALK_TO_CHUCHU → EXPLORE_TOWN (동일 대화창, 거리 초기화, EXP+10) |
+| `teleportState()` | USE_PORTAL+BEGINNER_FIELD → LEARN_TAP_ATTACK |
+| `manualAttack()` | LEARN_TAP_ATTACK → LEARN_AUTO_SWITCH |
+| `toggleAutoAttack()` | LEARN_AUTO_SWITCH+자동전환 → LEARN_MANUAL_SWITCH; LEARN_MANUAL_SWITCH+수동전환 → KILL_MONSTER |
 | `pendingAttackTick()` / `projectileTick()` / `useSkill()` | KILL_MONSTER → PICKUP_ITEM |
 | `applyDrops()` | PICKUP_ITEM → OPEN_INVENTORY |
 | `onInventoryOpened()` | OPEN_INVENTORY → EQUIP_ITEM |
 | `equipFromInventory()` | EQUIP_ITEM → RETURN_TO_TOWN |
 
+### 기본 공격 모드
+
+`UiState.autoAttackEnabled = false` (기본값 수동 공격). 튜토리얼에서 자동↔수동을 직접 전환하도록 유도.
+
+### 시범 애니메이션 오버레이 (MainActivity.kt)
+
+#### JoystickDemoOverlay
+
+- 표시 조건: `LEARN_MOVEMENT` 단계이거나 `EXPLORE_TOWN && tutorialTravelDistance < 30f`, `activeDialogue == null`
+- 위치: `Alignment.BottomStart`, padding start/bottom 16dp (조이스틱 위에 오버레이)
+- 1800ms 루프로 조이스틱 thumb이 원형 궤도를 따라 회전하는 Canvas 애니메이션
+- 노란색(`0xFFFFDF7E`) 원형 thumb + 흰 반투명 베이스 원
+
+#### AttackDemoOverlay
+
+- 표시 조건: `LEARN_TAP_ATTACK`, `LEARN_AUTO_SWITCH`, `LEARN_MANUAL_SWITCH` 단계, `activeDialogue == null`
+- 위치: `Alignment.BottomEnd`, padding end=16dp, bottom=20dp
+- 3초 루프, 단계별 표시:
+  - `LEARN_TAP_ATTACK`: 탭 리플 애니메이션 + "공격 버튼을 탭하세요" / "탭 = 1회 공격"
+  - `LEARN_AUTO_SWITCH`: 위로 스와이프 손가락 + "위로 스와이프" / "버튼을 위로 스와이프 → 자동 전환"
+  - `LEARN_MANUAL_SWITCH`: 위로 스와이프 손가락 + "위로 스와이프" / "버튼을 위로 스와이프 → 수동 전환"
+- `isAuto = step == LEARN_MANUAL_SWITCH` (정적, 애니메이션 중 변경 없음)
+
+#### 공격 모드 전환 완료 메시지
+
+실제 `tutorialStep` 변경 시점에 `LaunchedEffect(state.questState.tutorialStep)`으로 1.2초간 표시.
+
+```kotlin
+TutorialStep.LEARN_MANUAL_SWITCH -> "자동 공격 전환 완료!"
+TutorialStep.KILL_MONSTER        -> "수동 공격 전환 완료!"
+```
+
+위치: `Alignment.BottomEnd`, padding end=16dp, bottom=130dp (AttackDemoOverlay 위)
+
+### NPC 힌트 `!` 표시
+
+```kotlin
+val npcHintIds = when (tutorialStep) {
+    LEARN_MOVEMENT, TALK_TO_CHUCHU, RETURN_TO_TOWN -> setOf(1)  // 츄츄 ID=1
+    else -> emptySet()
+}
+```
+
 ### 자동 대화 (teleportState)
 
-`RETURN_TO_TOWN` 단계에서 TOWN 복귀 시 `teleportState()`가 자동으로 추추 대화를 열고
+`RETURN_TO_TOWN` 단계에서 TOWN 복귀 시 `teleportState()`가 자동으로 츄츄 대화를 열고
 4페이지 튜토리얼 완료 메시지 후 "도와주겠습니다" / "나중에 할게요" 선택지로 본 퀘스트 진입.
-
-### UI 변경 (MainActivity.kt)
-
-- **TutorialBanner**: 화면 상단에 `[튜토리얼] <단계 안내문>` 표시; EXPLORE_TOWN 단계는 진행 거리 `(현재/300)` 포함
-- **`!` 힌트**: `drawNpc(showHint = it.id in npcHintIds)`로 추추 머리 위에 노란 `!` 표시 (TALK_TO_CHUCHU, RETURN_TO_TOWN 단계)
-- **QuestTrackerPanel**: `tutorialStep == COMPLETED`이고 본 퀘스트 진행 중일 때만 표시
-- **인벤토리 열기 감지**: `LaunchedEffect(isInventoryOpen)` → `vm::onInventoryOpened()`
 
 ### 저장/복원
 
-`GameSaveData`에 `tutorialStep: String`, `tutorialTravelDistance: Float` 추가.
+`GameSaveData`에 `tutorialStep: String = "LEARN_MOVEMENT"`, `tutorialTravelDistance: Float = 0f` 추가.
 `SaveService.save()` / `restoreState()`에서 직렬화·역직렬화 처리.
 
 ### 초기 상태
 
-새 게임 시작 시 TOWN 맵, 플레이어 위치 `(450f, 286f)`, 몬스터 없음.
+새 게임 시작 시 TOWN 맵, 플레이어 위치 `(450f, 286f)`, 몬스터 없음, `tutorialStep = LEARN_MOVEMENT`.
 튜토리얼 완료 전에는 퀘스트 트래커 패널이 숨겨진다.
