@@ -350,6 +350,21 @@ fun MainScreen(
         if (isInventoryOpen) onInventoryOpened()
     }
 
+    // 공격 모드 전환 완료 메시지 (실제 전환 발생 시)
+    var attackCompleteMsg by remember { mutableStateOf("") }
+    LaunchedEffect(state.questState.tutorialStep) {
+        val msg = when (state.questState.tutorialStep) {
+            TutorialStep.LEARN_MANUAL_SWITCH -> "자동 공격 전환 완료!"
+            TutorialStep.KILL_MONSTER        -> "수동 공격 전환 완료!"
+            else -> ""
+        }
+        if (msg.isNotEmpty()) {
+            attackCompleteMsg = msg
+            delay(1200L)
+            attackCompleteMsg = ""
+        }
+    }
+
     // 플로팅 창 위치 및 경계 계산
     val density       = LocalDensity.current
     val configuration = LocalConfiguration.current
@@ -716,6 +731,29 @@ fun MainScreen(
                 .padding(end = 16.dp, bottom = 20.dp)
         ) {
             AttackDemoOverlay(step = atkDemoStep)
+        }
+
+        // ⑧-d 공격 모드 전환 완료 메시지 (실제 전환 시 1.2초 표시)
+        AnimatedVisibility(
+            visible  = attackCompleteMsg.isNotEmpty(),
+            enter    = fadeIn(),
+            exit     = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 130.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .background(Color(0xDD000000), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text       = attackCompleteMsg,
+                    color      = Color(0xFFFFDF7E),
+                    fontSize   = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
 
         // ⑧ 드래그 중인 아이템 고스트
@@ -3445,33 +3483,28 @@ private fun AttackDemoOverlay(step: TutorialStep, modifier: Modifier = Modifier)
         label = "autoPulse"
     )
 
-    // 스와이프 단계: 액션 구간(0.25-0.85) 내 65%에서 모드 전환
-    val actionP  = ((progress - 0.25f) / 0.60f).coerceIn(0f, 1f)
-    val switched = progress >= 0.25f + 0.60f * 0.65f
+    val actionP = ((progress - 0.25f) / 0.60f).coerceIn(0f, 1f)
 
-    val isAuto = when (step) {
-        TutorialStep.LEARN_MANUAL_SWITCH -> !switched   // 자동 시작 → 스와이프 후 수동
-        TutorialStep.LEARN_AUTO_SWITCH   ->  switched   // 수동 시작 → 스와이프 후 자동
-        else                             -> false        // LEARN_TAP_ATTACK: 항상 수동
-    }
-    val accent = if (isAuto) Color(0xFFFFD700) else Color(0xFF6699AA)
+    // 버튼은 항상 현재(전환 전) 상태로 표시
+    val isAuto = step == TutorialStep.LEARN_MANUAL_SWITCH
+    val accent  = if (isAuto) Color(0xFFFFD700) else Color(0xFF6699AA)
 
     val isSwipeStep = step == TutorialStep.LEARN_MANUAL_SWITCH || step == TutorialStep.LEARN_AUTO_SWITCH
     val fingerColor = when (step) {
-        TutorialStep.LEARN_MANUAL_SWITCH -> Color(0xFF6699AA)   // 수동(파랑)으로 전환
-        else                             -> Color(0xFFFFD700)   // 자동(금)으로 전환
+        TutorialStep.LEARN_MANUAL_SWITCH -> Color(0xFF6699AA)
+        else                             -> Color(0xFFFFD700)
     }
 
     val topLabel = when (step) {
-        TutorialStep.LEARN_MANUAL_SWITCH -> if (!switched) "위로 스와이프" else "수동 전환 완료!"
+        TutorialStep.LEARN_MANUAL_SWITCH -> "위로 스와이프"
         TutorialStep.LEARN_TAP_ATTACK    -> "공격 버튼을 탭하세요"
-        TutorialStep.LEARN_AUTO_SWITCH   -> if (!switched) "위로 스와이프" else "자동 전환 완료!"
+        TutorialStep.LEARN_AUTO_SWITCH   -> "위로 스와이프"
         else -> ""
     }
     val subLabel = when (step) {
-        TutorialStep.LEARN_MANUAL_SWITCH -> if (!switched) "버튼을 위로 스와이프 ↑" else "탭으로 공격해보세요"
+        TutorialStep.LEARN_MANUAL_SWITCH -> "버튼을 위로 스와이프 → 수동 전환"
         TutorialStep.LEARN_TAP_ATTACK    -> "탭 = 1회 공격"
-        TutorialStep.LEARN_AUTO_SWITCH   -> if (!switched) "버튼을 위로 스와이프 ↑" else "자동으로 공격 중"
+        TutorialStep.LEARN_AUTO_SWITCH   -> "버튼을 위로 스와이프 → 자동 전환"
         else -> ""
     }
 
