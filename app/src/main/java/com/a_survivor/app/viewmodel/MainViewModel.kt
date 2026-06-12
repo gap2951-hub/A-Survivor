@@ -34,6 +34,7 @@ import com.a_survivor.app.model.PlayerStats
 import com.a_survivor.app.model.Portal
 import com.a_survivor.app.model.PortalRegistry
 import com.a_survivor.app.model.Projectile
+import com.a_survivor.app.model.QuestData
 import com.a_survivor.app.model.QuestState
 import com.a_survivor.app.model.QuestStatus
 import com.a_survivor.app.model.TutorialStep
@@ -296,7 +297,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 killCount             = data.questKillCount,
                 killGoal              = data.questKillGoal,
                 tutorialStep          = tutStep,
-                tutorialTravelDistance = data.tutorialTravelDistance
+                tutorialTravelDistance = data.tutorialTravelDistance,
+                mainQuestId           = data.mainQuestId,
+                mainQuestProgress     = data.mainQuestProgress,
+                mainQuestStatus       = runCatching { QuestStatus.valueOf(data.mainQuestStatus) }
+                                            .getOrDefault(QuestStatus.NOT_STARTED),
             )
         )
         return computeDerived(base)
@@ -539,6 +544,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             else -> result
         }
+
+        // 메인 퀘스트 ENTER_MAP 자동 완료
+        val mqDataEnter = QuestRegistry.get(result.questState.mainQuestId)
+        if (result.questState.mainQuestStatus == QuestStatus.IN_PROGRESS &&
+            mqDataEnter?.questType == "ENTER_MAP" &&
+            mqDataEnter.targetMapId.isNotBlank() &&
+            portal.targetMap.name == mqDataEnter.targetMapId) {
+            result = result.copy(questState = result.questState.copy(
+                mainQuestStatus = QuestStatus.READY_TO_COMPLETE
+            ))
+        }
+
         return result
     }
 
@@ -708,10 +725,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val playerWithTutExp = if (tutKillAdvance) levelService.applyExp(updatedPlayer, 20) else updatedPlayer
             if (playerWithTutExp.level > state.player.level) sfxToPlay = SoundManager.Sfx.LEVEL_UP
 
+            // 메인 퀘스트 KILL 진행
+            val mqData = QuestRegistry.get(state.questState.mainQuestId)
+            val mqKillAdd = if (state.questState.mainQuestStatus == QuestStatus.IN_PROGRESS &&
+                mqData?.questType == "KILL" && mqData.targetMonsterId.isNotBlank()) {
+                killedList.count { it.monsterId == mqData.targetMonsterId }
+            } else 0
+            val newMqProgress = (state.questState.mainQuestProgress + mqKillAdd)
+                .coerceAtMost(mqData?.targetCount ?: Int.MAX_VALUE)
+            val newMqStatus = if (mqKillAdd > 0 && newMqProgress >= (mqData?.targetCount ?: Int.MAX_VALUE))
+                QuestStatus.READY_TO_COMPLETE else state.questState.mainQuestStatus
+            // 메인 퀘스트 REACH_LEVEL 감지
+            val newMqStatusFinal = if (state.questState.mainQuestStatus == QuestStatus.IN_PROGRESS &&
+                mqData?.questType == "REACH_LEVEL" &&
+                playerWithTutExp.level >= mqData.targetLevel &&
+                state.player.level < mqData.targetLevel) QuestStatus.READY_TO_COMPLETE else newMqStatus
+
             val newQuestState  = state.questState.copy(
-                killCount    = newKillCount.coerceAtMost(state.questState.killGoal),
-                status       = newQuestStatus,
-                tutorialStep = if (tutKillAdvance) TutorialStep.PICKUP_ITEM else state.questState.tutorialStep
+                killCount         = newKillCount.coerceAtMost(state.questState.killGoal),
+                status            = newQuestStatus,
+                tutorialStep      = if (tutKillAdvance) TutorialStep.PICKUP_ITEM else state.questState.tutorialStep,
+                mainQuestProgress = newMqProgress,
+                mainQuestStatus   = newMqStatusFinal,
             )
 
             val finalState = baseState.copy(
@@ -810,6 +845,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val tutKillAdvSkill = killed.isNotEmpty() && state.questState.tutorialStep == TutorialStep.KILL_MONSTER
             val playerWithTutExpSkill = if (tutKillAdvSkill) levelService.applyExp(updatedPlayer, 20) else updatedPlayer
 
+            // 메인 퀘스트 KILL / REACH_LEVEL 진행 (스킬 경로)
+            val mqDataSkill = QuestRegistry.get(state.questState.mainQuestId)
+            val mqKillAddSkill = if (state.questState.mainQuestStatus == QuestStatus.IN_PROGRESS &&
+                mqDataSkill?.questType == "KILL" && mqDataSkill.targetMonsterId.isNotBlank()) {
+                killed.count { it.monsterId == mqDataSkill.targetMonsterId }
+            } else 0
+            val newMqProgressSkill = (state.questState.mainQuestProgress + mqKillAddSkill)
+                .coerceAtMost(mqDataSkill?.targetCount ?: Int.MAX_VALUE)
+            val newMqStatusSkill = when {
+                mqKillAddSkill > 0 && newMqProgressSkill >= (mqDataSkill?.targetCount ?: Int.MAX_VALUE) ->
+                    QuestStatus.READY_TO_COMPLETE
+                state.questState.mainQuestStatus == QuestStatus.IN_PROGRESS &&
+                    mqDataSkill?.questType == "REACH_LEVEL" &&
+                    playerWithTutExpSkill.level >= mqDataSkill.targetLevel &&
+                    state.player.level < mqDataSkill.targetLevel ->
+                    QuestStatus.READY_TO_COMPLETE
+                else -> state.questState.mainQuestStatus
+            }
+
             val advancePending = state.jobAdvancementPending || (
                 gainedExp > 0 && playerWithTutExpSkill.job == PlayerJob.BEGINNER &&
                 playerWithTutExpSkill.level >= 3 && state.player.level < 3
@@ -825,9 +879,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 pendingRespawns       = state.pendingRespawns + killed.map { PendingRespawn(it.id, now) },
                 damageNumbers         = state.damageNumbers + dmgNums,
                 questState            = state.questState.copy(
-                    killCount    = newKillCount,
-                    status       = newQuestStatus,
-                    tutorialStep = if (tutKillAdvSkill) TutorialStep.PICKUP_ITEM else state.questState.tutorialStep
+                    killCount         = newKillCount,
+                    status            = newQuestStatus,
+                    tutorialStep      = if (tutKillAdvSkill) TutorialStep.PICKUP_ITEM else state.questState.tutorialStep,
+                    mainQuestProgress = newMqProgressSkill,
+                    mainQuestStatus   = newMqStatusSkill,
                 ),
                 jobAdvancementPending = advancePending,
                 playerAttackAnimStart = now
@@ -924,10 +980,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val tutKillAdvProj = killed.isNotEmpty() && state.questState.tutorialStep == TutorialStep.KILL_MONSTER
             val playerWithTutExpProj = if (tutKillAdvProj) levelService.applyExp(updatedPlayer, 20) else updatedPlayer
 
+            // 메인 퀘스트 KILL / REACH_LEVEL 진행 (투사체 경로)
+            val mqDataProj = QuestRegistry.get(state.questState.mainQuestId)
+            val mqKillAddProj = if (state.questState.mainQuestStatus == QuestStatus.IN_PROGRESS &&
+                mqDataProj?.questType == "KILL" && mqDataProj.targetMonsterId.isNotBlank()) {
+                killed.count { it.monsterId == mqDataProj.targetMonsterId }
+            } else 0
+            val newMqProgressProj = (state.questState.mainQuestProgress + mqKillAddProj)
+                .coerceAtMost(mqDataProj?.targetCount ?: Int.MAX_VALUE)
+            val newMqStatusProj = when {
+                mqKillAddProj > 0 && newMqProgressProj >= (mqDataProj?.targetCount ?: Int.MAX_VALUE) ->
+                    QuestStatus.READY_TO_COMPLETE
+                state.questState.mainQuestStatus == QuestStatus.IN_PROGRESS &&
+                    mqDataProj?.questType == "REACH_LEVEL" &&
+                    playerWithTutExpProj.level >= mqDataProj.targetLevel &&
+                    state.player.level < mqDataProj.targetLevel ->
+                    QuestStatus.READY_TO_COMPLETE
+                else -> state.questState.mainQuestStatus
+            }
+
             val newQuestStateProj = state.questState.copy(
-                killCount    = newKillCountProj.coerceAtMost(state.questState.killGoal),
-                status       = newQuestStatusProj,
-                tutorialStep = if (tutKillAdvProj) TutorialStep.PICKUP_ITEM else state.questState.tutorialStep
+                killCount         = newKillCountProj.coerceAtMost(state.questState.killGoal),
+                status            = newQuestStatusProj,
+                tutorialStep      = if (tutKillAdvProj) TutorialStep.PICKUP_ITEM else state.questState.tutorialStep,
+                mainQuestProgress = newMqProgressProj,
+                mainQuestStatus   = newMqStatusProj,
             )
 
             val newState = state.copy(
@@ -1090,10 +1167,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 is DropItem.MaterialDrop -> {
                     val info = com.a_survivor.app.model.MaterialCatalog.get(drop.materialType)
-                    addMessage(
+                    var ms = addMessage(
                         s.copy(inventorySlots = addMaterialToSlots(s.inventorySlots, drop.materialType)),
                         "${info.name} 획득", MessageType.ITEM
                     )
+                    // 메인 퀘스트 COLLECT 진행
+                    val mqDataCollect = QuestRegistry.get(ms.questState.mainQuestId)
+                    if (ms.questState.mainQuestStatus == QuestStatus.IN_PROGRESS &&
+                        mqDataCollect?.questType == "COLLECT" &&
+                        mqDataCollect.targetMaterialId == drop.materialType.name) {
+                        val newProg = (ms.questState.mainQuestProgress + 1)
+                            .coerceAtMost(mqDataCollect.targetCount)
+                        val newStat = if (newProg >= mqDataCollect.targetCount)
+                            QuestStatus.READY_TO_COMPLETE else QuestStatus.IN_PROGRESS
+                        ms = ms.copy(questState = ms.questState.copy(
+                            mainQuestProgress = newProg,
+                            mainQuestStatus   = newStat,
+                        ))
+                    }
+                    ms
                 }
             }
         }
@@ -1469,20 +1561,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             )
                             state.copy(activeDialogue = DialogueSession(pages = newPages, npcId = dlg.npcId))
                         }
+                        // QUEST_001 보상 수령
                         quest.status == QuestStatus.READY_TO_COMPLETE -> {
-                            val questData  = dlg.npcId?.let { QuestRegistry.questForNpc(it) }
-                            val rewardExp  = questData?.rewardExp ?: 50
-                            val rewardItem = questData?.rewardItemId?.let {
-                                runCatching { ScrollType.valueOf(it) }.getOrNull()
-                            } ?: ScrollType.GLOVE_ATK_100
+                            val questData = QuestRegistry.get("QUEST_001")
+                            val rewardExp = questData?.rewardExp ?: 50
                             val rewarded  = levelService.applyExp(state.player, rewardExp)
-                            val newSlots  = addScrollToSlots(state.inventorySlots, rewardItem)
-                            computeDerived(state.copy(
-                                player         = rewarded,
-                                inventorySlots = newSlots,
-                                questState     = quest.copy(status = QuestStatus.COMPLETED),
-                                activeDialogue = null
+                            var newState  = computeDerived(state.copy(
+                                player     = rewarded,
+                                money      = state.money + (questData?.rewardMoney ?: 0),
+                                questState = quest.copy(status = QuestStatus.COMPLETED),
                             ))
+                            newState = giveRewardItem(newState, questData?.rewardItemId ?: "GLOVE_ATK_100")
+                            // MQ-001 자동 시작
+                            newState = startNextMainQuest(newState, questData?.nextQuestId ?: "MQ-001")
+                            newState.copy(activeDialogue = null)
+                        }
+                        // 메인 퀘스트 체인 보상 수령
+                        quest.mainQuestStatus == QuestStatus.READY_TO_COMPLETE && index == 0 -> {
+                            val qData = QuestRegistry.get(quest.mainQuestId)
+                                ?: return@update state.copy(activeDialogue = null)
+                            val rewarded = levelService.applyExp(state.player, qData.rewardExp)
+                            var newState = computeDerived(state.copy(
+                                player     = rewarded,
+                                money      = state.money + qData.rewardMoney,
+                                questState = quest.copy(mainQuestStatus = QuestStatus.COMPLETED),
+                            ))
+                            newState = giveRewardItem(newState, qData.rewardItemId)
+
+                            // 다음 퀘스트 시작 여부 결정
+                            val nextId = qData.nextQuestId
+                            newState = if (nextId.isNotBlank()) {
+                                startNextMainQuest(newState, nextId)
+                            } else {
+                                // 마지막 퀘스트 — 챕터 종료
+                                newState
+                            }
+
+                            // MQ-006 / MQ-013 특수 인트로 대화
+                            val specialPages: List<DialoguePage>? = when (nextId) {
+                                "MQ-006" -> listOf(
+                                    DialoguePage("츄츄", "최근 스켈레톤들이 출몰하던 지역을\n조사하던 중 이상한 흔적이 발견됐어요."),
+                                    DialoguePage("츄츄", "마을에서 사냥터로 가는 포탈 반대편에서\n한 번도 본 적 없는 거대한 발자국이 발견됐어요."),
+                                    DialoguePage("츄츄", "스켈레톤들과 관련이 있는지 모르겠지만\n분명 평범한 일은 아닌 것 같아요."),
+                                    DialoguePage("츄츄", "직접 가서 조사해 주실 수 있나요?")
+                                )
+                                "MQ-013" -> listOf(
+                                    DialoguePage("츄츄", "정말 대단해요!\n덕분에 마을 주변은 한동안 안전할 것 같아요."),
+                                    DialoguePage("츄츄", "하지만 이상해요.\n스켈레톤들과 미노타우르스가 동시에 늘어난 건 우연이 아닐 거예요."),
+                                    DialoguePage("츄츄", "분명 어딘가에 원인이 있을 거예요.\n지금의 힘으로는 그 원인을 조사하기 어려울지도 몰라요."),
+                                    DialoguePage("츄츄", "조금 더 강해져서 돌아와 주세요.\n그때 새로운 이야기를 들려드릴게요.")
+                                )
+                                else -> null
+                            }
+                            newState.copy(
+                                activeDialogue = specialPages?.let {
+                                    DialogueSession(pages = it, npcId = dlg.npcId)
+                                }
+                            )
                         }
                         else -> state.copy(activeDialogue = null)
                     }
@@ -1495,7 +1630,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(activeDialogue = null) }
     }
 
-    private fun buildDialoguePages(quest: QuestState): List<DialoguePage> = when (quest.status) {
+    private fun buildDialoguePages(quest: QuestState): List<DialoguePage> = when {
+        quest.status != QuestStatus.COMPLETED -> buildQuest001Pages(quest)
+        quest.mainQuestId.isNotBlank()        -> buildMainQuestDialogue(quest)
+        else -> listOf(DialoguePage("츄츄", "덕분에 평화로워졌어요.\n정말 감사합니다!"))
+    }
+
+    private fun buildQuest001Pages(quest: QuestState): List<DialoguePage> = when (quest.status) {
         QuestStatus.NOT_STARTED -> listOf(
             DialoguePage("츄츄", "안녕하세요!\n혹시 모험가이신가요?"),
             DialoguePage("츄츄", "요즘 마을 주변이 이상해졌어요.\n어디선가 나타난 스켈레톤 워리어들이 마을 주변을 배회하고 있어요."),
@@ -1514,6 +1655,72 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
         QuestStatus.COMPLETED -> listOf(
             DialoguePage("츄츄", "덕분에 평화로워졌어요.\n정말 감사합니다!")
+        )
+    }
+
+    private fun buildMainQuestDialogue(quest: QuestState): List<DialoguePage> {
+        val data = QuestRegistry.get(quest.mainQuestId)
+            ?: return listOf(DialoguePage("츄츄", "계속 모험을 해주세요!"))
+        return when (quest.mainQuestStatus) {
+            QuestStatus.IN_PROGRESS -> listOf(
+                DialoguePage("츄츄", buildMainQuestProgressText(data, quest))
+            )
+            QuestStatus.READY_TO_COMPLETE -> listOf(
+                DialoguePage("츄츄", "수고하셨어요!\n'${data.name}' 임무를 완수하셨군요."),
+                DialoguePage("츄츄", buildRewardDescription(data), choices = listOf("보상 받기"))
+            )
+            else -> listOf(DialoguePage("츄츄", "계속 모험을 해주세요!"))
+        }
+    }
+
+    private fun buildMainQuestProgressText(data: QuestData, quest: QuestState): String = when (data.questType) {
+        "KILL"        -> "'${data.name}' 진행 중!\n${quest.mainQuestProgress} / ${data.targetCount} 처치했어요."
+        "COLLECT"     -> "'${data.name}' 진행 중!\n${quest.mainQuestProgress} / ${data.targetCount} 수집했어요."
+        "REACH_LEVEL" -> "'${data.name}'\n레벨 ${data.targetLevel}을 달성해주세요!"
+        "ENTER_MAP"   -> "'${data.name}'\n해당 지역으로 이동해주세요."
+        else          -> "'${data.name}' 진행 중입니다."
+    }
+
+    private fun buildRewardDescription(data: QuestData): String {
+        val parts = mutableListOf<String>()
+        if (data.rewardExp > 0)   parts.add("EXP +${data.rewardExp}")
+        if (data.rewardMoney > 0) parts.add("${data.rewardMoney}원")
+        when (data.rewardItemId) {
+            "RANDOM_SCROLL_BOX" -> parts.add("랜덤 주문서 ×3")
+            "GLOVE_ATK_100"     -> parts.add("장갑 공격력 100% 주문서")
+            "SWORD_ATK_100"     -> parts.add("무기 공격력 주문서 100%")
+            ""                  -> { /* no item */ }
+            else                -> parts.add(data.rewardItemId)
+        }
+        return "보상: ${parts.joinToString(", ")}"
+    }
+
+    private fun giveRewardItem(state: UiState, itemId: String): UiState {
+        if (itemId.isBlank()) return state
+        if (itemId == "RANDOM_SCROLL_BOX") {
+            val pool = listOf(
+                ScrollType.GLOVE_ATK_100, ScrollType.GLOVE_ATK_60, ScrollType.GLOVE_ATK_10,
+                ScrollType.SWORD_ATK_100, ScrollType.SWORD_ATK_60
+            )
+            var s = state
+            repeat(3) { s = s.copy(inventorySlots = addScrollToSlots(s.inventorySlots, pool.random())) }
+            return s
+        }
+        runCatching { ScrollType.valueOf(itemId) }.getOrNull()?.let {
+            return state.copy(inventorySlots = addScrollToSlots(state.inventorySlots, it))
+        }
+        return state
+    }
+
+    private fun startNextMainQuest(state: UiState, nextQuestId: String): UiState {
+        if (nextQuestId.isBlank()) return state
+        QuestRegistry.get(nextQuestId) ?: return state
+        return state.copy(
+            questState = state.questState.copy(
+                mainQuestId       = nextQuestId,
+                mainQuestProgress = 0,
+                mainQuestStatus   = QuestStatus.IN_PROGRESS,
+            )
         )
     }
 

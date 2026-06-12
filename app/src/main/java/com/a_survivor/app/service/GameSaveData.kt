@@ -29,7 +29,10 @@ data class GameSaveData(
     val weapon: Weapon? = null,
     val inventory: List<SavedSlot> = emptyList(),
     val tutorialStep: String = "LEARN_MOVEMENT",
-    val tutorialTravelDistance: Float = 0f
+    val tutorialTravelDistance: Float = 0f,
+    val mainQuestId: String = "",
+    val mainQuestProgress: Int = 0,
+    val mainQuestStatus: String = "NOT_STARTED",
 )
 
 data class SavedSlot(

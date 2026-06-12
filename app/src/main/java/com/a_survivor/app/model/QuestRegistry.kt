@@ -6,11 +6,17 @@ data class QuestData(
     val questId: String,
     val name: String,
     val npcId: Int,
-    val targetMonsterId: String,
-    val targetCount: Int,
-    val rewardExp: Int,
-    val rewardMoney: Int,
-    val rewardItemId: String
+    // KILL | COLLECT | ENTER_MAP | REACH_LEVEL
+    val questType: String = "KILL",
+    val targetMonsterId: String = "",
+    val targetMaterialId: String = "",
+    val targetMapId: String = "",
+    val targetLevel: Int = 0,
+    val targetCount: Int = 1,
+    val rewardExp: Int = 0,
+    val rewardMoney: Int = 0,
+    val rewardItemId: String = "",
+    val nextQuestId: String = "",
 )
 
 object QuestRegistry {
@@ -26,14 +32,19 @@ object QuestRegistry {
                     Log.w(TAG, "questId 누락, 스킵: $row"); continue
                 }
                 catalog.add(QuestData(
-                    questId         = questId,
-                    name            = row["name"] ?: "",
-                    npcId           = row["npcId"]?.toIntOrNull() ?: 0,
-                    targetMonsterId = row["targetMonsterId"] ?: "",
-                    targetCount     = row["targetCount"]?.toIntOrNull() ?: 1,
-                    rewardExp       = row["rewardExp"]?.toIntOrNull() ?: 0,
-                    rewardMoney     = row["rewardMoney"]?.toIntOrNull() ?: 0,
-                    rewardItemId    = row["rewardItemId"] ?: ""
+                    questId          = questId,
+                    name             = row["name"] ?: "",
+                    npcId            = row["npcId"]?.toIntOrNull() ?: 0,
+                    questType        = row["questType"]?.takeIf { it.isNotBlank() } ?: "KILL",
+                    targetMonsterId  = row["targetMonsterId"] ?: "",
+                    targetMaterialId = row["targetMaterialId"] ?: "",
+                    targetMapId      = row["targetMapId"] ?: "",
+                    targetLevel      = row["targetLevel"]?.toIntOrNull() ?: 0,
+                    targetCount      = row["targetCount"]?.toIntOrNull() ?: 1,
+                    rewardExp        = row["rewardExp"]?.toIntOrNull() ?: 0,
+                    rewardMoney      = row["rewardMoney"]?.toIntOrNull() ?: 0,
+                    rewardItemId     = row["rewardItemId"] ?: "",
+                    nextQuestId      = row["nextQuestId"] ?: "",
                 ))
             } catch (e: Exception) {
                 Log.w(TAG, "행 파싱 실패, 스킵: $row — ${e.message}")

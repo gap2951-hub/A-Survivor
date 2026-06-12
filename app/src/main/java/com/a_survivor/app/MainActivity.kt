@@ -93,6 +93,7 @@ import com.a_survivor.app.model.DialogueSession
 import com.a_survivor.app.model.DropItem
 import com.a_survivor.app.model.MaterialCatalog
 import com.a_survivor.app.model.MaterialType
+import com.a_survivor.app.model.iconKey
 import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
 import com.a_survivor.app.model.EquipmentRegistry
@@ -105,6 +106,7 @@ import com.a_survivor.app.model.Npc
 import com.a_survivor.app.model.Player
 import com.a_survivor.app.model.PlayerJob
 import com.a_survivor.app.model.Portal
+import com.a_survivor.app.model.QuestRegistry
 import com.a_survivor.app.model.QuestState
 import com.a_survivor.app.model.QuestStatus
 import com.a_survivor.app.model.TutorialStep
@@ -816,9 +818,14 @@ fun MainScreen(
             )
         }
 
-        // ⑫-b 퀘스트 트래커 (튜토리얼 완료 후 메인 퀘스트 진행 중일 때만)
-        if (state.questState.tutorialStep == TutorialStep.COMPLETED &&
-            (state.questState.status == QuestStatus.IN_PROGRESS || state.questState.status == QuestStatus.READY_TO_COMPLETE)) {
+        // ⑫-b 퀘스트 트래커 (QUEST_001 진행 중 or 메인 퀘스트 진행 중)
+        val showQuestTracker = state.questState.tutorialStep == TutorialStep.COMPLETED && (
+            state.questState.status == QuestStatus.IN_PROGRESS ||
+            state.questState.status == QuestStatus.READY_TO_COMPLETE ||
+            state.questState.mainQuestStatus == QuestStatus.IN_PROGRESS ||
+            state.questState.mainQuestStatus == QuestStatus.READY_TO_COMPLETE
+        )
+        if (showQuestTracker) {
             QuestTrackerPanel(
                 questState = state.questState,
                 modifier = Modifier
@@ -2154,9 +2161,9 @@ private fun DrawScope.drawGroundItem(
                 else                                   -> scroll10
             }
             is DropItem.EquipmentDrop -> equipBitmaps[drop.equipment.itemId] ?: glove
-            is DropItem.MaterialDrop  -> when (drop.materialType) {
-                MaterialType.SKELETON_BONE -> skeletonBone
-                MaterialType.BEEF          -> beef
+            is DropItem.MaterialDrop  -> when (drop.materialType.iconKey()) {
+                "bone" -> skeletonBone
+                else   -> beef
             }
             else -> scroll10
         }
@@ -4404,46 +4411,107 @@ private fun TutorialBanner(questState: QuestState, modifier: Modifier = Modifier
 
 @Composable
 private fun QuestTrackerPanel(questState: QuestState, modifier: Modifier = Modifier) {
-    val isReady = questState.status == QuestStatus.READY_TO_COMPLETE
-    Column(
-        modifier = modifier
-            .background(Color(0xCC1A1008), RoundedCornerShape(6.dp))
-            .border(1.dp, if (isReady) Color(0xFFFFDF7E) else Color(0xFF4A3010), RoundedCornerShape(6.dp))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp)
-    ) {
-        Text(
-            text = if (isReady) "★ 완료 가능" else "▶ 진행 중",
-            color = if (isReady) Color(0xFFFFDF7E) else Color(0xFF9A7D52),
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = "스켈레톤 소탕 작전",
-            color = Color.White,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold
-        )
-        val fraction = (questState.killCount.toFloat() / questState.killGoal).coerceIn(0f, 1f)
-        Box(
-            modifier = Modifier
-                .width(120.dp)
-                .height(8.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(Color(0xFF3A2A14))
+    // 메인 퀘스트가 있으면 메인 퀘스트 우선 표시
+    val showMain = questState.mainQuestId.isNotBlank() &&
+        (questState.mainQuestStatus == QuestStatus.IN_PROGRESS ||
+         questState.mainQuestStatus == QuestStatus.READY_TO_COMPLETE)
+
+    if (showMain) {
+        val mqData = QuestRegistry.get(questState.mainQuestId)
+        val isReady = questState.mainQuestStatus == QuestStatus.READY_TO_COMPLETE
+        val progress = questState.mainQuestProgress
+        val total = mqData?.targetCount ?: 1
+        val fraction = if (total > 0) (progress.toFloat() / total).coerceIn(0f, 1f) else 1f
+        val progressLabel = when (mqData?.questType) {
+            "KILL"      -> "${mqData.targetMonsterId} 처치  $progress / $total"
+            "COLLECT"   -> "재료 수집  $progress / $total"
+            "ENTER_MAP" -> if (isReady) "맵 진입 완료" else "맵으로 이동하세요"
+            "REACH_LEVEL" -> "레벨 달성  ${mqData?.targetLevel ?: ""}"
+            else        -> "$progress / $total"
+        }
+        Column(
+            modifier = modifier
+                .background(Color(0xCC1A1008), RoundedCornerShape(6.dp))
+                .border(1.dp, if (isReady) Color(0xFFFFDF7E) else Color(0xFF4A3010), RoundedCornerShape(6.dp))
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(fraction)
-                    .background(if (isReady) Color(0xFFFFDF7E) else Color(0xFFCC8800))
+            Text(
+                text = if (isReady) "★ 완료 가능" else "▶ 진행 중",
+                color = if (isReady) Color(0xFFFFDF7E) else Color(0xFF9A7D52),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = mqData?.name ?: questState.mainQuestId,
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+            if (mqData?.questType != "REACH_LEVEL") {
+                Box(
+                    modifier = Modifier
+                        .width(120.dp)
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFF3A2A14))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(fraction)
+                            .background(if (isReady) Color(0xFFFFDF7E) else Color(0xFFCC8800))
+                    )
+                }
+            }
+            Text(
+                text = progressLabel,
+                color = Color(0xFF9A7D52),
+                fontSize = 10.sp
             )
         }
-        Text(
-            text = "스켈레톤 처치  ${questState.killCount} / ${questState.killGoal}",
-            color = Color(0xFF9A7D52),
-            fontSize = 10.sp
-        )
+    } else {
+        val isReady = questState.status == QuestStatus.READY_TO_COMPLETE
+        Column(
+            modifier = modifier
+                .background(Color(0xCC1A1008), RoundedCornerShape(6.dp))
+                .border(1.dp, if (isReady) Color(0xFFFFDF7E) else Color(0xFF4A3010), RoundedCornerShape(6.dp))
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text(
+                text = if (isReady) "★ 완료 가능" else "▶ 진행 중",
+                color = if (isReady) Color(0xFFFFDF7E) else Color(0xFF9A7D52),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "스켈레톤 소탕 작전",
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+            val fraction = (questState.killCount.toFloat() / questState.killGoal).coerceIn(0f, 1f)
+            Box(
+                modifier = Modifier
+                    .width(120.dp)
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFF3A2A14))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(fraction)
+                        .background(if (isReady) Color(0xFFFFDF7E) else Color(0xFFCC8800))
+                )
+            }
+            Text(
+                text = "스켈레톤 처치  ${questState.killCount} / ${questState.killGoal}",
+                color = Color(0xFF9A7D52),
+                fontSize = 10.sp
+            )
+        }
     }
 }
 
@@ -4547,9 +4615,9 @@ private fun MaterialInventoryItem(
     quantity: Int,
     modifier: Modifier = Modifier
 ) {
-    val drawableRes = when (materialType) {
-        MaterialType.SKELETON_BONE -> R.drawable.skeleton_bone
-        MaterialType.BEEF          -> R.drawable.beef
+    val drawableRes = when (materialType.iconKey()) {
+        "bone" -> R.drawable.skeleton_bone
+        else   -> R.drawable.beef
     }
     Box(
         modifier = modifier

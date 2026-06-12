@@ -23,5 +23,9 @@ data class QuestState(
     val killCount: Int = 0,
     val killGoal: Int = 5,
     val tutorialStep: TutorialStep = TutorialStep.TALK_TO_CHUCHU,
-    val tutorialTravelDistance: Float = 0f
+    val tutorialTravelDistance: Float = 0f,
+    // 메인 퀘스트 체인 (MQ-001 ~ MQ-013)
+    val mainQuestId: String = "",
+    val mainQuestProgress: Int = 0,
+    val mainQuestStatus: QuestStatus = QuestStatus.NOT_STARTED,
 )

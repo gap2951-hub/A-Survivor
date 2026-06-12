@@ -40,6 +40,9 @@ class SaveService(context: Context) {
             weapon                   = state.weapon,
             tutorialStep             = state.questState.tutorialStep.name,
             tutorialTravelDistance   = state.questState.tutorialTravelDistance,
+            mainQuestId              = state.questState.mainQuestId,
+            mainQuestProgress        = state.questState.mainQuestProgress,
+            mainQuestStatus          = state.questState.mainQuestStatus.name,
             inventory        = state.inventorySlots.map { slot ->
                 when (slot) {
                     null -> SavedSlot("EMPTY")
