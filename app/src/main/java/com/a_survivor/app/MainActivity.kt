@@ -4382,7 +4382,7 @@ private fun TutorialBanner(questState: QuestState, modifier: Modifier = Modifier
         TutorialStep.LEARN_TAP_ATTACK    -> "공격 버튼을 탭해 수동 공격을 한 번 해보세요!"
         TutorialStep.LEARN_AUTO_SWITCH   -> "공격 버튼을 위로 스와이프해 자동 공격으로 전환해보세요!"
         TutorialStep.KILL_MONSTER        -> "몬스터를 처치해보세요!"
-        TutorialStep.PICKUP_ITEM    -> "바닥에 떨어진 장비 아이템 위로 이동하면 자동 획득됩니다."
+        TutorialStep.PICKUP_ITEM    -> "아이템에 가까이 가면 아이템을 획득합니다. 장비 아이템을 획득해보세요."
         TutorialStep.OPEN_INVENTORY -> "우측 상단 메뉴의 '인벤' 버튼을 탭해보세요."
         TutorialStep.EQUIP_ITEM     -> "인벤토리에서 장비 아이템을 탭해 착용해보세요."
         TutorialStep.RETURN_TO_TOWN -> "포탈로 마을에 돌아가 츄츄에게 보고하세요."
