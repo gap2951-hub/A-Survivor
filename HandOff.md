@@ -1329,6 +1329,8 @@ SoundManager.release()          // onDestroy
 | 250 | DataLoader UTF-8 BOM 처리 — 첫 줄 `﻿` 자동 제거 (Excel CSV 저장 시 BOM으로 itemId 파싱 실패하던 버그 수정) | ✅ |
 | 251 | shop.csv 전체 교체 — 새 equipment.csv의 직업별 5티어 아이템(5직업×6슬롯×5단계=150종) itemId 기반으로 재구성 | ✅ |
 | 252 | 테스트 아이템 6종 복원 — equipment.csv에 NOGADA_GLOVE/TEST_HAT/TEST_TOP/TEST_SHOES/TEST_PANTS/TEST_BOW 추가, shop.csv 상단에도 등록 (drop.csv는 기존 유지) | ✅ |
+| 253 | 상점 아이템 아이콘 표시 — ShopWindow BUY/SELL 탭 아이템 행 이름 왼쪽에 18dp 이미지(equipmentDrawableRes/scrollDrawableRes) 표시, 이미지 없으면 한글 슬롯명 텍스트(모자/상의/하의/장갑/신발/무기/주문서/소비) 폴백 | ✅ |
+| 254 | EquipmentRegistry import 누락 수정 — 상점 아이콘 기능 추가 후 `Unresolved reference 'EquipmentRegistry'` 빌드 오류 발생, MainActivity.kt에 `import com.a_survivor.app.model.EquipmentRegistry` 추가로 해결 | ✅ |
 
 ---
 

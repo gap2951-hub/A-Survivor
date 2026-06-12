@@ -95,6 +95,7 @@ import com.a_survivor.app.model.MaterialCatalog
 import com.a_survivor.app.model.MaterialType
 import com.a_survivor.app.model.EnhancementResult
 import com.a_survivor.app.model.Equipment
+import com.a_survivor.app.model.EquipmentRegistry
 import com.a_survivor.app.model.GameWorld
 import com.a_survivor.app.model.GroundItem
 import com.a_survivor.app.model.MapType
@@ -4282,7 +4283,7 @@ private fun ShopWindow(
                     sellPrice    = ShopRegistry.sellPriceForEquipment(slot.equipment.name),
                     maxQuantity  = 1,
                     isStackable  = false,
-                    itemId       = slot.equipment.name,
+                    itemId       = slot.equipment.itemId.ifBlank { slot.equipment.name },
                     itemType     = ShopItemType.EQUIPMENT
                 )
                 is InventorySlot.ScrollItem -> SellEntry(
@@ -4389,6 +4390,20 @@ private fun ShopWindow(
                         shopItems.forEach { item ->
                             val selected = selectedBuyId == item.id
                             val canAfford = money >= item.buyPrice
+                            val iconRes: Int? = when (item.itemType) {
+                                ShopItemType.EQUIPMENT -> equipmentDrawableRes(item.itemId)
+                                ShopItemType.SCROLL -> runCatching { ScrollType.valueOf(item.itemId) }.getOrNull()?.let { scrollDrawableRes(it) }
+                                ShopItemType.CONSUMABLE -> null
+                            }
+                            val fallbackLabel: String = if (iconRes == null) when (item.itemType) {
+                                ShopItemType.EQUIPMENT -> when (EquipmentRegistry.get(item.itemId)?.slot) {
+                                    "HAT" -> "모자"; "TOP" -> "상의"; "BOTTOM", "PANTS" -> "하의"
+                                    "GLOVE" -> "장갑"; "SHOES" -> "신발"; "WEAPON" -> "무기"
+                                    else -> "장비"
+                                }
+                                ShopItemType.SCROLL -> "주문서"
+                                ShopItemType.CONSUMABLE -> "소비"
+                            } else ""
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -4400,6 +4415,25 @@ private fun ShopWindow(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                if (iconRes != null) {
+                                    Image(
+                                        painter = painterResource(id = iconRes),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        contentScale = ContentScale.Fit
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .clip(RoundedCornerShape(2.dp))
+                                            .background(SlotBorder.copy(alpha = 0.6f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(fallbackLabel, color = TextGold, fontSize = 6.sp, textAlign = TextAlign.Center, maxLines = 1)
+                                    }
+                                }
+                                Spacer(Modifier.width(4.dp))
                                 Text(
                                     item.name,
                                     color = if (canAfford) TextGold else TextMuted,
@@ -4424,6 +4458,20 @@ private fun ShopWindow(
                         }
                         sellEntries.forEach { entry ->
                             val selected = selectedSellEntry == entry
+                            val sellIconRes: Int? = when (entry.itemType) {
+                                ShopItemType.EQUIPMENT -> equipmentDrawableRes(entry.itemId)
+                                ShopItemType.SCROLL -> runCatching { ScrollType.valueOf(entry.itemId) }.getOrNull()?.let { scrollDrawableRes(it) }
+                                ShopItemType.CONSUMABLE -> null
+                            }
+                            val sellFallbackLabel: String = if (sellIconRes == null) when (entry.itemType) {
+                                ShopItemType.EQUIPMENT -> when (EquipmentRegistry.get(entry.itemId)?.slot) {
+                                    "HAT" -> "모자"; "TOP" -> "상의"; "BOTTOM", "PANTS" -> "하의"
+                                    "GLOVE" -> "장갑"; "SHOES" -> "신발"; "WEAPON" -> "무기"
+                                    else -> "장비"
+                                }
+                                ShopItemType.SCROLL -> "주문서"
+                                ShopItemType.CONSUMABLE -> "소비"
+                            } else ""
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -4435,6 +4483,25 @@ private fun ShopWindow(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                if (sellIconRes != null) {
+                                    Image(
+                                        painter = painterResource(id = sellIconRes),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        contentScale = ContentScale.Fit
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .clip(RoundedCornerShape(2.dp))
+                                            .background(SlotBorder.copy(alpha = 0.6f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(sellFallbackLabel, color = TextGold, fontSize = 6.sp, textAlign = TextAlign.Center, maxLines = 1)
+                                    }
+                                }
+                                Spacer(Modifier.width(4.dp))
                                 Text(
                                     buildString {
                                         append(entry.name)
