@@ -1579,7 +1579,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             newState = giveRewardItem(newState, questData?.rewardItemId ?: "GLOVE_ATK_100")
                             // MQ-001 자동 시작
                             newState = startNextMainQuest(newState, questData?.nextQuestId ?: "MQ-001")
-                            newState.copy(activeDialogue = null)
+                            val mq001Pages = listOf(
+                                DialoguePage("츄츄", "그런데... 사냥하면서 혹시 이상한 뼈를 보신 적 있나요?"),
+                                DialoguePage("츄츄", "평범한 스켈레톤 뼈인데 뭔가 이상한 기운이 느껴지는 게 있어요.\n사냥하다 보면 주울 수 있을 거예요."),
+                                DialoguePage("츄츄", "초보자 사냥터의 스켈레톤들을 사냥하다 보면\n수상한 뼈를 얻을 수 있을 거예요. 10개만 모아다 주실 수 있나요?")
+                            )
+                            newState.copy(activeDialogue = DialogueSession(pages = mq001Pages, npcId = dlg.npcId))
                         }
                         // 메인 퀘스트 체인 보상 수령
                         quest.mainQuestStatus == QuestStatus.READY_TO_COMPLETE && index == 0 -> {
