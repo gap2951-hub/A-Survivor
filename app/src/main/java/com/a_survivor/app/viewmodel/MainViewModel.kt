@@ -516,8 +516,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             tut == TutorialStep.USE_PORTAL && portal.targetMap == MapType.BEGINNER_FIELD -> {
                 val rewarded = levelService.applyExp(result.player, 15)
                 computeDerived(result.copy(
-                    player     = rewarded,
-                    questState = result.questState.copy(tutorialStep = TutorialStep.KILL_MONSTER)
+                    player            = rewarded,
+                    autoAttackEnabled = true,   // 튜토리얼 시작 전 자동 상태로 초기화
+                    questState        = result.questState.copy(tutorialStep = TutorialStep.LEARN_MANUAL_SWITCH)
                 ))
             }
             // 8단계: 마을 복귀 → 튜토리얼 완료 + 츄츄 자동 대화
@@ -549,10 +550,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         executeAttack()
     }
 
-    fun manualAttack() = executeAttack()
+    fun manualAttack() {
+        // 튜토리얼: 수동 탭 공격 학습 완료
+        _uiState.update { state ->
+            if (state.questState.tutorialStep == TutorialStep.LEARN_TAP_ATTACK)
+                state.copy(questState = state.questState.copy(tutorialStep = TutorialStep.LEARN_AUTO_SWITCH))
+            else state
+        }
+        executeAttack()
+    }
 
     fun toggleAutoAttack() {
-        _uiState.update { it.copy(autoAttackEnabled = !it.autoAttackEnabled) }
+        _uiState.update { state ->
+            val newAuto = !state.autoAttackEnabled
+            val newStep = when {
+                state.questState.tutorialStep == TutorialStep.LEARN_MANUAL_SWITCH && !newAuto ->
+                    TutorialStep.LEARN_TAP_ATTACK
+                state.questState.tutorialStep == TutorialStep.LEARN_AUTO_SWITCH && newAuto ->
+                    TutorialStep.KILL_MONSTER
+                else -> state.questState.tutorialStep
+            }
+            state.copy(
+                autoAttackEnabled = newAuto,
+                questState        = state.questState.copy(tutorialStep = newStep)
+            )
+        }
     }
 
     private fun executeAttack() {
@@ -1350,7 +1372,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         tut == TutorialStep.USE_PORTAL -> listOf(
                             DialoguePage("츄츄", "왼쪽 포탈을 이용해\n초보자 사냥터로 이동해보세요!")
                         )
-                        tut.ordinal in TutorialStep.KILL_MONSTER.ordinal..TutorialStep.EQUIP_ITEM.ordinal -> listOf(
+                        tut.ordinal in TutorialStep.LEARN_MANUAL_SWITCH.ordinal..TutorialStep.EQUIP_ITEM.ordinal -> listOf(
                             DialoguePage("츄츄", "사냥터에서 모험을 계속해주세요!\n제가 응원하고 있을게요.")
                         )
                         tut == TutorialStep.RETURN_TO_TOWN -> listOf(

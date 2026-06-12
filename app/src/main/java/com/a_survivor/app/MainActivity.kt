@@ -701,17 +701,21 @@ fun MainScreen(
             JoystickDemoOverlay()
         }
 
-        // ⑧-c 튜토리얼 공격 시범 (KILL_MONSTER 단계, 대화 없을 때)
+        // ⑧-c 튜토리얼 공격 시범 (공격 학습 3단계, 대화 없을 때)
+        val atkDemoStep = state.questState.tutorialStep
         AnimatedVisibility(
-            visible = state.questState.tutorialStep == TutorialStep.KILL_MONSTER &&
-                      state.activeDialogue == null,
+            visible = atkDemoStep in setOf(
+                TutorialStep.LEARN_MANUAL_SWITCH,
+                TutorialStep.LEARN_TAP_ATTACK,
+                TutorialStep.LEARN_AUTO_SWITCH
+            ) && state.activeDialogue == null,
             enter   = fadeIn(),
             exit    = fadeOut(),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 16.dp, bottom = 20.dp)
         ) {
-            AttackDemoOverlay()
+            AttackDemoOverlay(step = atkDemoStep)
         }
 
         // ⑧ 드래그 중인 아이템 고스트
@@ -3415,23 +3419,21 @@ private fun JoystickDemoOverlay(modifier: Modifier = Modifier) {
 }
 
 // ── 공격 튜토리얼 시범 ────────────────────────────────────────────────────────
-// 10초 주기 6단계:
-//  P0(0.00-0.18) 자동 정지  →  P1(0.18-0.36) 스와이프↑ 자동→수동
-//  P2(0.36-0.50) 수동 정지  →  P3(0.50-0.70) 수동 탭×2
-//  P4(0.70-0.88) 스와이프↑ 수동→자동  →  P5(0.88-1.00) 자동 정지
+// 스텝별 단일 액션 루프: 플레이어가 직접 할 때까지 반복
 @Composable
-private fun AttackDemoOverlay(modifier: Modifier = Modifier) {
+private fun AttackDemoOverlay(step: TutorialStep, modifier: Modifier = Modifier) {
     val btnSize  = 72.dp
     val infinite = rememberInfiniteTransition(label = "atkDemo")
 
+    // 3초 루프: 0.0-0.25 정지 | 0.25-0.85 액션 | 0.85-1.0 페이드아웃
     val progress by infinite.animateFloat(
         initialValue  = 0f,
         targetValue   = 1f,
         animationSpec = infiniteRepeatable(
-            animation  = tween(10000, easing = LinearEasing),
+            animation  = tween(3000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "atkProgress"
+        label = "demoP"
     )
     val autoPulse by infinite.animateFloat(
         initialValue  = 0f,
@@ -3443,50 +3445,34 @@ private fun AttackDemoOverlay(modifier: Modifier = Modifier) {
         label = "autoPulse"
     )
 
-    // ── 단계 판정 ──
-    val phase = when {
-        progress < 0.18f -> 0   // 자동 정지 (기본 상태 설명)
-        progress < 0.36f -> 1   // 스와이프↑ 자동→수동
-        progress < 0.50f -> 2   // 수동 정지 (수동 모드 확인)
-        progress < 0.70f -> 3   // 수동 탭 × 2 (탭 공격 시범)
-        progress < 0.88f -> 4   // 스와이프↑ 수동→자동
-        else             -> 5   // 자동 정지 (복귀 확인)
-    }
-    val swipeP = when (phase) {
-        1    -> ((progress - 0.18f) / 0.18f).coerceIn(0f, 1f)
-        4    -> ((progress - 0.70f) / 0.18f).coerceIn(0f, 1f)
-        else -> 0f
-    }
+    // 스와이프 단계: 액션 구간(0.25-0.85) 내 65%에서 모드 전환
+    val actionP  = ((progress - 0.25f) / 0.60f).coerceIn(0f, 1f)
+    val switched = progress >= 0.25f + 0.60f * 0.65f
 
-    // 스와이프 65% 지점에서 모드 라이브 전환
-    val isAuto = when (phase) {
-        0, 5 -> true
-        1    -> swipeP < 0.65f
-        2, 3 -> false
-        4    -> swipeP >= 0.65f
-        else -> true
+    val isAuto = when (step) {
+        TutorialStep.LEARN_MANUAL_SWITCH -> !switched   // 자동 시작 → 스와이프 후 수동
+        TutorialStep.LEARN_AUTO_SWITCH   ->  switched   // 수동 시작 → 스와이프 후 자동
+        else                             -> false        // LEARN_TAP_ATTACK: 항상 수동
     }
     val accent = if (isAuto) Color(0xFFFFD700) else Color(0xFF6699AA)
 
-    val topLabel = when {
-        phase == 0                   -> "자동 공격 모드"
-        phase == 1 && swipeP < 0.65f -> "위로 스와이프"
-        phase == 1                   -> "수동 전환 완료!"
-        phase == 2                   -> "수동 공격 모드"
-        phase == 3                   -> "탭!"
-        phase == 4 && swipeP < 0.65f -> "위로 스와이프"
-        phase == 4                   -> "자동 전환 완료!"
-        else                         -> "자동 공격 모드"
+    val isSwipeStep = step == TutorialStep.LEARN_MANUAL_SWITCH || step == TutorialStep.LEARN_AUTO_SWITCH
+    val fingerColor = when (step) {
+        TutorialStep.LEARN_MANUAL_SWITCH -> Color(0xFF6699AA)   // 수동(파랑)으로 전환
+        else                             -> Color(0xFFFFD700)   // 자동(금)으로 전환
     }
-    val subLabel = when {
-        phase == 0                   -> "기본값 · 자동으로 공격 중"
-        phase == 1 && swipeP < 0.65f -> "버튼 위로 스와이프 → 수동 전환"
-        phase == 1                   -> "탭하면 1회 공격합니다"
-        phase == 2                   -> "탭 = 1회 공격"
-        phase == 3                   -> "1회 공격 발동!"
-        phase == 4 && swipeP < 0.65f -> "버튼 위로 스와이프 → 자동 전환"
-        phase == 4                   -> "다시 자동으로 공격 중"
-        else                         -> "자동으로 공격 중"
+
+    val topLabel = when (step) {
+        TutorialStep.LEARN_MANUAL_SWITCH -> if (!switched) "위로 스와이프" else "수동 전환 완료!"
+        TutorialStep.LEARN_TAP_ATTACK    -> "공격 버튼을 탭하세요"
+        TutorialStep.LEARN_AUTO_SWITCH   -> if (!switched) "위로 스와이프" else "자동 전환 완료!"
+        else -> ""
+    }
+    val subLabel = when (step) {
+        TutorialStep.LEARN_MANUAL_SWITCH -> if (!switched) "버튼을 위로 스와이프 ↑" else "탭으로 공격해보세요"
+        TutorialStep.LEARN_TAP_ATTACK    -> "탭 = 1회 공격"
+        TutorialStep.LEARN_AUTO_SWITCH   -> if (!switched) "버튼을 위로 스와이프 ↑" else "자동으로 공격 중"
+        else -> ""
     }
 
     Column(
@@ -3509,7 +3495,7 @@ private fun AttackDemoOverlay(modifier: Modifier = Modifier) {
                 val r      = size.minDimension / 2f
                 val center = this.center
 
-                // 버튼 배경 (AttackButton 동일 스타일)
+                // 버튼 배경
                 drawCircle(Color(0xFF1A2533), radius = r)
                 drawCircle(accent.copy(alpha = if (isAuto) 0.28f else 0.10f), radius = r * 0.88f)
                 drawCircle(
@@ -3519,70 +3505,53 @@ private fun AttackDemoOverlay(modifier: Modifier = Modifier) {
                 )
                 if (isAuto) drawCircle(accent.copy(alpha = 0.12f + 0.06f * autoPulse), radius = r * 1.15f)
 
-                when (phase) {
-                    // ── P0·P5: 자동 정지 — 연속 공격 펄스 링 ──
-                    0, 5 -> {
-                        val pulseR = r * (0.45f + 0.45f * autoPulse)
-                        drawCircle(
-                            color  = Color(0xFFFFD700).copy(alpha = (1f - autoPulse) * 0.55f),
-                            radius = pulseR,
-                            center = center,
-                            style  = Stroke(width = 1.5.dp.toPx())
+                if (isSwipeStep && progress >= 0.25f) {
+                    // ── 스와이프 손가락 ──
+                    val fingerAlpha = if (actionP < 0.85f) 1f else (1f - actionP) / 0.15f
+                    val startY      = center.y + r * 0.58f
+                    val endY        = center.y - r * 0.58f
+                    val fingerY     = startY + (endY - startY) * actionP
+                    if (actionP > 0.04f) {
+                        drawLine(
+                            color       = fingerColor.copy(alpha = fingerAlpha * 0.45f),
+                            start       = Offset(center.x, startY),
+                            end         = Offset(center.x, fingerY),
+                            strokeWidth = 2.dp.toPx()
                         )
                     }
-                    // ── P2: 수동 정지 — 탭 유도 점멸 ──
-                    2 -> {
-                        val blinkP     = ((progress - 0.36f) / 0.14f).coerceIn(0f, 1f)
-                        val blinkCycle = (blinkP * 3f) % 1f
-                        val dotAlpha   = if (blinkCycle < 0.5f) blinkCycle * 2f * 0.55f
-                                         else (1f - blinkCycle) * 2f * 0.55f
-                        drawCircle(Color.White.copy(alpha = dotAlpha), radius = 8.dp.toPx(), center = center)
+                    val arrowLen = 6.dp.toPx()
+                    for (sign in listOf(-1f, 1f)) {
+                        drawLine(
+                            color       = fingerColor.copy(alpha = fingerAlpha),
+                            start       = Offset(center.x, fingerY),
+                            end         = Offset(center.x + sign * arrowLen, fingerY + arrowLen),
+                            strokeWidth = 2.dp.toPx()
+                        )
                     }
-                    // ── P3: 수동 탭 × 2 — 리플 두 번 ──
-                    3 -> {
-                        val tapSubP  = ((progress - 0.50f) / 0.20f).coerceIn(0f, 1f)
-                        val tapLocal = (tapSubP * 2f) % 1f   // 0→1 per tap
-                        val rippleA  = ((1f - tapLocal) * 0.68f).coerceIn(0f, 1f)
-                        val rippleR  = r * (0.38f + tapLocal * 0.78f)
+                    drawCircle(
+                        color  = fingerColor.copy(alpha = fingerAlpha * 0.9f),
+                        radius = 7.dp.toPx(),
+                        center = Offset(center.x, fingerY)
+                    )
+                } else if (!isSwipeStep) {
+                    // ── 탭 리플 ──
+                    if (progress >= 0.25f) {
+                        val rippleA = ((1f - actionP) * 0.70f).coerceIn(0f, 1f)
+                        val rippleR = r * (0.38f + actionP * 0.78f)
                         drawCircle(
                             color  = Color(0xFF6699AA).copy(alpha = rippleA),
                             radius = rippleR,
                             center = center,
                             style  = Stroke(width = 2.dp.toPx())
                         )
-                        val dotA = ((1f - tapLocal * 2.5f).coerceIn(0f, 1f)) * 0.75f
+                        val dotA = ((1f - actionP * 2.5f).coerceIn(0f, 1f)) * 0.75f
                         drawCircle(Color.White.copy(alpha = dotA), radius = 5.dp.toPx(), center = center)
-                    }
-                    // ── P1·P4: 스와이프 — 손가락 이동 ──
-                    1, 4 -> {
-                        val fingerColor = if (phase == 1) Color(0xFF6699AA) else Color(0xFFFFD700)
-                        val fingerAlpha = if (swipeP < 0.85f) 1f else (1f - swipeP) / 0.15f
-                        val startY      = center.y + r * 0.58f
-                        val endY        = center.y - r * 0.58f
-                        val fingerY     = startY + (endY - startY) * swipeP
-
-                        if (swipeP > 0.04f) {
-                            drawLine(
-                                color       = fingerColor.copy(alpha = fingerAlpha * 0.45f),
-                                start       = Offset(center.x, startY),
-                                end         = Offset(center.x, fingerY),
-                                strokeWidth = 2.dp.toPx()
-                            )
-                        }
-                        val arrowLen = 6.dp.toPx()
-                        for (sign in listOf(-1f, 1f)) {
-                            drawLine(
-                                color       = fingerColor.copy(alpha = fingerAlpha),
-                                start       = Offset(center.x, fingerY),
-                                end         = Offset(center.x + sign * arrowLen, fingerY + arrowLen),
-                                strokeWidth = 2.dp.toPx()
-                            )
-                        }
-                        drawCircle(
-                            color  = fingerColor.copy(alpha = fingerAlpha * 0.9f),
-                            radius = 7.dp.toPx(),
-                            center = Offset(center.x, fingerY)
-                        )
+                    } else {
+                        // 탭 전 점멸 유도
+                        val blinkCycle = (progress / 0.25f * 2f) % 1f
+                        val dotAlpha   = if (blinkCycle < 0.5f) blinkCycle * 2f * 0.5f
+                                         else (1f - blinkCycle) * 2f * 0.5f
+                        drawCircle(Color.White.copy(alpha = dotAlpha), radius = 8.dp.toPx(), center = center)
                     }
                 }
             }
@@ -4375,8 +4344,11 @@ private fun TutorialBanner(questState: QuestState, modifier: Modifier = Modifier
         TutorialStep.LEARN_MOVEMENT -> "왼쪽 하단 조이스틱을 움직여보세요! 그리고 NPC 츄츄에게 가보세요."
         TutorialStep.TALK_TO_CHUCHU -> "NPC 츄츄에게 다가가 탭해보세요."
         TutorialStep.EXPLORE_TOWN   -> "왼쪽 하단 조이스틱을 움직여 마을을 탐험해보세요! (${questState.tutorialTravelDistance.toInt()} / 300)"
-        TutorialStep.USE_PORTAL     -> "파란 포탈에 다가가 초보자 사냥터로 이동해보세요."
-        TutorialStep.KILL_MONSTER   -> "오른쪽 하단 공격 버튼으로 몬스터를 처치해보세요."
+        TutorialStep.USE_PORTAL          -> "파란 포탈에 다가가 초보자 사냥터로 이동해보세요."
+        TutorialStep.LEARN_MANUAL_SWITCH -> "오른쪽 하단 공격 버튼을 위로 스와이프해 수동 공격으로 전환해보세요!"
+        TutorialStep.LEARN_TAP_ATTACK    -> "공격 버튼을 탭해 수동 공격을 한 번 해보세요!"
+        TutorialStep.LEARN_AUTO_SWITCH   -> "공격 버튼을 위로 스와이프해 자동 공격으로 전환해보세요!"
+        TutorialStep.KILL_MONSTER        -> "몬스터를 처치해보세요!"
         TutorialStep.PICKUP_ITEM    -> "바닥에 떨어진 아이템 위로 이동하면 자동 획득됩니다."
         TutorialStep.OPEN_INVENTORY -> "우측 상단 메뉴의 '인벤' 버튼을 탭해보세요."
         TutorialStep.EQUIP_ITEM     -> "인벤토리에서 장비 아이템을 탭해 착용해보세요."
