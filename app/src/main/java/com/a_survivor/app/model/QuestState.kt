@@ -3,6 +3,7 @@ package com.a_survivor.app.model
 enum class QuestStatus { NOT_STARTED, IN_PROGRESS, READY_TO_COMPLETE, COMPLETED }
 
 enum class TutorialStep {
+    LEARN_MOVEMENT,
     TALK_TO_CHUCHU,
     EXPLORE_TOWN,
     USE_PORTAL,

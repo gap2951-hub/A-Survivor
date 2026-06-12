@@ -408,7 +408,7 @@ fun MainScreen(
             playerHurtAnimStart   = state.playerHurtAnimStart,
             playerDeathTime       = state.playerDeathTime,
             npcHintIds            = when (state.questState.tutorialStep) {
-                TutorialStep.TALK_TO_CHUCHU, TutorialStep.RETURN_TO_TOWN -> setOf(1)
+                TutorialStep.LEARN_MOVEMENT, TutorialStep.TALK_TO_CHUCHU, TutorialStep.RETURN_TO_TOWN -> setOf(1)
                 else -> emptySet()
             }
         )
@@ -686,10 +686,11 @@ fun MainScreen(
             }
         )
 
-        // ⑧-b 튜토리얼 조이스틱 시범 (대화 종료 후, 이동 시작 전)
+        // ⑧-b 튜토리얼 조이스틱 시범 (이동 학습 단계 or 탐험 시작 전, 대화 없을 때)
         AnimatedVisibility(
-            visible = state.questState.tutorialStep == TutorialStep.EXPLORE_TOWN &&
-                      state.questState.tutorialTravelDistance < 30f &&
+            visible = (state.questState.tutorialStep == TutorialStep.LEARN_MOVEMENT ||
+                       (state.questState.tutorialStep == TutorialStep.EXPLORE_TOWN &&
+                        state.questState.tutorialTravelDistance < 30f)) &&
                       state.activeDialogue == null,
             enter   = fadeIn(),
             exit    = fadeOut(),
@@ -4361,8 +4362,9 @@ private fun DialogueWindow(
 private fun TutorialBanner(questState: QuestState, modifier: Modifier = Modifier) {
     val tut = questState.tutorialStep
     val text = when (tut) {
-        TutorialStep.TALK_TO_CHUCHU -> "화면 속 NPC 츄츄에게 다가가 탭해보세요."
-        TutorialStep.EXPLORE_TOWN   -> "왼쪽 하단 조이스틱을 움직여 이동해보세요! (${questState.tutorialTravelDistance.toInt()} / 300)"
+        TutorialStep.LEARN_MOVEMENT -> "왼쪽 하단 조이스틱을 움직여보세요! 그리고 NPC 츄츄에게 가보세요."
+        TutorialStep.TALK_TO_CHUCHU -> "NPC 츄츄에게 다가가 탭해보세요."
+        TutorialStep.EXPLORE_TOWN   -> "왼쪽 하단 조이스틱을 움직여 마을을 탐험해보세요! (${questState.tutorialTravelDistance.toInt()} / 300)"
         TutorialStep.USE_PORTAL     -> "파란 포탈에 다가가 초보자 사냥터로 이동해보세요."
         TutorialStep.KILL_MONSTER   -> "오른쪽 하단 공격 버튼으로 몬스터를 처치해보세요."
         TutorialStep.PICKUP_ITEM    -> "바닥에 떨어진 아이템 위로 이동하면 자동 획득됩니다."

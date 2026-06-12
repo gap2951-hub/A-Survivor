@@ -352,7 +352,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             world      = TownWorld,
             questState = QuestState(
                 killGoal     = questData?.targetCount ?: 5,
-                tutorialStep = TutorialStep.TALK_TO_CHUCHU
+                tutorialStep = TutorialStep.LEARN_MOVEMENT
             )
         )
         return computeDerived(base)
@@ -417,8 +417,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val afterPickup = checkPickup(moved)
             if (afterPickup.groundItems.size < moved.groundItems.size) pickedUp = true
 
-            // 튜토리얼 2단계: 마을 이동 거리 누적
+            // 튜토리얼 0단계: 이동 방법 학습 (30 이동 시 츄츄 만나러 가기 단계로 진행)
             var afterTutorial = afterPickup
+            if (afterPickup.questState.tutorialStep == TutorialStep.LEARN_MOVEMENT) {
+                val dx = newX - p.positionX
+                val dy = newY - p.positionY
+                val stepDist = sqrt(dx * dx + dy * dy)
+                val newDist = afterPickup.questState.tutorialTravelDistance + stepDist
+                afterTutorial = if (newDist >= 30f) {
+                    computeDerived(afterPickup.copy(
+                        questState = afterPickup.questState.copy(
+                            tutorialStep           = TutorialStep.TALK_TO_CHUCHU,
+                            tutorialTravelDistance = 0f
+                        )
+                    ))
+                } else {
+                    afterPickup.copy(questState = afterPickup.questState.copy(tutorialTravelDistance = newDist))
+                }
+            }
+
+            // 튜토리얼 2단계: 마을 탐험 거리 누적
             if (afterPickup.questState.tutorialStep == TutorialStep.EXPLORE_TOWN) {
                 val dx = newX - p.positionX
                 val dy = newY - p.positionY
@@ -1321,10 +1339,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 NpcRole.QUEST -> {
                     val tut = state.questState.tutorialStep
                     when {
-                        tut == TutorialStep.TALK_TO_CHUCHU -> listOf(
+                        tut == TutorialStep.LEARN_MOVEMENT || tut == TutorialStep.TALK_TO_CHUCHU -> listOf(
                             DialoguePage("츄츄", "앗! 처음 보는 얼굴이네요.\n혹시 새로 마을에 오신 모험가신가요?"),
                             DialoguePage("츄츄", "이 마을 주변은 비교적 안전하지만\n밖에는 몬스터들이 돌아다니고 있어요."),
-                            DialoguePage("츄츄", "화면 왼쪽 하단의 조이스틱을 드래그하면\n원하는 방향으로 이동할 수 있어요!\n먼저 마을을 한 바퀴 둘러볼까요?")
+                            DialoguePage("츄츄", "조이스틱으로 이동하는 방법은 이미 아시겠군요!\n먼저 마을을 한 바퀴 더 둘러볼까요?")
                         )
                         tut == TutorialStep.EXPLORE_TOWN -> listOf(
                             DialoguePage("츄츄", "아직 탐험 중이군요!\n왼쪽 하단의 조이스틱을 드래그해서\n마을을 걸어보세요.")
@@ -1356,13 +1374,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 )
             }
-            // 튜토리얼 1단계 완료: 츄츄와 첫 대화
+            // 튜토리얼 1단계 완료: 츄츄와 첫 대화 (LEARN_MOVEMENT 중 도달해도 동일하게 처리)
             var newState = state.copy(activeDialogue = DialogueSession(pages = pages, npcId = npcId))
-            if (npc.role == NpcRole.QUEST && state.questState.tutorialStep == TutorialStep.TALK_TO_CHUCHU) {
+            if (npc.role == NpcRole.QUEST && (
+                state.questState.tutorialStep == TutorialStep.TALK_TO_CHUCHU ||
+                state.questState.tutorialStep == TutorialStep.LEARN_MOVEMENT
+            )) {
                 val rewarded = levelService.applyExp(newState.player, 10)
                 newState = computeDerived(newState.copy(
                     player     = rewarded,
-                    questState = newState.questState.copy(tutorialStep = TutorialStep.EXPLORE_TOWN)
+                    questState = newState.questState.copy(
+                        tutorialStep           = TutorialStep.EXPLORE_TOWN,
+                        tutorialTravelDistance = 0f
+                    )
                 ))
             }
             newState
