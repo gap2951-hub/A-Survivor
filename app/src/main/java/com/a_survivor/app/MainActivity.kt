@@ -132,6 +132,15 @@ import com.a_survivor.app.viewmodel.UiState
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 
 // ── 색상 ──────────────────────────────────────────────────────────────────────
 private val BgDark         = Color(0xFF0C0802)
@@ -676,6 +685,19 @@ fun MainScreen(
                 joystickDirY = dy
             }
         )
+
+        // ⑧-b 튜토리얼 조이스틱 시범 (이동 전 애니메이션 가이드)
+        AnimatedVisibility(
+            visible = state.questState.tutorialStep == TutorialStep.EXPLORE_TOWN &&
+                      state.questState.tutorialTravelDistance < 30f,
+            enter   = fadeIn(),
+            exit    = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 20.dp, bottom = 20.dp)
+        ) {
+            JoystickDemoOverlay()
+        }
 
         // ⑧ 드래그 중인 아이템 고스트
         if (dragState.scrollType != null) {
@@ -3308,6 +3330,75 @@ fun JoystickControl(
     }
 }
 
+// ── 조이스틱 튜토리얼 시범 ────────────────────────────────────────────────────
+@Composable
+private fun JoystickDemoOverlay(modifier: Modifier = Modifier) {
+    val baseSize  = 120.dp
+    val thumbSize = 44.dp
+    val infinite  = rememberInfiniteTransition(label = "joyDemo")
+    val angle by infinite.animateFloat(
+        initialValue  = 0f,
+        targetValue   = 360f,
+        animationSpec = infiniteRepeatable(
+            animation  = tween(1800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "joyAngle"
+    )
+    val pulse by infinite.animateFloat(
+        initialValue  = 0.5f,
+        targetValue   = 1f,
+        animationSpec = infiniteRepeatable(
+            animation  = tween(700, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "joyPulse"
+    )
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .background(Color(0xCC000000), RoundedCornerShape(4.dp))
+                .padding(horizontal = 8.dp, vertical = 3.dp)
+        ) {
+            Text(
+                text       = "드래그해서 이동!",
+                color      = Color(0xFFFFDF7E),
+                fontSize   = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Canvas(modifier = Modifier.size(baseSize)) {
+            val center  = this.center
+            val baseR   = size.minDimension / 2f
+            val thumbR  = thumbSize.toPx() / 2f
+            val moveR   = baseR * 0.55f
+            val rad     = Math.toRadians(angle.toDouble())
+            val thumbOff = Offset(
+                x = cos(rad).toFloat() * moveR,
+                y = sin(rad).toFloat() * moveR
+            )
+            drawCircle(color = Color(0x33FFDF7E), radius = baseR, center = center)
+            drawCircle(
+                color  = Color(0xFFFFDF7E).copy(alpha = pulse),
+                radius = baseR,
+                center = center,
+                style  = Stroke(width = 2.dp.toPx())
+            )
+            drawCircle(color = Color(0xCCFFDF7E), radius = thumbR, center = center + thumbOff)
+            drawCircle(
+                color  = Color(0x88FFDF7E),
+                radius = thumbR,
+                center = center + thumbOff,
+                style  = Stroke(width = 1.5.dp.toPx())
+            )
+        }
+    }
+}
+
 // ── 드래그 고스트 ─────────────────────────────────────────────────────────────
 @Composable
 private fun DragGhost(
@@ -4074,14 +4165,14 @@ private fun DialogueWindow(
 private fun TutorialBanner(questState: QuestState, modifier: Modifier = Modifier) {
     val tut = questState.tutorialStep
     val text = when (tut) {
-        TutorialStep.TALK_TO_CHUCHU -> "NPC 츄츄와 대화해보세요."
-        TutorialStep.EXPLORE_TOWN   -> "마을을 둘러보세요. (${questState.tutorialTravelDistance.toInt()} / 300)"
-        TutorialStep.USE_PORTAL     -> "사냥터로 이동해보세요."
-        TutorialStep.KILL_MONSTER   -> "몬스터를 공격해보세요."
-        TutorialStep.PICKUP_ITEM    -> "드랍된 아이템을 획득해보세요."
-        TutorialStep.OPEN_INVENTORY -> "인벤토리를 열어보세요."
-        TutorialStep.EQUIP_ITEM     -> "획득한 장비를 착용해보세요."
-        TutorialStep.RETURN_TO_TOWN -> "마을로 돌아가 츄츄에게 보고하세요."
+        TutorialStep.TALK_TO_CHUCHU -> "화면 속 NPC 츄츄에게 다가가 탭해보세요."
+        TutorialStep.EXPLORE_TOWN   -> "왼쪽 하단 조이스틱을 움직여 이동해보세요! (${questState.tutorialTravelDistance.toInt()} / 300)"
+        TutorialStep.USE_PORTAL     -> "파란 포탈에 다가가 초보자 사냥터로 이동해보세요."
+        TutorialStep.KILL_MONSTER   -> "오른쪽 하단 공격 버튼으로 몬스터를 처치해보세요."
+        TutorialStep.PICKUP_ITEM    -> "바닥에 떨어진 아이템 위로 이동하면 자동 획득됩니다."
+        TutorialStep.OPEN_INVENTORY -> "우측 상단 메뉴의 '인벤' 버튼을 탭해보세요."
+        TutorialStep.EQUIP_ITEM     -> "인벤토리에서 장비 아이템을 탭해 착용해보세요."
+        TutorialStep.RETURN_TO_TOWN -> "포탈로 마을에 돌아가 츄츄에게 보고하세요."
         TutorialStep.COMPLETED      -> return
     }
     Box(

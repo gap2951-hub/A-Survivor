@@ -1324,10 +1324,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         tut == TutorialStep.TALK_TO_CHUCHU -> listOf(
                             DialoguePage("츄츄", "앗! 처음 보는 얼굴이네요.\n혹시 새로 마을에 오신 모험가신가요?"),
                             DialoguePage("츄츄", "이 마을 주변은 비교적 안전하지만\n밖에는 몬스터들이 돌아다니고 있어요."),
-                            DialoguePage("츄츄", "모험을 시작하기 전에\n먼저 마을을 둘러보는 건 어떨까요?")
+                            DialoguePage("츄츄", "화면 왼쪽 하단의 조이스틱을 드래그하면\n원하는 방향으로 이동할 수 있어요!\n먼저 마을을 한 바퀴 둘러볼까요?")
                         )
                         tut == TutorialStep.EXPLORE_TOWN -> listOf(
-                            DialoguePage("츄츄", "마을을 더 둘러보세요!\n걷다 보면 구석구석 재미있는 곳이 있을 거예요.")
+                            DialoguePage("츄츄", "아직 탐험 중이군요!\n왼쪽 하단의 조이스틱을 드래그해서\n마을을 걸어보세요.")
                         )
                         tut == TutorialStep.USE_PORTAL -> listOf(
                             DialoguePage("츄츄", "왼쪽 포탈을 이용해\n초보자 사냥터로 이동해보세요!")
