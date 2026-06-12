@@ -3924,7 +3924,7 @@ private fun JobAdvancementDialog(onAdvance: (PlayerJob) -> Unit) {
 // ── NPC 렌더링 ────────────────────────────────────────────────────────────────
 private fun DrawScope.drawNpc(npc: Npc, cam: CameraState, bitmap: ImageBitmap?) {
     val c = cam.toScreenOffset(npc.worldX, npc.worldY, size.width, size.height)
-    val imgH = (size.height * 0.20f).toInt().coerceAtLeast(64)
+    val imgH = (size.height * 0.30f).toInt().coerceAtLeast(64)
     val imgW = (imgH * 1.6f).toInt()
     // 이미지
     if (bitmap != null) {

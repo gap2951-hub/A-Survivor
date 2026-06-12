@@ -14,9 +14,10 @@ object DataLoader {
             val stream = if (internalFile.exists()) internalFile.inputStream()
                          else context.assets.open("data/$fileName")
             stream.bufferedReader(Charsets.UTF_8).use { reader ->
-                val lines = reader.readLines()
-                    .map { it.trim() }
-                    .filter { it.isNotBlank() && !it.startsWith("#") }
+                val raw = reader.readLines()
+                val lines = raw.mapIndexed { i, line ->
+                    if (i == 0) line.trimStart('﻿').trim() else line.trim()
+                }.filter { it.isNotBlank() && !it.startsWith("#") }
                 if (lines.isEmpty()) return emptyList()
                 val headers = parseLine(lines.first())
                 lines.drop(1).mapNotNull { line ->

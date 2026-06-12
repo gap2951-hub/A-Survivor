@@ -49,7 +49,7 @@ com.a_survivor.app/
 │   ├── Skill.kt                  (SkillType enum + Skill 데이터 클래스 + SkillRegistry)
 │   └── SkillEffect.kt            (SkillEffectType enum + SkillEffect 데이터 클래스)
 ├── service/
-│   ├── DataLoader.kt             (CSV 파싱 유틸 — loadCsv(context, fileName) → List<Map<String,String>>)
+│   ├── DataLoader.kt             (CSV 파싱 유틸 — loadCsv(context, fileName) → List<Map<String,String>>, UTF-8 BOM 자동 제거)
 │   ├── GameDataInitializer.kt    (앱 시작 시 모든 CSV 로드 — initialize(context))
 │   ├── EnhancementService.kt     (+ 슬롯 검증 + strBonus/dexBonus/intBonus/lukBonus 적용)
 │   ├── CombatStatCalculator.kt   (레거시, 미사용)
@@ -188,7 +188,7 @@ Box (게임 화면)
 | 스켈레톤 (AGGRO) | Walk 애니메이션 8프레임 + 주황 HP 바 + "!" | `size.height * 0.15f` |
 | 스켈레톤 (ATTACKING) | Slash 애니메이션 6프레임 + 주황 HP 바 + "!" | `size.height * 0.15f` |
 | 미노타우르스 | 동일 drawMonster 함수 사용, monsterId.startsWith("MINOTAUR") 분기로 minoFrames 선택 | `size.height * 0.15f` |
-| NPC 츄츄 | PNG 이미지 + 이름 텍스트 | 높이 `size.height * 0.20f`, 너비 `높이 * 1.6` |
+| NPC 츄츄 | PNG 이미지 + 이름 텍스트 | 높이 `size.height * 0.30f`, 너비 `높이 * 1.6` |
 | 바닥 아이템 | PNG 이미지 + 이름 텍스트 | `size.height * 0.048f` |
 | 포탈 | 다층 파란 글로우 링 + 레이블 | `24f * cam.zoom` |
 | 데미지 숫자 | 노랑 (플→몬) / 빨강 (몬→플) | `20f or 17f * (size.height/1080f)` |
@@ -1325,6 +1325,10 @@ SoundManager.release()          // onDestroy
 | 246 | 장비창 전용 너비 분리 — equipPanelW (0.155f) / equipPanelWPx 추가, 스탯창·인벤토리창은 panelW (0.29f) 유지 | ✅ |
 | 247 | 장비창 슬롯 크기 조정 — rememberSlotSize 0.044f, coerceIn(14.dp, 26.dp) | ✅ |
 | 248 | 상점 구매/판매 버튼 클리핑 수정 — 상세 패널 height() 고정 제거, 콘텐츠 스크롤 영역 + 버튼 고정 분리 구조로 전환 (Spacer weight 오버플로우 시 버튼이 잘리던 문제 해결) | ✅ |
+| 249 | NPC 크기 50% 증가 — drawNpc imgH 비율 0.20f → 0.30f (너비=높이×1.6 비례 유지) | ✅ |
+| 250 | DataLoader UTF-8 BOM 처리 — 첫 줄 `﻿` 자동 제거 (Excel CSV 저장 시 BOM으로 itemId 파싱 실패하던 버그 수정) | ✅ |
+| 251 | shop.csv 전체 교체 — 새 equipment.csv의 직업별 5티어 아이템(5직업×6슬롯×5단계=150종) itemId 기반으로 재구성 | ✅ |
+| 252 | 테스트 아이템 6종 복원 — equipment.csv에 NOGADA_GLOVE/TEST_HAT/TEST_TOP/TEST_SHOES/TEST_PANTS/TEST_BOW 추가, shop.csv 상단에도 등록 (drop.csv는 기존 유지) | ✅ |
 
 ---
 
