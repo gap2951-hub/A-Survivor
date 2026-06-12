@@ -34,6 +34,8 @@ import com.a_survivor.app.model.PlayerStats
 import com.a_survivor.app.model.Portal
 import com.a_survivor.app.model.PortalRegistry
 import com.a_survivor.app.model.Projectile
+import com.a_survivor.app.model.MaterialCatalog
+import com.a_survivor.app.model.MaterialType
 import com.a_survivor.app.model.QuestData
 import com.a_survivor.app.model.QuestState
 import com.a_survivor.app.model.QuestStatus
@@ -1166,18 +1168,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     addMessage(withEquip, "${drop.equipment.name} 획득", MessageType.ITEM)
                 }
                 is DropItem.MaterialDrop -> {
-                    val info = com.a_survivor.app.model.MaterialCatalog.get(drop.materialType)
+                    val info = MaterialCatalog.get(drop.materialType)
                     var ms = addMessage(
                         s.copy(inventorySlots = addMaterialToSlots(s.inventorySlots, drop.materialType)),
                         "${info.name} 획득", MessageType.ITEM
                     )
-                    // 메인 퀘스트 COLLECT 진행
+                    // 메인 퀘스트 COLLECT 진행 — 인벤토리 실수량 기준
                     val mqDataCollect = QuestRegistry.get(ms.questState.mainQuestId)
                     if (ms.questState.mainQuestStatus == QuestStatus.IN_PROGRESS &&
                         mqDataCollect?.questType == "COLLECT" &&
                         mqDataCollect.targetMaterialId == drop.materialType.name) {
-                        val newProg = (ms.questState.mainQuestProgress + 1)
-                            .coerceAtMost(mqDataCollect.targetCount)
+                        val totalInInv = ms.inventorySlots
+                            .filterIsInstance<InventorySlot.MaterialItem>()
+                            .filter { it.type == drop.materialType }
+                            .sumOf { it.quantity }
+                        val newProg = totalInInv.coerceAtMost(mqDataCollect.targetCount)
                         val newStat = if (newProg >= mqDataCollect.targetCount)
                             QuestStatus.READY_TO_COMPLETE else QuestStatus.IN_PROGRESS
                         ms = ms.copy(questState = ms.questState.copy(
@@ -1675,8 +1680,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun buildMainQuestProgressText(data: QuestData, quest: QuestState): String = when (data.questType) {
         "KILL"        -> "'${data.name}' 진행 중!\n${quest.mainQuestProgress} / ${data.targetCount} 처치했어요."
-        "COLLECT"     -> "'${data.name}' 진행 중!\n${quest.mainQuestProgress} / ${data.targetCount} 수집했어요."
-        "REACH_LEVEL" -> "'${data.name}'\n레벨 ${data.targetLevel}을 달성해주세요!"
+        "COLLECT"     -> {
+            val matName = runCatching { MaterialType.valueOf(data.targetMaterialId) }
+                .getOrNull()?.let { MaterialCatalog.get(it).name } ?: data.targetMaterialId
+            "'${data.name}' 진행 중!\n${matName} ${quest.mainQuestProgress} / ${data.targetCount}개 수집했어요."
+        }
+        "REACH_LEVEL" -> "'${data.name}'\n레벨 ${data.targetLevel}에 도달해주세요!"
         "ENTER_MAP"   -> "'${data.name}'\n해당 지역으로 이동해주세요."
         else          -> "'${data.name}' 진행 중입니다."
     }
@@ -1688,7 +1697,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         when (data.rewardItemId) {
             "RANDOM_SCROLL_BOX" -> parts.add("랜덤 주문서 ×3")
             "GLOVE_ATK_100"     -> parts.add("장갑 공격력 100% 주문서")
-            "SWORD_ATK_100"     -> parts.add("무기 공격력 주문서 100%")
+            "SWORD_ATK_100"     -> parts.add("무기 공격력 100% 주문서")
             ""                  -> { /* no item */ }
             else                -> parts.add(data.rewardItemId)
         }
@@ -1714,12 +1723,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startNextMainQuest(state: UiState, nextQuestId: String): UiState {
         if (nextQuestId.isBlank()) return state
-        QuestRegistry.get(nextQuestId) ?: return state
+        val qData = QuestRegistry.get(nextQuestId) ?: return state
+        // COLLECT 퀘스트는 시작 시 기존 인벤 수량으로 초기 진행도 동기화
+        val initProgress = if (qData.questType == "COLLECT" && qData.targetMaterialId.isNotBlank()) {
+            val matType = runCatching { MaterialType.valueOf(qData.targetMaterialId) }.getOrNull()
+            if (matType != null) {
+                state.inventorySlots
+                    .filterIsInstance<InventorySlot.MaterialItem>()
+                    .filter { it.type == matType }
+                    .sumOf { it.quantity }
+                    .coerceAtMost(qData.targetCount)
+            } else 0
+        } else 0
+        val initStatus = if (initProgress >= qData.targetCount) QuestStatus.READY_TO_COMPLETE
+                         else QuestStatus.IN_PROGRESS
         return state.copy(
             questState = state.questState.copy(
                 mainQuestId       = nextQuestId,
-                mainQuestProgress = 0,
-                mainQuestStatus   = QuestStatus.IN_PROGRESS,
+                mainQuestProgress = initProgress,
+                mainQuestStatus   = initStatus,
             )
         )
     }
