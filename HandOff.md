@@ -3,7 +3,7 @@
 ## 프로젝트 개요
 
 메이플스토리 스타일의 픽셀아트 사냥터를 배경으로 한 안드로이드 생존형 게임.
-주문서 강화 시스템, 몬스터 AI, 픽셀 충돌, 마을/포탈 시스템, NPC/퀘스트 시스템, 스켈레톤 워리어 애니메이션, 전사 플레이어 스프라이트 애니메이션(히트 프레임 시스템 포함), 전사 장비 아이콘 이미지화(10종), 인벤토리 아이템 이미지화 구현 완료.
+주문서 강화 시스템, 몬스터 AI, 픽셀 충돌, 마을/포탈 시스템, NPC/퀘스트 시스템, 스켈레톤 워리어 애니메이션, 전사 플레이어 스프라이트 애니메이션(히트 프레임 시스템 + 장비 티어별 스프라이트 세트 전환), 한벌옷(ONEPIECE) 슬롯, 전사 장비 아이콘 이미지화(10종), 인벤토리 아이템 이미지화 구현 완료.
 
 - **패키지명:** `com.a_survivor.app`
 - **언어:** Kotlin + Jetpack Compose
@@ -1453,6 +1453,8 @@ SoundManager.release()          // onDestroy
 | 289 | 한벌옷(ONEPIECE) 슬롯 신설 — WAR_TOP_001~005 slot TOP→ONEPIECE 변경, UiState·저장·스탯 계산·강화에 ONEPIECE 분기 추가 | ✅ |
 | 290 | ONEPIECE 장착 상호작용 — ONEPIECE 장착 시 TOP·PANTS 자동 해제(인벤 반환), TOP/PANTS 장착 시 ONEPIECE 자동 해제 | ✅ |
 | 291 | 장비창 한벌옷 슬롯 추가 — 상의 행 아래 한벌옷 행 신설, ONEPIECE 장착 중에는 상의·하의 슬롯을 LockedSlot으로 표시 | ✅ |
+| 292 | 상점 UI ONEPIECE 표기 추가 — 구매/판매 아이콘 폴백 라벨 및 ShopRegistry 주문서 설명에 "한벌옷" 케이스 추가 | ✅ |
+| 293 | 전사 스프라이트 세트 전환 — Warrior_clothes_2 프레임 추출(warrior2_*), HAT 슬롯 기준 tier 3~5 착용 시 스파르탄 갑옷 세트로 자동 전환 | ✅ |
 
 ---
 
@@ -2223,3 +2225,81 @@ val npcHintIds = when (tutorialStep) {
 
 새 게임 시작 시 TOWN 맵, 플레이어 위치 `(450f, 286f)`, 몬스터 없음, `tutorialStep = LEARN_MOVEMENT`.
 튜토리얼 완료 전에는 퀘스트 트래커 패널이 숨겨진다.
+
+---
+
+## 전사 리소스 시스템 (작업 #286–293)
+
+### 스프라이트 세트 구성
+
+전사 플레이어는 두 가지 스프라이트 세트를 가진다. 장착 모자의 `itemId`에 따라 GameCanvas 렌더링 시 자동 전환된다.
+
+| 세트 | drawable 접두사 | 외형 | 전환 조건 |
+|------|----------------|------|-----------|
+| 세트 1 (기본) | `warrior_*` | 갈색 철제 돔 투구 + 철제 갑옷 | 모자 없음 / WAR_HAT_001~002 |
+| 세트 2 | `warrior2_*` | 녹색 스파르탄 투구 + 녹색 갑옷 | WAR_HAT_003~005 |
+
+```kotlin
+// GameCanvas.kt (내부)
+val useWarrior2 = equippedHatId in setOf("WAR_HAT_003", "WAR_HAT_004", "WAR_HAT_005")
+val pIdle = when { isArcher -> archerIdle; useWarrior2 -> warrior2Idle; else -> warriorIdle }
+// Walk / Attack / Hurt / Die 동일 패턴
+```
+
+각 세트 프레임 수: Idle 6 / Walk 6 / Attack 5 / Hurt 5 / Die 6  
+원본: `Warrior_animations/Right_Side/PNG Sequences/Warrior_clothes_1~2/`  
+처리: 흰 배경 제거 (R,G,B ≥ 240 → alpha=0) + 256×256 리사이즈
+
+### 전사 장비 아이콘
+
+`equipmentDrawableRes(itemId)` 매핑:
+
+| 슬롯 | tier 1–2 | tier 3–5 |
+|------|----------|----------|
+| HAT | `war_hat_1` | `war_hat_2` |
+| ONEPIECE | `war_armor_1` | `war_armor_2` |
+| GLOVE | `war_glove_1` | `war_glove_2` |
+| SHOES | `war_boots_1` | `war_boots_2` |
+| WEAPON | `war_sword_1` | `war_sword_2` |
+
+---
+
+## 한벌옷(ONEPIECE) 슬롯 시스템 (작업 #289–292)
+
+### 슬롯 정의
+
+전사 갑옷(`WAR_TOP_001~005`)처럼 상하의를 한 벌로 덮는 아이템 전용 슬롯.  
+`equipment.csv`의 `slot` 컬럼 값 `ONEPIECE`로 등록.
+
+### 장착 상호작용 규칙
+
+| 장착 시도 | 자동 처리 |
+|-----------|-----------|
+| ONEPIECE 장착 | 기존 TOP + PANTS 인벤토리 반환 |
+| TOP 장착 | 기존 ONEPIECE 인벤토리 반환 |
+| PANTS 장착 | 기존 ONEPIECE 인벤토리 반환 |
+
+### UiState 필드
+
+```kotlin
+val onepiece: Equipment? = null  // ONEPIECE 슬롯
+```
+
+`computeDerived` → `DerivedStatsCalculator.calculate()`에 `onepiece` 파라미터 추가. `all = listOfNotNull(glove, hat, top, onepiece, shoes, pants)`
+
+### 장비창 레이아웃
+
+```
+[모자]
+[얼굴] [눈장식] [귀걸이]
+[목걸이]
+[어깨] [상의*] [망토]      ← ONEPIECE 착용 중이면 LockedSlot
+[한벌옷]
+[장갑] [하의*] [무기]      ← ONEPIECE 착용 중이면 LockedSlot
+[신발] [벨트]
+```
+
+### 저장/복원
+
+`GameSaveData.onepiece: Equipment? = null` 추가.  
+`SaveService.save()` / `restoreState()`에서 직렬화·역직렬화 처리.
