@@ -1450,6 +1450,9 @@ SoundManager.release()          // onDestroy
 | 286 | 전사 스프라이트 갱신 — Warrior_clothes_1 애니메이션 세트에서 프레임 재추출 (Idle 6 / Walk 6 / Attack 5 / Hurt 5 / Die 6), 흰 배경 제거 + 256×256 리사이즈 | ✅ |
 | 287 | 전사 장비 아이템 아이콘 추가 — clothes_1/2에서 Hat/Body/Shoes/Arm/Sword 5종×2세트 = 10개 drawable (war_hat_1·2, war_armor_1·2, war_boots_1·2, war_glove_1·2, war_sword_1·2) | ✅ |
 | 288 | equipmentDrawableRes WAR_* 매핑 추가 — WAR_HAT/TOP/GLOVE/SHOES/WEAPON 각 5티어를 두 아이콘 세트로 분기 매핑 | ✅ |
+| 289 | 한벌옷(ONEPIECE) 슬롯 신설 — WAR_TOP_001~005 slot TOP→ONEPIECE 변경, UiState·저장·스탯 계산·강화에 ONEPIECE 분기 추가 | ✅ |
+| 290 | ONEPIECE 장착 상호작용 — ONEPIECE 장착 시 TOP·PANTS 자동 해제(인벤 반환), TOP/PANTS 장착 시 ONEPIECE 자동 해제 | ✅ |
+| 291 | 장비창 한벌옷 슬롯 추가 — 상의 행 아래 한벌옷 행 신설, ONEPIECE 장착 중에는 상의·하의 슬롯을 LockedSlot으로 표시 | ✅ |
 
 ---
 

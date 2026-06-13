@@ -35,6 +35,7 @@ class SaveService(context: Context) {
             equipment        = state.equipment,
             hat              = state.hat,
             top              = state.top,
+            onepiece         = state.onepiece,
             shoes            = state.shoes,
             pants            = state.pants,
             weapon                   = state.weapon,

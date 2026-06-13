@@ -24,6 +24,7 @@ data class GameSaveData(
     val equipment: Equipment? = null,
     val hat: Equipment? = null,
     val top: Equipment? = null,
+    val onepiece: Equipment? = null,
     val shoes: Equipment? = null,
     val pants: Equipment? = null,
     val weapon: Weapon? = null,

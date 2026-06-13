@@ -507,16 +507,17 @@ fun MainScreen(
                     equipment = state.equipment,
                     hat = state.hat,
                     top = state.top,
+                    onepiece = state.onepiece,
                     shoes = state.shoes,
                     pants = state.pants,
                     weapon = state.weapon,
                     isDragOver = isDragOver,
                     onSlotBounds = { equipSlotBounds = it },
-                    onHatBounds    = { hatSlotBounds = it },
-                    onTopBounds    = { topSlotBounds = it },
-                    onShoesBounds  = { shoesSlotBounds = it },
-                    onWeaponBounds = { weaponSlotBounds = it },
-                    onPantsBounds  = { pantsSlotBounds = it },
+                    onHatBounds      = { hatSlotBounds = it },
+                    onTopBounds      = { topSlotBounds = it },
+                    onShoesBounds    = { shoesSlotBounds = it },
+                    onWeaponBounds   = { weaponSlotBounds = it },
+                    onPantsBounds    = { pantsSlotBounds = it },
                     onUnequipSlot = onUnequipSlot,
                     onReset = onReset,
                     onUnequipWeapon = onUnequipWeapon,
@@ -938,6 +939,7 @@ fun EquipmentWindow(
     equipment: Equipment?,
     hat: Equipment? = null,
     top: Equipment? = null,
+    onepiece: Equipment? = null,
     shoes: Equipment? = null,
     pants: Equipment? = null,
     weapon: Weapon?,
@@ -945,6 +947,7 @@ fun EquipmentWindow(
     onSlotBounds: (Rect) -> Unit,
     onHatBounds: ((Rect) -> Unit)? = null,
     onTopBounds: ((Rect) -> Unit)? = null,
+    onOnepieceBounds: ((Rect) -> Unit)? = null,
     onShoesBounds: ((Rect) -> Unit)? = null,
     onWeaponBounds: ((Rect) -> Unit)? = null,
     onPantsBounds: ((Rect) -> Unit)? = null,
@@ -985,16 +988,25 @@ fun EquipmentWindow(
             // ③ 목 — 목걸이
             BodyRow { LockedSlot("목걸이", Modifier.size(slotSz)) }
 
-            // ④ 어깨·상의·망토
+            // ④ 어깨·상의·망토  (한벌옷 장착 시 상의 잠금)
             BodyRow {
                 LockedSlot("어깨", Modifier.size(slotSz))
                 Spacer(Modifier.width(3.dp))
-                ArmorSlot("TOP", "상의", top, slotSz, onBoundsChanged = onTopBounds) { onUnequipSlot("TOP") }
+                if (onepiece != null) {
+                    LockedSlot("상의", Modifier.size(slotSz))
+                } else {
+                    ArmorSlot("TOP", "상의", top, slotSz, onBoundsChanged = onTopBounds) { onUnequipSlot("TOP") }
+                }
                 Spacer(Modifier.width(3.dp))
                 LockedSlot("망토", Modifier.size(slotSz))
             }
 
-            // ⑤ 장갑·하의·무기  (장갑 = 드롭 타겟)
+            // ④-1 한벌옷
+            BodyRow {
+                ArmorSlot("ONEPIECE", "한벌옷", onepiece, slotSz, onBoundsChanged = onOnepieceBounds) { onUnequipSlot("ONEPIECE") }
+            }
+
+            // ⑤ 장갑·하의·무기  (한벌옷 장착 시 하의 잠금)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -1009,7 +1021,11 @@ fun EquipmentWindow(
                     slotSize = slotSz
                 )
                 Spacer(Modifier.width(3.dp))
-                ArmorSlot("PANTS", "하의", pants, slotSz, onBoundsChanged = onPantsBounds) { onUnequipSlot("PANTS") }
+                if (onepiece != null) {
+                    LockedSlot("하의", Modifier.size(slotSz))
+                } else {
+                    ArmorSlot("PANTS", "하의", pants, slotSz, onBoundsChanged = onPantsBounds) { onUnequipSlot("PANTS") }
+                }
                 Spacer(Modifier.width(3.dp))
                 WeaponSlot(
                     weapon = weapon,
@@ -1152,7 +1168,7 @@ private fun equipmentDrawableRes(itemId: String): Int? = when (itemId) {
     // 전사 모자
     "WAR_HAT_001", "WAR_HAT_002" -> R.drawable.war_hat_1
     "WAR_HAT_003", "WAR_HAT_004", "WAR_HAT_005" -> R.drawable.war_hat_2
-    // 전사 상의
+    // 전사 한벌옷 (ONEPIECE)
     "WAR_TOP_001", "WAR_TOP_002" -> R.drawable.war_armor_1
     "WAR_TOP_003", "WAR_TOP_004", "WAR_TOP_005" -> R.drawable.war_armor_2
     // 전사 장갑

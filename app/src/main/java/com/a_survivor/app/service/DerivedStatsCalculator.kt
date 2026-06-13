@@ -17,10 +17,11 @@ class DerivedStatsCalculator {
         glove: Equipment?,
         hat: Equipment? = null,
         top: Equipment? = null,
+        onepiece: Equipment? = null,
         shoes: Equipment? = null,
         pants: Equipment? = null,
     ): DerivedStats {
-        val all = listOfNotNull(glove, hat, top, shoes, pants)
+        val all = listOfNotNull(glove, hat, top, onepiece, shoes, pants)
 
         val totalSTR = stats.str + (weapon?.strBonus ?: 0) + all.sumOf { it.strBonus }
         val totalDEX = stats.dex + all.sumOf { it.dexBonus }
@@ -97,7 +98,8 @@ class DerivedStatsCalculator {
         glove: Equipment?,
         hat: Equipment? = null,
         top: Equipment? = null,
+        onepiece: Equipment? = null,
         shoes: Equipment? = null,
         pants: Equipment? = null,
-    ): DerivedStats = calculate(player.job, player.stats, player.weapon, glove, hat, top, shoes, pants)
+    ): DerivedStats = calculate(player.job, player.stats, player.weapon, glove, hat, top, onepiece, shoes, pants)
 }

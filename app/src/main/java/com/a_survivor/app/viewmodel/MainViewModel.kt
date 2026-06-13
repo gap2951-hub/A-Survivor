@@ -95,10 +95,11 @@ data class PendingPlayerAttack(
 
 data class UiState(
     val equipment: Equipment?,   // GLOVE
-    val hat: Equipment? = null,   // HAT
-    val top: Equipment? = null,   // TOP
-    val shoes: Equipment? = null, // SHOES
-    val pants: Equipment? = null, // PANTS
+    val hat: Equipment? = null,      // HAT
+    val top: Equipment? = null,      // TOP
+    val onepiece: Equipment? = null, // ONEPIECE (한벌옷) — 장착 시 TOP·PANTS 슬롯 잠금
+    val shoes: Equipment? = null,    // SHOES
+    val pants: Equipment? = null,    // PANTS
     val weapon: Weapon?,
     val money: Int = 0,
     val inventorySlots: List<InventorySlot?> = List(32) { null },
@@ -286,6 +287,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             equipment      = data.equipment,
             hat            = data.hat,
             top            = data.top,
+            onepiece       = data.onepiece,
             shoes          = data.shoes,
             pants          = data.pants,
             weapon         = data.weapon,
@@ -336,7 +338,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun computeDerived(state: UiState): UiState =
-        state.copy(derivedStats = derivedStatsCalculator.calculate(state.player, state.equipment, state.hat, state.top, state.shoes, state.pants))
+        state.copy(derivedStats = derivedStatsCalculator.calculate(state.player, state.equipment, state.hat, state.top, state.onepiece, state.shoes, state.pants))
 
     private fun createInitialState(job: PlayerJob = PlayerJob.BEGINNER): UiState {
         val initialPlayer = Player(job = job, stats = job.initialStats(), positionX = 450f, positionY = 286f)
@@ -1253,14 +1255,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val equipment = when (targetSlot) {
-            "HAT"   -> state.hat
-            "TOP"   -> state.top
-            "SHOES" -> state.shoes
-            "PANTS" -> state.pants
-            else    -> state.equipment
+            "HAT"      -> state.hat
+            "TOP"      -> state.top
+            "ONEPIECE" -> state.onepiece
+            "SHOES"    -> state.shoes
+            "PANTS"    -> state.pants
+            else       -> state.equipment
         } ?: run {
             val slotName = when (targetSlot) {
-                "HAT" -> "모자"; "TOP" -> "상의"; "SHOES" -> "신발"; "PANTS" -> "하의"; else -> "장갑"
+                "HAT" -> "모자"; "TOP" -> "상의"; "ONEPIECE" -> "한벌옷"; "SHOES" -> "신발"; "PANTS" -> "하의"; else -> "장갑"
             }
             _uiState.update { it.copy(lastResult = EnhancementResult.Error("${slotName} 슬롯에 장비가 없습니다.")) }
             return
@@ -1271,11 +1274,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val newSlots = s.inventorySlots.toMutableList()
             newSlots[slotIdx] = if (slot.quantity > 1) slot.copy(quantity = slot.quantity - 1) else null
             val updated = when (targetSlot) {
-                "HAT"   -> s.copy(hat   = newEquipment, inventorySlots = newSlots, lastResult = result)
-                "TOP"   -> s.copy(top   = newEquipment, inventorySlots = newSlots, lastResult = result)
-                "SHOES" -> s.copy(shoes = newEquipment, inventorySlots = newSlots, lastResult = result)
-                "PANTS" -> s.copy(pants = newEquipment, inventorySlots = newSlots, lastResult = result)
-                else    -> s.copy(equipment = newEquipment, inventorySlots = newSlots, lastResult = result)
+                "HAT"      -> s.copy(hat      = newEquipment, inventorySlots = newSlots, lastResult = result)
+                "TOP"      -> s.copy(top      = newEquipment, inventorySlots = newSlots, lastResult = result)
+                "ONEPIECE" -> s.copy(onepiece = newEquipment, inventorySlots = newSlots, lastResult = result)
+                "SHOES"    -> s.copy(shoes    = newEquipment, inventorySlots = newSlots, lastResult = result)
+                "PANTS"    -> s.copy(pants    = newEquipment, inventorySlots = newSlots, lastResult = result)
+                else       -> s.copy(equipment = newEquipment, inventorySlots = newSlots, lastResult = result)
             }
             computeDerived(updated)
         }
@@ -1297,6 +1301,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "TOP" -> {
                     val cur = s.top ?: return@update s
                     computeDerived(s.copy(top = null, inventorySlots = addEquipToSlots(s.inventorySlots, cur)))
+                }
+                "ONEPIECE" -> {
+                    val cur = s.onepiece ?: return@update s
+                    computeDerived(s.copy(onepiece = null, inventorySlots = addEquipToSlots(s.inventorySlots, cur)))
                 }
                 "SHOES" -> {
                     val cur = s.shoes ?: return@update s
@@ -1327,7 +1335,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 "TOP" -> {
                     newSlots[slotIdx] = if (s.top != null) InventorySlot.EquipItem(s.top) else null
-                    computeDerived(s.copy(top = equipment, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
+                    val slotsAfter = if (s.onepiece != null) addEquipToSlots(newSlots, s.onepiece).toMutableList() else newSlots
+                    computeDerived(s.copy(top = equipment, onepiece = null, inventorySlots = slotsAfter, selectedScrollType = null, lastResult = null))
+                }
+                "ONEPIECE" -> {
+                    newSlots[slotIdx] = if (s.onepiece != null) InventorySlot.EquipItem(s.onepiece) else null
+                    val slotsWithTop   = if (s.top   != null) addEquipToSlots(newSlots, s.top).toMutableList()          else newSlots
+                    val slotsWithPants = if (s.pants != null) addEquipToSlots(slotsWithTop, s.pants).toMutableList() else slotsWithTop
+                    computeDerived(s.copy(onepiece = equipment, top = null, pants = null, inventorySlots = slotsWithPants, selectedScrollType = null, lastResult = null))
                 }
                 "SHOES" -> {
                     newSlots[slotIdx] = if (s.shoes != null) InventorySlot.EquipItem(s.shoes) else null
@@ -1335,7 +1350,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 "PANTS" -> {
                     newSlots[slotIdx] = if (s.pants != null) InventorySlot.EquipItem(s.pants) else null
-                    computeDerived(s.copy(pants = equipment, inventorySlots = newSlots, selectedScrollType = null, lastResult = null))
+                    val slotsAfter = if (s.onepiece != null) addEquipToSlots(newSlots, s.onepiece).toMutableList() else newSlots
+                    computeDerived(s.copy(pants = equipment, onepiece = null, inventorySlots = slotsAfter, selectedScrollType = null, lastResult = null))
                 }
                 "WEAPON" -> {
                     val newWeapon = equipmentToWeapon(equipment)
