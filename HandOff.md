@@ -2233,17 +2233,23 @@ val npcHintIds = when (tutorialStep) {
 
 ### 스프라이트 세트 구성
 
-전사 플레이어는 두 가지 스프라이트 세트를 가진다. 장착 모자의 `itemId`에 따라 GameCanvas 렌더링 시 자동 전환된다.
+전사 플레이어는 세 가지 스프라이트 세트를 가진다. 장착된 WAR_* 아이템 전체의 최고 티어에 따라 GameCanvas 렌더링 시 자동 전환된다.
 
 | 세트 | drawable 접두사 | 외형 | 전환 조건 |
 |------|----------------|------|-----------|
-| 세트 1 (기본) | `warrior_*` | 갈색 철제 돔 투구 + 철제 갑옷 | 모자 없음 / WAR_HAT_001~002 |
-| 세트 2 | `warrior2_*` | 녹색 스파르탄 투구 + 녹색 갑옷 | WAR_HAT_003~005 |
+| 세트 0 (베이스) | `warrior_base_*` | 장비 없는 나체 캐릭터 | WAR_* 장비 없음 |
+| 세트 1 (철제) | `warrior_*` | 갈색 철제 돔 투구 + 철제 갑옷 | WAR_*_001~002 |
+| 세트 2 (스파르탄) | `warrior2_*` | 녹색 스파르탄 투구 + 녹색 갑옷 | WAR_*_003~005 |
 
 ```kotlin
-// GameCanvas.kt (내부)
-val useWarrior2 = equippedHatId in setOf("WAR_HAT_003", "WAR_HAT_004", "WAR_HAT_005")
-val pIdle = when { isArcher -> archerIdle; useWarrior2 -> warrior2Idle; else -> warriorIdle }
+// GameCanvas — warriorEquipIds: Set<String> (모든 WAR_ 접두 장착 아이템)
+val warriorTier = when {
+    warriorEquipIds.isEmpty()                                              -> 0
+    warriorEquipIds.any { it.endsWith("_003") || it.endsWith("_004") || it.endsWith("_005") } -> 2
+    warriorEquipIds.any { it.endsWith("_001") || it.endsWith("_002") }   -> 1
+    else                                                                   -> 0
+}
+val pIdle = when { isArcher -> archerIdle; warriorTier==2 -> warrior2Idle; warriorTier==1 -> warriorIdle; else -> warriorBaseIdle }
 // Walk / Attack / Hurt / Die 동일 패턴
 ```
 
@@ -2306,3 +2312,49 @@ val onepiece: Equipment? = null  // ONEPIECE 슬롯
 
 `GameSaveData.onepiece: Equipment? = null` 추가.  
 `SaveService.save()` / `restoreState()`에서 직렬화·역직렬화 처리.
+
+---
+
+## 전사 레이어 합성 시스템 (작업 #295)
+
+### 배경 — Vector Parts 클로스 PNG 분석 결과
+
+CraftPix Warrior 에셋의 `Vector Parts/clothes/` 폴더(Hat.png, Body_clothes.png 등)는 **모두 완전 투명** (non-transparent pixel = 0)으로 실제 픽셀 데이터가 없음. `.scml` 기반 파츠 오버레이 방식은 사용 불가.
+
+### 구현된 A안 — 3단계 티어 스프라이트 세트 + 베이스 레이어
+
+| 티어 | 조건 | drawable 세트 |
+|------|------|--------------|
+| 0 (naked) | WAR_* 장비 없음 | `warrior_base_*` |
+| 1 (철제) | WAR_*_001 / WAR_*_002 중 하나라도 장착 | `warrior_*` |
+| 2 (스파르탄) | WAR_*_003 / WAR_*_004 / WAR_*_005 중 하나라도 장착 | `warrior2_*` |
+
+티어 결정 규칙: 장착된 WAR 아이템 중 **가장 높은 티어** 우선. (tier 2가 하나라도 있으면 tier 2 세트 사용)
+
+```kotlin
+// GameCanvas — warriorEquipIds: Set<String> (WAR_ 접두 장착 아이템 전체)
+val tier2Suffixes = setOf("_003", "_004", "_005")
+val tier1Suffixes = setOf("_001", "_002")
+val warriorTier = when {
+    warriorEquipIds.isEmpty()                                             -> 0
+    warriorEquipIds.any { id -> tier2Suffixes.any { s -> id.endsWith(s) } } -> 2
+    warriorEquipIds.any { id -> tier1Suffixes.any { s -> id.endsWith(s) } } -> 1
+    else                                                                  -> 0
+}
+```
+
+### 베이스 스프라이트 생성
+
+- 출처: `Warrior_animations/Right_Side/PNG Sequences/Warrior_clothes_empty/`
+- 처리: 흰 배경 제거 + 256×256 리사이즈 (동일 파이프라인)
+- 스크립트: `scripts/process_warrior_base.py`
+- 프레임 수: Idle 6 / Walk 6 / Attack 5 / Hurt 5 / Die 6 → 총 28개
+
+### GameCanvas 파라미터 변경
+
+```
+변경 전: equippedHatId: String?
+변경 후: warriorEquipIds: Set<String>  // WAR_ 접두 전체 장비 itemId
+```
+
+호출부: `hat`, `top`, `onepiece`, `shoes`, `pants`, `weapon.itemId` 중 WAR_ 접두인 것 전체 전달.
