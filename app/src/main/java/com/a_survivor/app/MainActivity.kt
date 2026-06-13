@@ -432,14 +432,14 @@ fun MainScreen(
                 else -> emptySet()
             },
             levelUpTime           = state.levelUpTime,
-            warriorEquipIds       = setOfNotNull(
-                state.hat?.itemId,
-                state.top?.itemId,
-                state.onepiece?.itemId,
-                state.shoes?.itemId,
-                state.pants?.itemId,
-                state.player.weapon?.itemId,
-            ).filter { it.startsWith("WAR_") }.toSet()
+            warriorArmorTier      = run {
+                val id = state.onepiece?.itemId ?: state.top?.itemId
+                when {
+                    id == null -> 0
+                    id.endsWith("_003") || id.endsWith("_004") || id.endsWith("_005") -> 2
+                    else -> 1
+                }
+            }
         )
 
         // ② 상단 HUD
@@ -1877,7 +1877,7 @@ private fun GameCanvas(
     playerDeathTime: Long = 0L,
     npcHintIds: Set<Int> = emptySet(),
     levelUpTime: Long = 0L,
-    warriorEquipIds: Set<String> = emptySet(),
+    warriorArmorTier: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -2266,21 +2266,12 @@ private fun GameCanvas(
         }
         projectiles.forEach { drawProjectile(it, cam, energyBoltFrames) }
         val isArcher  = player.job == PlayerJob.ARCHER
-        // 전사 장비 티어 결정: 0=naked, 1=철제(tier1~2), 2=스파르탄(tier3~5)
-        // 장착된 WAR 아이템 중 가장 높은 티어를 사용한다
-        val tier2Suffixes = setOf("_003", "_004", "_005")
-        val tier1Suffixes = setOf("_001", "_002")
-        val warriorTier = when {
-            warriorEquipIds.isEmpty()                               -> 0
-            warriorEquipIds.any { id -> tier2Suffixes.any { s -> id.endsWith(s) } } -> 2
-            warriorEquipIds.any { id -> tier1Suffixes.any { s -> id.endsWith(s) } } -> 1
-            else                                                    -> 0
-        }
-        val pIdle   = when { isArcher -> archerIdle;   warriorTier == 2 -> warrior2Idle;   warriorTier == 1 -> warriorIdle;   else -> warriorBaseIdle }
-        val pWalk   = when { isArcher -> archerWalk;   warriorTier == 2 -> warrior2Walk;   warriorTier == 1 -> warriorWalk;   else -> warriorBaseWalk }
-        val pAttack = when { isArcher -> archerAttack; warriorTier == 2 -> warrior2Attack; warriorTier == 1 -> warriorAttack; else -> warriorBaseAttack }
-        val pHurt   = when { isArcher -> archerHurt;   warriorTier == 2 -> warrior2Hurt;   warriorTier == 1 -> warriorHurt;   else -> warriorBaseHurt }
-        val pDie    = when { isArcher -> archerDie;    warriorTier == 2 -> warrior2Die;    warriorTier == 1 -> warriorDie;    else -> warriorBaseDie }
+        // ONEPIECE/TOP 슬롯 기반 전환: 0=naked, 1=철제, 2=스파르탄
+        val pIdle   = when { isArcher -> archerIdle;   warriorArmorTier == 2 -> warrior2Idle;   warriorArmorTier == 1 -> warriorIdle;   else -> warriorBaseIdle }
+        val pWalk   = when { isArcher -> archerWalk;   warriorArmorTier == 2 -> warrior2Walk;   warriorArmorTier == 1 -> warriorWalk;   else -> warriorBaseWalk }
+        val pAttack = when { isArcher -> archerAttack; warriorArmorTier == 2 -> warrior2Attack; warriorArmorTier == 1 -> warriorAttack; else -> warriorBaseAttack }
+        val pHurt   = when { isArcher -> archerHurt;   warriorArmorTier == 2 -> warrior2Hurt;   warriorArmorTier == 1 -> warriorHurt;   else -> warriorBaseHurt }
+        val pDie    = when { isArcher -> archerDie;    warriorArmorTier == 2 -> warrior2Die;    warriorArmorTier == 1 -> warriorDie;    else -> warriorBaseDie }
         drawPlayer(
             player, cam,
             pIdle, pWalk, pAttack, pHurt, pDie,
