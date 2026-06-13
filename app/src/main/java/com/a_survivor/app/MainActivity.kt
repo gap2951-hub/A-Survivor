@@ -431,7 +431,8 @@ fun MainScreen(
                 TutorialStep.LEARN_MOVEMENT, TutorialStep.TALK_TO_CHUCHU, TutorialStep.RETURN_TO_TOWN -> setOf(1)
                 else -> emptySet()
             },
-            levelUpTime           = state.levelUpTime
+            levelUpTime           = state.levelUpTime,
+            equippedHatId         = state.hat?.itemId
         )
 
         // ② 상단 HUD
@@ -1868,6 +1869,7 @@ private fun GameCanvas(
     playerDeathTime: Long = 0L,
     npcHintIds: Set<Int> = emptySet(),
     levelUpTime: Long = 0L,
+    equippedHatId: String? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -2075,6 +2077,7 @@ private fun GameCanvas(
     val npcChuchu         = remember { loadBitmap(context, R.drawable.npc_chuchu, 128) }
 
     // 전사 플레이어 스프라이트 프레임
+    // 전사 세트 1 (tier 1–2: 철제 갑옷)
     val warriorIdle   = remember { listOf(
         loadBitmap(context, R.drawable.warrior_idle_0, 256),
         loadBitmap(context, R.drawable.warrior_idle_1, 256),
@@ -2112,6 +2115,45 @@ private fun GameCanvas(
         loadBitmap(context, R.drawable.warrior_die_3, 256),
         loadBitmap(context, R.drawable.warrior_die_4, 256),
         loadBitmap(context, R.drawable.warrior_die_5, 256)
+    ) }
+    // 전사 세트 2 (tier 3–5: 스파르탄 갑옷)
+    val warrior2Idle   = remember { listOf(
+        loadBitmap(context, R.drawable.warrior2_idle_0, 256),
+        loadBitmap(context, R.drawable.warrior2_idle_1, 256),
+        loadBitmap(context, R.drawable.warrior2_idle_2, 256),
+        loadBitmap(context, R.drawable.warrior2_idle_3, 256),
+        loadBitmap(context, R.drawable.warrior2_idle_4, 256),
+        loadBitmap(context, R.drawable.warrior2_idle_5, 256)
+    ) }
+    val warrior2Walk   = remember { listOf(
+        loadBitmap(context, R.drawable.warrior2_walk_0, 256),
+        loadBitmap(context, R.drawable.warrior2_walk_1, 256),
+        loadBitmap(context, R.drawable.warrior2_walk_2, 256),
+        loadBitmap(context, R.drawable.warrior2_walk_3, 256),
+        loadBitmap(context, R.drawable.warrior2_walk_4, 256),
+        loadBitmap(context, R.drawable.warrior2_walk_5, 256)
+    ) }
+    val warrior2Attack = remember { listOf(
+        loadBitmap(context, R.drawable.warrior2_attack_0, 256),
+        loadBitmap(context, R.drawable.warrior2_attack_1, 256),
+        loadBitmap(context, R.drawable.warrior2_attack_2, 256),
+        loadBitmap(context, R.drawable.warrior2_attack_3, 256),
+        loadBitmap(context, R.drawable.warrior2_attack_4, 256)
+    ) }
+    val warrior2Hurt   = remember { listOf(
+        loadBitmap(context, R.drawable.warrior2_hurt_0, 256),
+        loadBitmap(context, R.drawable.warrior2_hurt_1, 256),
+        loadBitmap(context, R.drawable.warrior2_hurt_2, 256),
+        loadBitmap(context, R.drawable.warrior2_hurt_3, 256),
+        loadBitmap(context, R.drawable.warrior2_hurt_4, 256)
+    ) }
+    val warrior2Die    = remember { listOf(
+        loadBitmap(context, R.drawable.warrior2_die_0, 256),
+        loadBitmap(context, R.drawable.warrior2_die_1, 256),
+        loadBitmap(context, R.drawable.warrior2_die_2, 256),
+        loadBitmap(context, R.drawable.warrior2_die_3, 256),
+        loadBitmap(context, R.drawable.warrior2_die_4, 256),
+        loadBitmap(context, R.drawable.warrior2_die_5, 256)
     ) }
 
     // 궁수 플레이어 스프라이트 프레임
@@ -2176,12 +2218,14 @@ private fun GameCanvas(
             drawMonster(m, cam, idle, walk, slash)
         }
         projectiles.forEach { drawProjectile(it, cam, energyBoltFrames) }
-        val isArcher = player.job == PlayerJob.ARCHER
-        val pIdle   = if (isArcher) archerIdle   else warriorIdle
-        val pWalk   = if (isArcher) archerWalk   else warriorWalk
-        val pAttack = if (isArcher) archerAttack else warriorAttack
-        val pHurt   = if (isArcher) archerHurt   else warriorHurt
-        val pDie    = if (isArcher) archerDie    else warriorDie
+        val isArcher  = player.job == PlayerJob.ARCHER
+        // WAR_HAT_003~005 = tier3+ 투구 → 스파르탄 갑옷 스프라이트 세트
+        val useWarrior2 = equippedHatId in setOf("WAR_HAT_003", "WAR_HAT_004", "WAR_HAT_005")
+        val pIdle   = when { isArcher -> archerIdle;   useWarrior2 -> warrior2Idle;   else -> warriorIdle }
+        val pWalk   = when { isArcher -> archerWalk;   useWarrior2 -> warrior2Walk;   else -> warriorWalk }
+        val pAttack = when { isArcher -> archerAttack; useWarrior2 -> warrior2Attack; else -> warriorAttack }
+        val pHurt   = when { isArcher -> archerHurt;   useWarrior2 -> warrior2Hurt;   else -> warriorHurt }
+        val pDie    = when { isArcher -> archerDie;    useWarrior2 -> warrior2Die;    else -> warriorDie }
         drawPlayer(
             player, cam,
             pIdle, pWalk, pAttack, pHurt, pDie,
