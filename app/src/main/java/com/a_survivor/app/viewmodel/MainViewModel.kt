@@ -127,7 +127,8 @@ data class UiState(
     val quickSlots: List<ConsumableType?> = List(3) { null },
     val skillCooldownUntil: Map<String, Long> = emptyMap(),
     val skillEffects: List<SkillEffect> = emptyList(),
-    val autoAttackEnabled: Boolean = false
+    val autoAttackEnabled: Boolean = false,
+    val levelUpTime: Long = 0L
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -762,7 +763,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 questState            = newQuestState
             )
             val msgsState = if (gainedExp > 0) addMessage(finalState, "+${gainedExp} EXP", MessageType.EXP) else finalState
-            if (gainedExp > 0) computeDerived(msgsState) else msgsState
+            val computed = if (gainedExp > 0) computeDerived(msgsState) else msgsState
+            if (computed.player.level > state.player.level) computed.copy(levelUpTime = now) else computed
         }
         sfxToPlay?.let { SoundManager.playSfx(it) }
     }
@@ -891,7 +893,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 playerAttackAnimStart = now
             )
             val msgsState = if (gainedExp > 0) addMessage(base, "+${gainedExp} EXP", MessageType.EXP) else base
-            if (gainedExp > 0) computeDerived(msgsState) else msgsState
+            val computed = if (gainedExp > 0) computeDerived(msgsState) else msgsState
+            if (computed.player.level > state.player.level) computed.copy(levelUpTime = now) else computed
         }
         sfxToPlay?.let { SoundManager.playSfx(it) }
     }
@@ -1021,7 +1024,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 questState            = newQuestStateProj
             )
             val msgsState = if (gainedExp > 0) addMessage(newState, "+${gainedExp} EXP", MessageType.EXP) else newState
-            if (gainedExp > 0) computeDerived(msgsState) else msgsState
+            val computed = if (gainedExp > 0) computeDerived(msgsState) else msgsState
+            if (computed.player.level > state.player.level) computed.copy(levelUpTime = now) else computed
         }
     }
 

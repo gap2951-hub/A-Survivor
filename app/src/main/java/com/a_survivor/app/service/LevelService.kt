@@ -17,7 +17,8 @@ class LevelService {
             p = p.copy(
                 exp                = p.exp - requiredExp(p.level),
                 level              = p.level + 1,
-                availableStatPoint = p.availableStatPoint + 5
+                availableStatPoint = p.availableStatPoint + 5,
+                hp                 = p.maxHp
             )
         }
         return p

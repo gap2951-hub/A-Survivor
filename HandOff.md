@@ -1445,6 +1445,8 @@ SoundManager.release()          // onDestroy
 | 281 | QuestTrackerPanel 메인 퀘스트 표시 지원 — 메인 퀘스트 우선 표시, 퀘스트명·타입별 진행 텍스트·프로그레스 바 | ✅ |
 | 282 | QuestTrackerPanel KILL 진행 텍스트 — MonsterRegistry.get()으로 "SKELETON_FIELD2" 대신 "스켈레톤 워리어" 표시 | ✅ |
 | 283 | drawGroundItem/MaterialInventoryItem iconKey() 적용 — 새 6종 재료 타입을 bone/beef 이미지로 올바르게 렌더링 | ✅ |
+| 284 | 레벨업 시 HP 전체 회복 — LevelService.applyExp() 레벨업 루프에 `hp = maxHp` 추가 | ✅ |
+| 285 | 레벨업 연출 구현 — Canvas 황금색 링 3개 확장(1.8초) + Compose "LEVEL UP!" / "Lv.X" 텍스트 오버레이(2초 fadeIn/fadeOut) | ✅ |
 
 ---
 
@@ -1960,9 +1962,75 @@ val quickSlotBounds = remember { mutableStateListOf<Rect?>(null, null, null) }
 - [ ] 사운드 파일 실제 배치 — bgm_town/bgm_battle + sfx_* (freesound.org 등 CC0 소스)
 - [ ] 투사체 PNG 리소스 교체 (에너지볼트/화살/표창/총알 이미지)
 - [ ] 장비 창고
-- [ ] 레벨업 연출 (파티클/메시지 이펙트)
 - [ ] 스킬 강화 / 스킬 트리 확장
 - [ ] map.csv / portal.csv / dialogue.csv / monster_spawn.csv / equipment_set.csv 추가 예정
+
+---
+
+## 레벨업 시스템 (작업 #284–285)
+
+### HP 회복 (LevelService.kt)
+
+레벨업 1회마다 HP가 `maxHp`로 전체 회복된다.
+
+```kotlin
+// LevelService.applyExp
+while (p.exp >= requiredExp(p.level)) {
+    p = p.copy(
+        exp                = p.exp - requiredExp(p.level),
+        level              = p.level + 1,
+        availableStatPoint = p.availableStatPoint + 5,
+        hp                 = p.maxHp   // 레벨업 시 HP 전체 회복
+    )
+}
+```
+
+### 레벨업 감지 및 UiState
+
+```kotlin
+// UiState
+val levelUpTime: Long = 0L   // 레벨업 발생 시각 (0 = 미발생)
+```
+
+레벨업이 발생하는 3개 전투 틱 (`pendingAttackTick` / `useSkill` / `projectileTick`) 각각의 마지막 반환 시점에 감지:
+
+```kotlin
+val computed = if (gainedExp > 0) computeDerived(msgsState) else msgsState
+if (computed.player.level > state.player.level) computed.copy(levelUpTime = now) else computed
+```
+
+### Canvas 이펙트 (drawLevelUpEffect)
+
+- **지속 시간**: 1800ms
+- **링 1**: 황금색 (`0xFFFFD700` 계열) 링, 최대 반경 `size.height * 0.14f`까지 확장, 두께 5→2px 페이드
+- **링 2**: 150ms 지연, 연노랑 링, 링 1의 65% 크기
+- **링 3**: 300ms 지연, 반투명 황금 채움 원 (600ms 내 페이드아웃)
+
+```kotlin
+// GameCanvas 파라미터
+levelUpTime: Long = 0L
+
+// Canvas 블록 내 호출 (drawSkillEffects 직후)
+drawLevelUpEffect(player, cam, levelUpTime)
+```
+
+### Compose 텍스트 오버레이 (MainScreen)
+
+- **위치**: `Alignment.TopCenter`, `padding(top = 56.dp)` — HUD 바로 아래
+- **"LEVEL UP!"**: 황금색 `0xFFFFD700`, 28sp ExtraBold, 검정 그림자
+- **"Lv.X"**: 연노랑 `0xFFFFEE88`, 16sp Bold
+- **표시 시간**: 2초, `LaunchedEffect(state.levelUpTime)`로 트리거, fadeIn(200ms) / fadeOut(600ms)
+
+```kotlin
+var showLevelUpText by remember { mutableStateOf(false) }
+LaunchedEffect(state.levelUpTime) {
+    if (state.levelUpTime != 0L) {
+        showLevelUpText = true
+        delay(2000L)
+        showLevelUpText = false
+    }
+}
+```
 
 ---
 

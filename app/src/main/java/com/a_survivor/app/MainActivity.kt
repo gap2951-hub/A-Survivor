@@ -68,6 +68,8 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -428,7 +430,8 @@ fun MainScreen(
             npcHintIds            = when (state.questState.tutorialStep) {
                 TutorialStep.LEARN_MOVEMENT, TutorialStep.TALK_TO_CHUCHU, TutorialStep.RETURN_TO_TOWN -> setOf(1)
                 else -> emptySet()
-            }
+            },
+            levelUpTime           = state.levelUpTime
         )
 
         // ② 상단 HUD
@@ -436,6 +439,43 @@ fun MainScreen(
             player = state.player,
             modifier = Modifier.align(Alignment.TopStart)
         )
+
+        // 레벨업 오버레이
+        var showLevelUpText by remember { mutableStateOf(false) }
+        LaunchedEffect(state.levelUpTime) {
+            if (state.levelUpTime != 0L) {
+                showLevelUpText = true
+                delay(2000L)
+                showLevelUpText = false
+            }
+        }
+        AnimatedVisibility(
+            visible = showLevelUpText,
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(600)),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 56.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "LEVEL UP!",
+                    color = Color(0xFFFFD700),
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    style = LocalTextStyle.current.copy(
+                        shadow = Shadow(color = Color.Black, blurRadius = 12f)
+                    )
+                )
+                Text(
+                    text = "Lv.${state.player.level}",
+                    color = Color(0xFFFFEE88),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    style = LocalTextStyle.current.copy(
+                        shadow = Shadow(color = Color.Black, blurRadius = 8f)
+                    )
+                )
+            }
+        }
 
 
         // ③ 강화 결과 메시지 (2초 후 자동 소멸)
@@ -1796,6 +1836,7 @@ private fun GameCanvas(
     playerHurtAnimStart: Long = 0L,
     playerDeathTime: Long = 0L,
     npcHintIds: Set<Int> = emptySet(),
+    levelUpTime: Long = 0L,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -2110,6 +2151,7 @@ private fun GameCanvas(
             isMoving, playerAttackAnimStart, playerHurtAnimStart, playerDeathTime
         )
         drawSkillEffects(skillEffects, cam)
+        drawLevelUpEffect(player, cam, levelUpTime)
         damageNumbers.forEach { drawDamageNumber(it, cam) }
     }
 }
@@ -2461,6 +2503,51 @@ private fun DrawScope.drawDamageNumber(num: DamageNumber, cam: CameraState) {
     }
     val text = if (num.isMiss) "MISS" else num.value.toString()
     drawContext.canvas.nativeCanvas.drawText(text, pos.x, pos.y, paint)
+}
+
+private fun DrawScope.drawLevelUpEffect(player: Player, cam: CameraState, levelUpTime: Long) {
+    if (levelUpTime == 0L) return
+    val elapsed = System.currentTimeMillis() - levelUpTime
+    if (elapsed > 1800L) return
+
+    val cx = cam.toScreenOffset(player.positionX, player.positionY, size.width, size.height).x
+    val cy = cam.toScreenOffset(player.positionX, player.positionY, size.width, size.height).y
+    val maxRadius = size.height * 0.14f
+
+    // 링 1: 빠르게 확장
+    val p1 = (elapsed / 1800f).coerceIn(0f, 1f)
+    val alpha1 = (1f - p1).coerceIn(0f, 1f)
+    drawCircle(
+        color = Color(1f, 0.88f, 0f, alpha1 * 0.9f),
+        radius = p1 * maxRadius,
+        center = Offset(cx, cy),
+        style = Stroke(width = 5f * (1f - p1 * 0.6f))
+    )
+
+    // 링 2: 150ms 지연, 작게
+    val elapsed2 = (elapsed - 150L).coerceAtLeast(0L)
+    val p2 = (elapsed2 / 1800f).coerceIn(0f, 1f)
+    val alpha2 = (1f - p2).coerceIn(0f, 1f)
+    if (elapsed2 > 0) {
+        drawCircle(
+            color = Color(1f, 1f, 0.6f, alpha2 * 0.6f),
+            radius = p2 * maxRadius * 0.65f,
+            center = Offset(cx, cy),
+            style = Stroke(width = 3f)
+        )
+    }
+
+    // 링 3: 300ms 지연, 채움 원 (희미하게)
+    val elapsed3 = (elapsed - 300L).coerceAtLeast(0L)
+    val p3 = (elapsed3 / 600f).coerceIn(0f, 1f)
+    if (elapsed3 in 1..600) {
+        val alpha3 = (1f - p3) * 0.25f
+        drawCircle(
+            color = Color(1f, 0.95f, 0.3f, alpha3),
+            radius = p3 * maxRadius * 0.4f,
+            center = Offset(cx, cy)
+        )
+    }
 }
 
 // ── 상단 HUD ─────────────────────────────────────────────────────────────────
