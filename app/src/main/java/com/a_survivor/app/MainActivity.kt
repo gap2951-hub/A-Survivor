@@ -4964,8 +4964,8 @@ private fun ShopWindow(
                             }
                             val fallbackLabel: String = if (iconRes == null) when (item.itemType) {
                                 ShopItemType.EQUIPMENT -> when (EquipmentRegistry.get(item.itemId)?.slot) {
-                                    "HAT" -> "모자"; "TOP" -> "상의"; "BOTTOM", "PANTS" -> "하의"
-                                    "GLOVE" -> "장갑"; "SHOES" -> "신발"; "WEAPON" -> "무기"
+                                    "HAT" -> "모자"; "TOP" -> "상의"; "ONEPIECE" -> "한벌옷"
+                                    "BOTTOM", "PANTS" -> "하의"; "GLOVE" -> "장갑"; "SHOES" -> "신발"; "WEAPON" -> "무기"
                                     else -> "장비"
                                 }
                                 ShopItemType.SCROLL -> "주문서"
@@ -5032,8 +5032,8 @@ private fun ShopWindow(
                             }
                             val sellFallbackLabel: String = if (sellIconRes == null) when (entry.itemType) {
                                 ShopItemType.EQUIPMENT -> when (EquipmentRegistry.get(entry.itemId)?.slot) {
-                                    "HAT" -> "모자"; "TOP" -> "상의"; "BOTTOM", "PANTS" -> "하의"
-                                    "GLOVE" -> "장갑"; "SHOES" -> "신발"; "WEAPON" -> "무기"
+                                    "HAT" -> "모자"; "TOP" -> "상의"; "ONEPIECE" -> "한벌옷"
+                                    "BOTTOM", "PANTS" -> "하의"; "GLOVE" -> "장갑"; "SHOES" -> "신발"; "WEAPON" -> "무기"
                                     else -> "장비"
                                 }
                                 ShopItemType.SCROLL -> "주문서"

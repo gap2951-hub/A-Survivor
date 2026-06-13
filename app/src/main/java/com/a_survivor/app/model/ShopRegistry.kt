@@ -73,7 +73,7 @@ object ShopRegistry {
             append("업그레이드 실패 횟수 복구.\n성공률 ${s.successRate}%")
         } else {
             val slotKo = when (s.targetSlot) {
-                "GLOVE" -> "장갑"; "TOP" -> "상의"; "HAT" -> "모자"
+                "GLOVE" -> "장갑"; "TOP" -> "상의"; "ONEPIECE" -> "한벌옷"; "HAT" -> "모자"
                 "SHOES" -> "신발"; "WEAPON" -> "무기"; else -> s.targetSlot
             }
             if (slotKo.isNotBlank()) append("[$slotKo 전용] ")
