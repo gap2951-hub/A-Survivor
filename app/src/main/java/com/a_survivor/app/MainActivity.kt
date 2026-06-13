@@ -1186,13 +1186,13 @@ private fun equipmentDrawableRes(itemId: String): Int? = when (itemId) {
     else -> null
 }
 
-/** HAT itemId → 스프라이트 색 필터 (Multiply 블렌드로 색조 변경) */
+/** HAT itemId → 스프라이트 색 필터 (SrcAtop: 불투명 픽셀에만 색 혼합, 투명 픽셀 유지) */
 private fun warriorTintFilter(hatItemId: String?): ColorFilter? = when (hatItemId) {
     "WAR_HAT_001" -> null  // 낡은 철 투구: 원본 그대로
-    "WAR_HAT_002" -> ColorFilter.tint(Color(0xFFB8C8FF), BlendMode.Multiply)  // 견습 기사: 청회색
+    "WAR_HAT_002" -> ColorFilter.tint(Color(0xFF9AAADD).copy(alpha = 0.45f), BlendMode.SrcAtop)  // 견습 기사: 청회색
     "WAR_HAT_003" -> null  // 청동 투구: 원본 그대로
-    "WAR_HAT_004" -> ColorFilter.tint(Color(0xFF80C0FF), BlendMode.Multiply)  // 강철: 강청색
-    "WAR_HAT_005" -> ColorFilter.tint(Color(0xFFFFCC40), BlendMode.Multiply)  // 기사단: 황금빛
+    "WAR_HAT_004" -> ColorFilter.tint(Color(0xFF5599EE).copy(alpha = 0.45f), BlendMode.SrcAtop)  // 강철: 강청색
+    "WAR_HAT_005" -> ColorFilter.tint(Color(0xFFFFAA00).copy(alpha = 0.50f), BlendMode.SrcAtop)  // 기사단: 황금빛
     else          -> null
 }
 
