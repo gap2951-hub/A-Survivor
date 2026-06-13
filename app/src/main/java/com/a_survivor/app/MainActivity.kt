@@ -1149,6 +1149,21 @@ private fun equipmentDrawableRes(itemId: String): Int? = when (itemId) {
     "TEST_PANTS" -> R.drawable.item_pants_test
     "TEST_BOW"   -> R.drawable.item_bow_test
     "NOGADA_GLOVE" -> R.drawable.nogada_glove
+    // 전사 모자
+    "WAR_HAT_001", "WAR_HAT_002" -> R.drawable.war_hat_1
+    "WAR_HAT_003", "WAR_HAT_004", "WAR_HAT_005" -> R.drawable.war_hat_2
+    // 전사 상의
+    "WAR_TOP_001", "WAR_TOP_002" -> R.drawable.war_armor_1
+    "WAR_TOP_003", "WAR_TOP_004", "WAR_TOP_005" -> R.drawable.war_armor_2
+    // 전사 장갑
+    "WAR_GLOVE_001", "WAR_GLOVE_002" -> R.drawable.war_glove_1
+    "WAR_GLOVE_003", "WAR_GLOVE_004", "WAR_GLOVE_005" -> R.drawable.war_glove_2
+    // 전사 신발
+    "WAR_SHOES_001", "WAR_SHOES_002" -> R.drawable.war_boots_1
+    "WAR_SHOES_003", "WAR_SHOES_004", "WAR_SHOES_005" -> R.drawable.war_boots_2
+    // 전사 무기
+    "WAR_WEAPON_001", "WAR_WEAPON_002" -> R.drawable.war_sword_1
+    "WAR_WEAPON_003", "WAR_WEAPON_004", "WAR_WEAPON_005" -> R.drawable.war_sword_2
     else -> null
 }
 
@@ -2048,13 +2063,17 @@ private fun GameCanvas(
         loadBitmap(context, R.drawable.warrior_idle_0, 256),
         loadBitmap(context, R.drawable.warrior_idle_1, 256),
         loadBitmap(context, R.drawable.warrior_idle_2, 256),
-        loadBitmap(context, R.drawable.warrior_idle_3, 256)
+        loadBitmap(context, R.drawable.warrior_idle_3, 256),
+        loadBitmap(context, R.drawable.warrior_idle_4, 256),
+        loadBitmap(context, R.drawable.warrior_idle_5, 256)
     ) }
     val warriorWalk   = remember { listOf(
         loadBitmap(context, R.drawable.warrior_walk_0, 256),
         loadBitmap(context, R.drawable.warrior_walk_1, 256),
         loadBitmap(context, R.drawable.warrior_walk_2, 256),
-        loadBitmap(context, R.drawable.warrior_walk_3, 256)
+        loadBitmap(context, R.drawable.warrior_walk_3, 256),
+        loadBitmap(context, R.drawable.warrior_walk_4, 256),
+        loadBitmap(context, R.drawable.warrior_walk_5, 256)
     ) }
     val warriorAttack = remember { listOf(
         loadBitmap(context, R.drawable.warrior_attack_0, 256),
@@ -2066,7 +2085,9 @@ private fun GameCanvas(
     val warriorHurt   = remember { listOf(
         loadBitmap(context, R.drawable.warrior_hurt_0, 256),
         loadBitmap(context, R.drawable.warrior_hurt_1, 256),
-        loadBitmap(context, R.drawable.warrior_hurt_2, 256)
+        loadBitmap(context, R.drawable.warrior_hurt_2, 256),
+        loadBitmap(context, R.drawable.warrior_hurt_3, 256),
+        loadBitmap(context, R.drawable.warrior_hurt_4, 256)
     ) }
     val warriorDie    = remember { listOf(
         loadBitmap(context, R.drawable.warrior_die_0, 256),

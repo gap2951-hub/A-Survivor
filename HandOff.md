@@ -3,7 +3,7 @@
 ## 프로젝트 개요
 
 메이플스토리 스타일의 픽셀아트 사냥터를 배경으로 한 안드로이드 생존형 게임.
-주문서 강화 시스템, 몬스터 AI, 픽셀 충돌, 마을/포탈 시스템, NPC/퀘스트 시스템, 스켈레톤 워리어 애니메이션, 전사 플레이어 스프라이트 애니메이션(히트 프레임 시스템 포함), 인벤토리 아이템 이미지화 구현 완료.
+주문서 강화 시스템, 몬스터 AI, 픽셀 충돌, 마을/포탈 시스템, NPC/퀘스트 시스템, 스켈레톤 워리어 애니메이션, 전사 플레이어 스프라이트 애니메이션(히트 프레임 시스템 포함), 전사 장비 아이콘 이미지화(10종), 인벤토리 아이템 이미지화 구현 완료.
 
 - **패키지명:** `com.a_survivor.app`
 - **언어:** Kotlin + Jetpack Compose
@@ -1447,6 +1447,9 @@ SoundManager.release()          // onDestroy
 | 283 | drawGroundItem/MaterialInventoryItem iconKey() 적용 — 새 6종 재료 타입을 bone/beef 이미지로 올바르게 렌더링 | ✅ |
 | 284 | 레벨업 시 HP 전체 회복 — LevelService.applyExp() 레벨업 루프에 `hp = maxHp` 추가 | ✅ |
 | 285 | 레벨업 연출 구현 — Canvas 황금색 링 3개 확장(1.8초) + Compose "LEVEL UP!" / "Lv.X" 텍스트 오버레이(2초 fadeIn/fadeOut) | ✅ |
+| 286 | 전사 스프라이트 갱신 — Warrior_clothes_1 애니메이션 세트에서 프레임 재추출 (Idle 6 / Walk 6 / Attack 5 / Hurt 5 / Die 6), 흰 배경 제거 + 256×256 리사이즈 | ✅ |
+| 287 | 전사 장비 아이템 아이콘 추가 — clothes_1/2에서 Hat/Body/Shoes/Arm/Sword 5종×2세트 = 10개 drawable (war_hat_1·2, war_armor_1·2, war_boots_1·2, war_glove_1·2, war_sword_1·2) | ✅ |
+| 288 | equipmentDrawableRes WAR_* 매핑 추가 — WAR_HAT/TOP/GLOVE/SHOES/WEAPON 각 5티어를 두 아이콘 세트로 분기 매핑 | ✅ |
 
 ---
 
