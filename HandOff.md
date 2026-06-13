@@ -3,7 +3,7 @@
 ## 프로젝트 개요
 
 메이플스토리 스타일의 픽셀아트 사냥터를 배경으로 한 안드로이드 생존형 게임.
-주문서 강화 시스템, 몬스터 AI, 픽셀 충돌, 마을/포탈 시스템, NPC/퀘스트 시스템, 스켈레톤 워리어 애니메이션, 전사 플레이어 스프라이트 애니메이션(히트 프레임 시스템 + 장비 티어별 스프라이트 세트 전환), 한벌옷(ONEPIECE) 슬롯, 전사 장비 아이콘 이미지화(10종), 인벤토리 아이템 이미지화 구현 완료.
+주문서 강화 시스템, 몬스터 AI, 픽셀 충돌, 마을/포탈 시스템, NPC/퀘스트 시스템, 스켈레톤 워리어 애니메이션, 전사 플레이어 스프라이트 애니메이션(히트 프레임 시스템 + ONEPIECE 슬롯 기반 3단계 스프라이트 세트 전환: naked/철제/스파르탄), 한벌옷(ONEPIECE) 슬롯, 전사 장비 아이콘 이미지화(10종), 인벤토리 아이템 이미지화 구현 완료.
 
 - **패키지명:** `com.a_survivor.app`
 - **언어:** Kotlin + Jetpack Compose
@@ -2350,11 +2350,28 @@ val warriorTier = when {
 - 스크립트: `scripts/process_warrior_base.py`
 - 프레임 수: Idle 6 / Walk 6 / Attack 5 / Hurt 5 / Die 6 → 총 28개
 
-### GameCanvas 파라미터 변경
+### GameCanvas 파라미터 변경 이력
 
-```
-변경 전: equippedHatId: String?
-변경 후: warriorEquipIds: Set<String>  // WAR_ 접두 전체 장비 itemId
+| 버전 | 파라미터 | 설명 |
+|------|---------|------|
+| 초기 | `equippedHatId: String?` | 모자 itemId 하나만 전달 |
+| 작업 #295 | `warriorEquipIds: Set<String>` | WAR_* 장비 전체 itemId 세트 전달 |
+| 작업 #296 | `warriorArmorTier: Int` | 호출부에서 티어를 미리 계산해 전달 |
+
+### 티어 결정 로직 (최종)
+
+```kotlin
+// 호출부 (GameScreen Composable 내부)
+warriorArmorTier = run {
+    val id = state.onepiece?.itemId ?: state.top?.itemId
+    when {
+        id == null -> 0
+        id.endsWith("_003") || id.endsWith("_004") || id.endsWith("_005") -> 2
+        else -> 1
+    }
+}
 ```
 
-호출부: `hat`, `top`, `onepiece`, `shoes`, `pants`, `weapon.itemId` 중 WAR_ 접두인 것 전체 전달.
+**ONEPIECE(갑옷) 슬롯 기준**: 모자·신발·장갑·무기는 스프라이트 세트에 영향 없음.  
+모자만 장착 → 나체 베이스 스프라이트 표시.  
+갑옷 장착 시에만 해당 티어의 풀세트 스프라이트 표시.
