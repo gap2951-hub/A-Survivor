@@ -77,6 +77,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -1184,6 +1186,16 @@ private fun equipmentDrawableRes(itemId: String): Int? = when (itemId) {
     else -> null
 }
 
+/** HAT itemId → 스프라이트 색 필터 (Multiply 블렌드로 색조 변경) */
+private fun warriorTintFilter(hatItemId: String?): ColorFilter? = when (hatItemId) {
+    "WAR_HAT_001" -> null  // 낡은 철 투구: 원본 그대로
+    "WAR_HAT_002" -> ColorFilter.tint(Color(0xFFB8C8FF), BlendMode.Multiply)  // 견습 기사: 청회색
+    "WAR_HAT_003" -> null  // 청동 투구: 원본 그대로
+    "WAR_HAT_004" -> ColorFilter.tint(Color(0xFF80C0FF), BlendMode.Multiply)  // 강철: 강청색
+    "WAR_HAT_005" -> ColorFilter.tint(Color(0xFFFFCC40), BlendMode.Multiply)  // 기사단: 황금빛
+    else          -> null
+}
+
 private fun weaponDrawableRes(weapon: Weapon): Int = when (weapon.weaponType) {
     "활" -> R.drawable.item_bow_test
     else -> R.drawable.nogada_sword
@@ -2229,7 +2241,8 @@ private fun GameCanvas(
         drawPlayer(
             player, cam,
             pIdle, pWalk, pAttack, pHurt, pDie,
-            isMoving, playerAttackAnimStart, playerHurtAnimStart, playerDeathTime
+            isMoving, playerAttackAnimStart, playerHurtAnimStart, playerDeathTime,
+            tintFilter = if (isArcher) null else warriorTintFilter(equippedHatId)
         )
         drawSkillEffects(skillEffects, cam)
         drawLevelUpEffect(player, cam, levelUpTime)
@@ -2454,7 +2467,8 @@ private fun DrawScope.drawPlayer(
     isMoving: Boolean,
     playerAttackAnimStart: Long,
     playerHurtAnimStart: Long,
-    playerDeathTime: Long
+    playerDeathTime: Long,
+    tintFilter: ColorFilter? = null
 ) {
     val c    = cam.toScreenOffset(player.positionX, player.positionY, size.width, size.height)
     val isArcher = player.job == PlayerJob.ARCHER
@@ -2487,7 +2501,8 @@ private fun DrawScope.drawPlayer(
             image         = bitmap,
             dstOffset     = IntOffset((c.x - imgW / 2f).toInt(), (c.y - imgH * vertRatio).toInt()),
             dstSize       = IntSize(imgW, imgH),
-            filterQuality = FilterQuality.None
+            filterQuality = FilterQuality.None,
+            colorFilter   = tintFilter
         )
     }
 }
