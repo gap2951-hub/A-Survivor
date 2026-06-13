@@ -1455,6 +1455,7 @@ SoundManager.release()          // onDestroy
 | 291 | 장비창 한벌옷 슬롯 추가 — 상의 행 아래 한벌옷 행 신설, ONEPIECE 장착 중에는 상의·하의 슬롯을 LockedSlot으로 표시 | ✅ |
 | 292 | 상점 UI ONEPIECE 표기 추가 — 구매/판매 아이콘 폴백 라벨 및 ShopRegistry 주문서 설명에 "한벌옷" 케이스 추가 | ✅ |
 | 293 | 전사 스프라이트 세트 전환 — Warrior_clothes_2 프레임 추출(warrior2_*), HAT 슬롯 기준 tier 3~5 착용 시 스파르탄 갑옷 세트로 자동 전환 | ✅ |
+| 294 | 전사 스프라이트 색 필터 시도 및 철회 — ColorFilter.tint(SrcAtop)으로 티어별 색조 구현 시도, 합성 스프라이트 구조상 전신에 색이 입혀지는 한계로 제거 | ✅ |
 
 ---
 
@@ -2249,6 +2250,8 @@ val pIdle = when { isArcher -> archerIdle; useWarrior2 -> warrior2Idle; else -> 
 각 세트 프레임 수: Idle 6 / Walk 6 / Attack 5 / Hurt 5 / Die 6  
 원본: `Warrior_animations/Right_Side/PNG Sequences/Warrior_clothes_1~2/`  
 처리: 흰 배경 제거 (R,G,B ≥ 240 → alpha=0) + 256×256 리사이즈
+
+> **색 필터 미지원 (설계 제약):** `ColorFilter.tint`를 `drawImage`에 적용하면 머리/몸/손발이 하나로 합성된 스프라이트 전체에 색이 입혀진다. 부위별 색 변경은 레이어 분리 구조(별도 HAT/BODY/LEGS 이미지)가 필요하며 현재 리소스는 해당 구조가 아님.
 
 ### 전사 장비 아이콘
 
